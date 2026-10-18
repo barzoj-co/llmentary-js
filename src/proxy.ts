@@ -178,11 +178,16 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
       logs.push(line);
       options.log?.(line);
     });
+    if (child.pid) {
+      rememberSpawnedProcess({
+        pid: child.pid,
+        instanceId,
+        exePath: binaryPath,
+        startedAtMs: Date.now(),
+      });
+    }
     try {
       await waitForHealth(controlUrl, bearerToken, options.healthTimeoutMs, child, logs);
-      if (child.pid) {
-        rememberSpawnedProcess({ pid: child.pid, instanceId, exePath: binaryPath, startedAtMs: Date.now() });
-      }
       return {
         proxyUrl,
         controlUrl,
@@ -204,6 +209,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
         ),
       );
       await stopChild(child);
+      if (child.pid) forgetSpawnedProcess(child.pid);
     }
   }
   throw new Error(

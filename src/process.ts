@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, readlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -74,9 +74,10 @@ export function rememberSpawnedProcess(identity: ProcessIdentity): void {
   if (!identity.pid || !identity.instanceId) return;
   const path = sidecarPath(identity.pid);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const startedAtMs = readProcessStartMs(identity.pid) ?? identity.startedAtMs ?? Date.now();
   writeFileSync(
     path,
-    `${JSON.stringify({ instanceId: identity.instanceId, startedAtMs: identity.startedAtMs ?? Date.now() })}\n`,
+    `${JSON.stringify({ instanceId: identity.instanceId, startedAtMs })}\n`,
     { encoding: "utf8", mode: 0o600 },
   );
 }
@@ -139,22 +140,62 @@ async function readProcessExe(pid: number): Promise<string | undefined> {
   }
 }
 
-function readProcessStartMs(pid: number): number | undefined {
+export function readProcessStartMs(pid: number): number | undefined {
   if (process.platform === "win32") return readWindowsStartMs(pid);
+  return readLinuxStartMs(pid) ?? readPsElapsedStartMs(pid);
+}
+
+function readLinuxStartMs(pid: number): number | undefined {
   try {
-    const value = statSync(`/proc/${pid}`).ctimeMs;
-    if (Number.isFinite(value) && value > 0) return value;
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const closeParen = stat.lastIndexOf(")");
+    if (closeParen < 0) return undefined;
+    const rest = stat.slice(closeParen + 2).trim().split(/\s+/);
+    const startTicks = Number(rest[19]);
+    if (!Number.isFinite(startTicks) || startTicks < 0) return undefined;
+    const uptime = Number(readFileSync("/proc/uptime", "utf8").trim().split(/\s+/)[0]);
+    if (!Number.isFinite(uptime) || uptime < 0) return undefined;
+    const elapsedSec = uptime - startTicks / clockTicksPerSecond();
+    if (!Number.isFinite(elapsedSec) || elapsedSec < 0) return undefined;
+    return Date.now() - elapsedSec * 1000;
   } catch {
-    // Fall through to ps on platforms without /proc.
+    return undefined;
   }
-  const result = spawnSync("ps", ["-p", String(pid), "-o", "etimes="], {
+}
+
+function readPsElapsedStartMs(pid: number): number | undefined {
+  const result = spawnSync("ps", ["-p", String(pid), "-o", "etime="], {
     encoding: "utf8",
     timeout: PROCESS_QUERY_TIMEOUT_MS,
   });
   if (result.error || result.status !== 0) return undefined;
-  const elapsedSec = Number(result.stdout?.trim());
-  if (!Number.isFinite(elapsedSec) || elapsedSec < 0) return undefined;
+  const elapsedSec = parsePsEtime(result.stdout ?? "");
+  if (elapsedSec === undefined) return undefined;
   return Date.now() - elapsedSec * 1000;
+}
+
+/** `etime` is `[[dd-]hh:]mm:ss` on both GNU and Darwin ps. */
+export function parsePsEtime(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const dayParts = trimmed.split("-");
+  let days = 0;
+  let clock = trimmed;
+  if (dayParts.length === 2) {
+    days = Number(dayParts[0]);
+    clock = dayParts[1] ?? "";
+    if (!Number.isFinite(days) || days < 0) return undefined;
+  }
+  const parts = clock.split(":").map(Number);
+  if (parts.length < 2 || parts.length > 3 || parts.some((part) => !Number.isFinite(part) || part < 0)) return undefined;
+  const seconds = parts.length === 3 ? parts[0]! * 3600 + parts[1]! * 60 + parts[2]! : parts[0]! * 60 + parts[1]!;
+  return days * 86_400 + seconds;
+}
+
+function clockTicksPerSecond(): number {
+  const result = spawnSync("getconf", ["CLK_TCK"], { encoding: "utf8", timeout: PROCESS_QUERY_TIMEOUT_MS });
+  const value = Number(result.stdout?.trim());
+  return Number.isFinite(value) && value > 0 ? value : 100;
 }
 
 function readWindowsCommandLine(pid: number): string {

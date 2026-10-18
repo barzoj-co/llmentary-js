@@ -1,8 +1,19 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import { pidExists, processMatchesIdentity, stopProcessIfMatches } from "../src/process.js";
+import {
+  forgetSpawnedProcess,
+  parsePsEtime,
+  pidExists,
+  processMatchesIdentity,
+  readProcessStartMs,
+  rememberSpawnedProcess,
+  stopProcessIfMatches,
+} from "../src/process.js";
 
 const children: ReturnType<typeof spawn>[] = [];
 
@@ -67,6 +78,41 @@ describe("process identity", () => {
     await expect(stopProcessIfMatches(pid, { pid, exePath: process.execPath })).resolves.toBe(false);
     expect(pidExists(pid)).toBe(true);
   });
+
+  it("matches a sidecar recorded at spawn using the live process start time", async () => {
+    const child = spawnWithoutInstanceId();
+    const pid = child.pid!;
+    const instanceId = randomUUID();
+    await delay(50);
+    const liveStart = readProcessStartMs(pid);
+    expect(liveStart).toBeDefined();
+    expect(Math.abs((liveStart ?? 0) - Date.now())).toBeLessThan(15_000);
+    rememberSpawnedProcess({ pid, instanceId, startedAtMs: Date.now() });
+    await expect(processMatchesIdentity(pid, { pid, instanceId })).resolves.toBe(true);
+    forgetSpawnedProcess(pid);
+  });
+
+  it("rejects a sidecar whose recorded start time is stale", async () => {
+    const child = spawnWithoutInstanceId();
+    const pid = child.pid!;
+    const instanceId = randomUUID();
+    await delay(50);
+    writeSidecar(pid, instanceId, Date.now() - 60_000);
+    await expect(processMatchesIdentity(pid, { pid, instanceId })).resolves.toBe(false);
+    forgetSpawnedProcess(pid);
+  });
+});
+
+describe("parsePsEtime", () => {
+  it("parses GNU and Darwin [[dd-]hh:]mm:ss values", () => {
+    expect(parsePsEtime("01:02")).toBe(62);
+    expect(parsePsEtime(" 01:02:03\n")).toBe(3723);
+    expect(parsePsEtime("2-01:02:03")).toBe(2 * 86_400 + 3723);
+    expect(parsePsEtime("00:00")).toBe(0);
+    expect(parsePsEtime("")).toBeUndefined();
+    expect(parsePsEtime("etimes")).toBeUndefined();
+    expect(parsePsEtime("1")).toBeUndefined();
+  });
 });
 
 function spawnUnrelated(extraEnv: NodeJS.ProcessEnv = {}): ReturnType<typeof spawn> {
@@ -76,4 +122,21 @@ function spawnUnrelated(extraEnv: NodeJS.ProcessEnv = {}): ReturnType<typeof spa
   });
   children.push(child);
   return child;
+}
+
+function spawnWithoutInstanceId(): ReturnType<typeof spawn> {
+  const env = { ...process.env };
+  delete env.LLMTESTLAB_INSTANCE_ID;
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    env,
+    stdio: "ignore",
+  });
+  children.push(child);
+  return child;
+}
+
+function writeSidecar(pid: number, instanceId: string, startedAtMs: number): void {
+  const path = join(tmpdir(), "llm-test-lab", "proc", `${pid}.json`);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, `${JSON.stringify({ instanceId, startedAtMs })}\n`, { encoding: "utf8", mode: 0o600 });
 }
