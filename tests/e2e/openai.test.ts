@@ -68,6 +68,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
     expect(functionCall?.type).toBe("function_call");
 
     await client.responses.create({
+      model: "gpt-4.1-mini",
       previous_response_id: response.id,
       input: [
         {
