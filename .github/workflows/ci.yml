@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22]
+    steps:
+      - name: Checkout client
+        uses: actions/checkout@v5
+
+      - name: Validate private proxy checkout secret
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ -z "${{ secrets.LLMTESTLAB_REPO_TOKEN }}" ]; then
+            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llm-test-lab repository so CI can build the Go proxy binary."
+            exit 1
+          fi
+
+      - name: Checkout llm-test-lab proxy
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/checkout@v5
+        with:
+          repository: barzoj-co/llm-test-lab
+          token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          path: .cache/llm-test-lab-go
+
+      - name: Setup Go
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: .cache/llm-test-lab-go/go.sum
+
+      - name: Build proxy binary
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.bin"
+          go build -o "$GITHUB_WORKSPACE/.bin/llmtestlab" ./cmd/llmtestlab
+        working-directory: .cache/llm-test-lab-go
+
+      - name: Export proxy binary path
+        run: |
+          if [ -x "$GITHUB_WORKSPACE/.bin/llmtestlab" ]; then
+            echo "LLMTESTLAB_BIN=$GITHUB_WORKSPACE/.bin/llmtestlab" >> "$GITHUB_ENV"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit and runner tests
+        run: npm test
+
+      - name: Validate OpenAI E2E secret
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
+            echo "::error::Missing required secret OPENAI_API_KEY for real OpenAI E2E tests. Fork PRs are skipped; same-repo PRs and pushes must provide it."
+            exit 1
+          fi
+
+      - name: OpenAI E2E
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: npm run test:e2e:openai
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Skip OpenAI E2E for fork PR
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: echo "Skipping OpenAI E2E on fork PR because secrets are unavailable."
