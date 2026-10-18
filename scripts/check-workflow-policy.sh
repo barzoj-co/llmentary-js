@@ -33,6 +33,7 @@ ALLOWED_JOB_PERMS = {
         ("issues", "write"),
         ("actions", "write"),
     },
+    "release-please-dry": {("contents", "read"), ("pull-requests", "read")},
     "release-build": {("contents", "read")},
     "publish": {("contents", "read"), ("id-token", "write")},
     "label-sync": {("issues", "write")},
@@ -231,7 +232,9 @@ def classify(job: dict, workflow: Path) -> str:
         return "label-dry"
     if workflow.name == "labels.yml" and job["id"] in {"labeler", "labels"}:
         return "label-sync"
-    if "release-please" in name.lower() and "dry" not in name.lower():
+    if "release-please" in name.lower() and "dry" in name.lower():
+        return "release-please-dry"
+    if "release-please" in name.lower():
         return "release-please"
     if workflow.name == "release-please.yml":
         return "release-please"

@@ -80,7 +80,7 @@ jobs:
         env:
           # renovate: datasource=npm depName=renovate
           RENOVATE_VERSION: "44.167.1"
-        run: npx --yes "renovate@${RENOVATE_VERSION}" renovate-config-validator --strict
+        run: npx --yes --package "renovate@${RENOVATE_VERSION}" -- renovate-config-validator --strict
 
   codecov-config:
     name: codecov-config
@@ -127,6 +127,9 @@ jobs:
     name: release-please (dry run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -179,7 +182,7 @@ jobs:
           npm pack --dry-run
           for pkg in packages/*; do
             echo "Packing $pkg"
-            npm pack --dry-run "$pkg"
+            npm pack --dry-run "./$pkg"
           done
 
       - name: npm publish --dry-run (root, no token)
