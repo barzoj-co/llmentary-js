@@ -118,6 +118,7 @@ async function main() {
       const destDir = join(ROOT, "packages", spec.dir, "bin");
       await mkdir(destDir, { recursive: true });
       await rename(binary, join(destDir, spec.bin));
+      await writeFile(join(ROOT, "packages", spec.dir, "LICENSE"), await readFile(join(ROOT, "LICENSE")));
       await setPackageVersion(spec.dir, version);
     }
   } finally {

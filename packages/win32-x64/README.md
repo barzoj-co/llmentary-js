@@ -1,5 +1,7 @@
 # @llm-test-lab/win32-x64
 
-Optional llm-test-lab proxy binary package for Windows x64.
+Optional Windows x64 package for `llm-test-lab`. npm selects it through `optionalDependencies` + `os`/`cpu` when you install `llm-test-lab` on this platform.
 
-The TypeScript client is MIT licensed. The proxy binary placed under `bin/` by the release workflow is AGPL-3.0 and runs as a separate process.
+The package metadata and wrapper are MIT licensed. The `llmtestlab.exe` binary placed in `bin/` by the release workflow is AGPL-3.0 and runs as a separate process. There is no `postinstall` script; the binary is packed at publish time from checksum-verified GoReleaser artifacts.
+
+Override the binary with `LLMTESTLAB_BIN` if you do not want this package's file.

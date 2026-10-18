@@ -1,9 +1,22 @@
 {
   "name": "@llm-test-lab/linux-x64",
   "version": "0.0.0",
-  "description": "Linux x64 llm-test-lab proxy binary package.",
+  "description": "Linux x64 llm-test-lab proxy binary (optionalDependency of llm-test-lab).",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/barzoj-co/llm-test-lab-js.git",
+    "directory": "packages/linux-x64"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "os": ["linux"],
   "cpu": ["x64"],
-  "files": ["bin", "README.md"]
+  "preferUnplugged": true,
+  "files": ["bin", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
 }

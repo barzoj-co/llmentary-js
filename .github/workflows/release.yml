@@ -38,11 +38,12 @@ jobs:
           GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
         run: node scripts/pack-platform-binaries.mjs
 
-      - name: Dry-run npm publish with provenance
+      - name: Dry-run npm pack with trusted publishing settings
         run: |
           npm pack --dry-run
           for pkg in packages/*; do
-            npm pack --dry-run --workspace "$(node -p "require('./$pkg/package.json').name")"
+            echo "Packing $pkg"
+            npm pack --dry-run "$pkg"
           done
-          echo "Trusted publishing is configured (id-token: write, registry-url). Real npm publish is intentionally not run yet."
-          echo "When ready: npm publish --provenance --access public for each @llm-test-lab/<platform> package, then the root llm-test-lab package at the same version as the GoReleaser tag."
+          echo "Trusted publishing is configured (id-token: write, registry-url, provenance). Real npm publish is intentionally not run yet."
+          echo "When ready: publish each @llm-test-lab/<platform> package first, then llm-test-lab, all at the GoReleaser tag version with --provenance --access public."

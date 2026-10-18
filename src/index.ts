@@ -1,5 +1,5 @@
 export { LabAssertionError, AssertionScope, formatTraceSummary } from "./assertions.js";
-export { resolveBinary, downloadBinary, assetNameCandidates, nativePackageName, NATIVE_PACKAGES } from "./binary.js";
+export { resolveBinary, assetNameCandidates, nativePackageName, NATIVE_PACKAGES } from "./binary.js";
 export { ControlClient } from "./control.js";
 export { createLab, LlmTestLab, LlmTestLabQuery, sessionHeaders } from "./lab.js";
 export { startProxy, waitForHealth } from "./proxy.js";
