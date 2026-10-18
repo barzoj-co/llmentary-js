@@ -1,0 +1,97 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":semanticCommits"],
+  "timezone": "Europe/Amsterdam",
+  "schedule": ["before 7am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "platformAutomerge": true,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": ["dependencies", "security"],
+    "schedule": ["at any time"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on monday"],
+    "automerge": true
+  },
+  "ignorePaths": ["packages/**"],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "all non-major dependencies",
+      "groupSlug": "all-minor-patch"
+    },
+    {
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "automerge": true
+    },
+    {
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "groupName": "github actions",
+      "automerge": true
+    },
+    {
+      "matchDepTypes": ["dependencies"],
+      "rangeStrategy": "update-lockfile"
+    },
+    {
+      "matchDepTypes": ["peerDependencies"],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": ["@llm-test-lab/**"],
+      "enabled": false
+    },
+    {
+      "matchDepNames": ["node"],
+      "matchDepTypes": ["engines"],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": ["vitest", "@vitest/**"],
+      "groupName": "vitest"
+    },
+    {
+      "matchPackageNames": ["typescript", "@types/node"],
+      "automerge": false
+    },
+    {
+      "matchFileNames": ["PROXY_VERSION"],
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned CLI versions annotated with # renovate: in GitHub Actions workflows",
+      "managerFilePatterns": ["/(^|/)\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?\\s+[A-Z0-9_]+:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Jest version used via npx in package.json scripts",
+      "managerFilePatterns": ["/(^|/)package\\.json$/"],
+      "matchStrings": ["npx --yes jest@(?<currentValue>\\S+)"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "jest"
+    },
+    {
+      "customType": "regex",
+      "description": "Bundled proxy release pin (Option B)",
+      "managerFilePatterns": ["/(^|/)PROXY_VERSION$/"],
+      "matchStrings": ["(?<currentValue>.+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "barzoj-co/llm-test-lab"
+    }
+  ]
+}

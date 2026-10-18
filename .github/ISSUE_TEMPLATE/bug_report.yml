@@ -1,0 +1,117 @@
+name: Bug report
+description: Report a problem in the TypeScript/JavaScript client
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: input
+    id: package_version
+    attributes:
+      label: Package version
+      description: llm-test-lab npm version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: proxy_version
+    attributes:
+      label: Bundled proxy version
+      description: Platform package version, PROXY_VERSION, or the LLMTESTLAB_BIN you used
+      placeholder: "@llm-test-lab/linux-x64@0.1.0 or LLMTESTLAB_BIN=/path/to/llmtestlab"
+    validations:
+      required: true
+  - type: input
+    id: node_version
+    attributes:
+      label: Node version
+      placeholder: 22.11.0
+    validations:
+      required: true
+  - type: dropdown
+    id: runner
+    attributes:
+      label: Test runner
+      options:
+        - Vitest
+        - Jest
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: runner_version
+    attributes:
+      label: Test runner version
+      placeholder: vitest 3.2.4 or jest 30.5.2
+    validations:
+      required: true
+  - type: dropdown
+    id: module_system
+    attributes:
+      label: Module system
+      options:
+        - ESM
+        - CJS
+        - TypeScript (describe module setting below)
+    validations:
+      required: true
+  - type: input
+    id: ts_module
+    attributes:
+      label: TypeScript `module` setting
+      description: If you compile TypeScript, the `compilerOptions.module` value
+      placeholder: NodeNext, Node16, CommonJS, ESNext, …
+  - type: input
+    id: os_arch
+    attributes:
+      label: OS / arch
+      placeholder: linux x64, darwin arm64, win32 x64
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      placeholder: OpenAI, Azure OpenAI, …
+    validations:
+      required: true
+  - type: input
+    id: api
+    attributes:
+      label: API
+      placeholder: chat.completions, responses, …
+    validations:
+      required: true
+  - type: dropdown
+    id: streaming
+    attributes:
+      label: Streaming
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest possible test or snippet that fails
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: checkboxes
+    id: secrets
+    attributes:
+      label: Secrets
+      options:
+        - label: I removed keys and private prompts
+          required: true

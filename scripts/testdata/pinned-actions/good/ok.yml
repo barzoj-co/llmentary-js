@@ -1,0 +1,7 @@
+jobs:
+  example:
+    steps:
+      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567 # v5.1.0
+      - uses: github/codeql-action/init@0123456789abcdef0123456789abcdef01234567 # v4.39.0
+      - uses: ./local-action
+      - uses: docker://ghcr.io/foo/bar@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef

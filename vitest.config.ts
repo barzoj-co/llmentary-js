@@ -7,5 +7,11 @@ export default defineConfig({
     // OpenAI e2e is opted in via `npm run test:e2e:openai` (vitest.e2e.config.ts).
     exclude: ["tests/jest/**", "tests/e2e/**", "tests/jest-concurrent-proxy.test.ts"],
     testTimeout: 30_000,
+    coverage: {
+      provider: "v8",
+      include: ["src/**"],
+      reporter: ["text", "lcov"],
+      reportsDirectory: "coverage",
+    },
   },
 });

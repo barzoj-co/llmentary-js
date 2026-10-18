@@ -1,8 +1,25 @@
 # llm-test-lab
 
+[![CI](https://github.com/barzoj-co/llm-test-lab-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llm-test-lab-js/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/barzoj-co/llm-test-lab-js/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llm-test-lab-js)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/barzoj-co/llm-test-lab-js/badge)](https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llm-test-lab-js)
+[![License: MIT](https://img.shields.io/github/license/barzoj-co/llm-test-lab-js)](LICENSE)
+[![npm](https://img.shields.io/npm/v/llm-test-lab)](https://www.npmjs.com/package/llm-test-lab)
+
 TypeScript client for [`llm-test-lab`](https://github.com/barzoj-co/llm-test-lab): deterministic trace-based integration tests for LLM apps.
 
 The client starts or attaches to the Go proxy, creates a unique test session per test, routes OpenAI-compatible traffic through the proxy, waits for quiescence, and asserts against the recorded trace. It is deterministic only: there is no LLM judge.
+
+<!-- ltl-repos:start -->
+## llm-test-lab repositories
+
+| Repository | What | License |
+|---|---|---|
+| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) | AGPL-3.0 |
+| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` | MIT |
+| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin | MIT |
+| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest | MIT |
+<!-- ltl-repos:end -->
 
 ## Install
 
@@ -20,7 +37,7 @@ npm installs one optional platform package matching the current OS/CPU when it i
 - `@llm-test-lab/darwin-arm64`
 - `@llm-test-lab/win32-x64`
 
-Those packages are version-pinned to the same version as this client and to the GoReleaser-built proxy binary. There is no `postinstall` download.
+Those packages are version-pinned to the bundled proxy release in `PROXY_VERSION`. This client has its own semver; `optionalDependencies` pins the matching platform packages. There is no `postinstall` download.
 
 ## Quickstart with Vitest
 
@@ -115,16 +132,16 @@ Use `LLMTESTLAB_PROXY_URL` (and `LLMTESTLAB_CONTROL_URL` — control listens on 
 
 ## Release / trusted publishing
 
-Tags matching `v*` run `.github/workflows/release.yml`. That workflow:
+Tags matching `v*` run `.github/workflows/release.yml` (also dispatched by release-please after it creates a tag). That workflow:
 
 1. Builds this client
-2. Downloads GoReleaser assets for the same tag from `barzoj-co/llm-test-lab`
+2. Downloads GoReleaser assets for the `PROXY_VERSION` tag from `barzoj-co/llm-test-lab`
 3. Verifies each archive against `checksums.txt`
 4. Writes the binary into `@llm-test-lab/<platform>`
-5. Pins root and platform `package.json` versions to the tag
-6. Dry-runs npm pack/publish with provenance
+5. Pins platform package versions and root `optionalDependencies` to `PROXY_VERSION`, leaving the client version unchanged
+6. Packs tarballs; publishes only when `vars.NPM_PUBLISH_ENABLED` is `true`
 
-It is prepared for npm trusted publishing (`id-token: write` + `registry-url`). It does **not** publish yet. When publishing is enabled, publish the five platform packages first, then `llm-test-lab`, all at the Go binary version.
+It is prepared for npm trusted publishing (OIDC, `environment: npm`, provenance). It does **not** publish until the maintainer sets that variable. See [docs/releasing.md](docs/releasing.md).
 
 ## Assertions
 
@@ -148,6 +165,4 @@ The included CI workflow expects:
 
 ## License
 
-This TypeScript client library, including the npm package metadata, is MIT licensed; see [LICENSE](LICENSE).
-
-The bundled `llm-test-lab` proxy binary (the optional `@llm-test-lab/<platform>` packages, or a binary you point at with `LLMTESTLAB_BIN`) is AGPL-3.0 licensed and runs as a separate process. Those packages ship [LICENSE.AGPL-3.0](licenses/AGPL-3.0.txt) next to the MIT wrapper license. Corresponding source for a packed binary is the Git tag matching the package version of https://github.com/barzoj-co/llm-test-lab. That repository is currently private, so the platform packages must not be published until that source (or another public source archive) is reachable by recipients. The MIT client talks to that process over HTTP; it does not statically link it.
+Licensed under MIT, see LICENSE

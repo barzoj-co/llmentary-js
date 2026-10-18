@@ -4,29 +4,49 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  npm:
+  build:
+    name: build
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
           cache: npm
+
+      - name: Assert tag matches package version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          expected="${tag#v}"
+          actual="$(node -p "require('./package.json').version")"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::tag $tag does not match package.json version $actual"
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Typecheck, lint, build
         run: |
           npm run typecheck
           npm run lint
@@ -36,14 +56,83 @@ jobs:
       - name: Pack optional platform binaries from GoReleaser
         env:
           GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
-        run: node scripts/pack-platform-binaries.mjs
-
-      - name: Dry-run npm pack with trusted publishing settings
         run: |
-          npm pack --dry-run
+          proxy_tag="$(tr -d '[:space:]' < PROXY_VERSION)"
+          root_version="$(node -p "require('./package.json').version")"
+          LLMTESTLAB_TAG="$proxy_tag" LLMTESTLAB_ROOT_VERSION="$root_version" node scripts/pack-platform-binaries.mjs
+
+      - name: Pack tarballs
+        run: |
+          mkdir -p dist
+          npm pack --pack-destination dist
           for pkg in packages/*; do
-            echo "Packing $pkg"
-            npm pack --dry-run "$pkg"
+            npm pack --pack-destination dist "$pkg"
           done
-          echo "Trusted publishing is configured (id-token: write, registry-url, provenance). Real npm publish is intentionally not run yet."
-          echo "When ready: publish each @llm-test-lab/<platform> package first, then llm-test-lab, all at the GoReleaser tag version with --provenance --access public."
+
+      - name: Upload dist
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-tarballs
+          path: dist/*.tgz
+
+  publish:
+    name: publish
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.NPM_PUBLISH_ENABLED == 'true' }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: npm-tarballs
+          path: dist
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install npm CLI for trusted publishing
+        env:
+          # renovate: datasource=npm depName=npm
+          NPM_VERSION: 11.21.1
+        run: |
+          npm install -g "npm@${NPM_VERSION}"
+          npm --version
+
+      - name: Publish platform packages then root
+        run: |
+          set -euo pipefail
+          root_tarball=""
+          pkg_json() {
+            tar -xOf "$1" package/package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).$2"
+          }
+          for tarball in dist/*.tgz; do
+            name="$(pkg_json "$tarball" name)"
+            version="$(pkg_json "$tarball" version)"
+            if [ "$name" = "llm-test-lab" ]; then
+              root_tarball="$tarball"
+              continue
+            fi
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "skip existing ${name}@${version}"
+              continue
+            fi
+            npm publish "$tarball" --provenance --access public
+          done
+          if [ -z "$root_tarball" ]; then
+            echo "::error::root llm-test-lab tarball not found"
+            exit 1
+          fi
+          root_version="$(pkg_json "$root_tarball" version)"
+          if npm view "llm-test-lab@${root_version}" version >/dev/null 2>&1; then
+            echo "skip existing llm-test-lab@${root_version}"
+          else
+            npm publish "$root_tarball" --provenance --access public
+          fi
