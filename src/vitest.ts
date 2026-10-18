@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, expect } from "vitest";
 import { createLab, type LlmTestLab } from "./index.js";
+import { firstNonEmpty } from "./env.js";
 import { toHaveRequestParam, toHaveToolCalled, toHaveToolCalledTimes } from "./matchers.js";
 import { startProxy, type ProxyHandle, type ProxyLaunchOptions } from "./index.js";
 import type { LabConfig } from "./types.js";
@@ -19,7 +20,7 @@ export async function globalSetup(options: ProxyLaunchOptions = {}): Promise<() 
 
 export function setupVitest(options: { proxy?: ProxyLaunchOptions; lab?: LabConfig } = {}): void {
   beforeAll(async () => {
-    if (!process.env.LLMTESTLAB_PROXY_URL) {
+    if (!firstNonEmpty(process.env.LLMTESTLAB_PROXY_URL)) {
       proxy = await startProxy(options.proxy);
       applyProxyEnv(proxy);
     }

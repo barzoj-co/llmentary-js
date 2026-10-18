@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AssertionScope } from "./assertions.js";
 import { ControlClient } from "./control.js";
+import { firstNonEmpty } from "./env.js";
 import type { LabConfig, QueryOptions, SessionTrace, WaitOptions } from "./types.js";
 
 const SESSION_HEADER = "x-test-session";
@@ -18,14 +19,21 @@ export class LlmTestLab {
 
   constructor(config: LabConfig = {}) {
     this.sessionId = config.sessionId ?? randomUUID();
-    this.proxyUrl = trimTrailingSlash(config.proxyUrl ?? process.env.LLMTESTLAB_PROXY_URL ?? "http://127.0.0.1:4010");
-    this.controlUrl = trimTrailingSlash(config.controlUrl ?? process.env.LLMTESTLAB_CONTROL_URL ?? this.proxyUrl);
-    this.bearerToken =
-      config.bearerToken ?? process.env.LLMTESTLAB_BEARER_TOKEN ?? process.env.LLMTESTLAB_CONTROL_TOKEN;
+    this.proxyUrl = trimTrailingSlash(
+      firstNonEmpty(config.proxyUrl, process.env.LLMTESTLAB_PROXY_URL) ?? "http://127.0.0.1:4010",
+    );
+    this.controlUrl = trimTrailingSlash(
+      firstNonEmpty(config.controlUrl, process.env.LLMTESTLAB_CONTROL_URL) ?? this.proxyUrl,
+    );
+    this.bearerToken = firstNonEmpty(
+      config.bearerToken,
+      process.env.LLMTESTLAB_BEARER_TOKEN,
+      process.env.LLMTESTLAB_CONTROL_TOKEN,
+    );
     this.baseURL = `${this.proxyUrl}/v1`;
     this.defaultWait = config.defaultWait ?? {
-      timeoutMs: Number(process.env.LLMTESTLAB_WAIT_TIMEOUT_MS ?? 5_000),
-      idleMs: Number(process.env.LLMTESTLAB_WAIT_IDLE_MS ?? 100),
+      timeoutMs: Number(firstNonEmpty(process.env.LLMTESTLAB_WAIT_TIMEOUT_MS) ?? 5_000),
+      idleMs: Number(firstNonEmpty(process.env.LLMTESTLAB_WAIT_IDLE_MS) ?? 100),
     };
     this.headers = {
       [SESSION_HEADER]: this.sessionId,

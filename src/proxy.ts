@@ -3,7 +3,10 @@ import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { resolveBinary } from "./binary.js";
 import { ControlClient } from "./control.js";
+import { firstNonEmpty } from "./env.js";
 import type { ProxyHandle, ProxyLaunchOptions } from "./types.js";
+
+export { firstNonEmpty } from "./env.js";
 
 const SECRET_FLAGS = new Set(["-control-token", "--control-token", "--bearer-token", "-bearer-token"]);
 
@@ -42,18 +45,21 @@ export function redactArgs(args: string[]): string[] {
   return redacted;
 }
 
-export function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
-  for (const value of values) {
-    if (value === undefined) continue;
-    const trimmed = value.trim();
-    if (trimmed) return trimmed;
-  }
-  return undefined;
-}
-
 /** Go joins `-upstream` with the client path (`/v1/...`), so OpenAI-style `/v1` bases become `/v1/v1`. */
 export function originForGoUpstream(url: string): string {
-  return url.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+  const trimmed = url.trim();
+  try {
+    const parsed = new URL(trimmed);
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "");
+    if (parsed.pathname === "") parsed.pathname = "/";
+    const serialized = parsed.toString();
+    if (parsed.pathname === "/" && parsed.search === "" && parsed.hash === "") {
+      return serialized.replace(/\/$/, "");
+    }
+    return serialized;
+  } catch {
+    return trimmed.replace(/\/+$/, "").replace(/\/v1$/i, "");
+  }
 }
 
 export function resolveUpstreamSpec(options: {

@@ -85,6 +85,8 @@ describe("proxy CLI helpers", () => {
     expect(originForGoUpstream("https://host/openai/deployments/x?api-version=2024-02-01")).toBe(
       "https://host/openai/deployments/x?api-version=2024-02-01",
     );
+    expect(originForGoUpstream("https://host/v1?api-version=2024-02-01")).toBe("https://host/?api-version=2024-02-01");
+    expect(originForGoUpstream("https://host/foo?redirect=/v1")).toBe("https://host/foo?redirect=/v1");
     expect(resolveUpstreamSpec({ upstreamBaseUrl: "http://127.0.0.1:9/v1" })).toBe("openai=http://127.0.0.1:9");
     expect(resolveUpstreamSpec({ upstreams: "openai=https://api.openai.com/v1" })).toBe("openai=https://api.openai.com");
     expect(
@@ -98,5 +100,8 @@ describe("proxy CLI helpers", () => {
         env: { OPENAI_BASE_URL: "https://api.openai.com/v1" },
       }),
     ).toBe("openai=https://api.openai.com");
+    expect(resolveUpstreamSpec({ upstreamBaseUrl: "https://host/v1?api-version=2024-02-01" })).toBe(
+      "openai=https://host/?api-version=2024-02-01",
+    );
   });
 });

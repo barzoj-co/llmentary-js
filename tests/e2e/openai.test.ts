@@ -14,6 +14,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
     }
     proxy = await startProxy({
       upstreamBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+      healthTimeoutMs: 20_000,
     });
     process.env.LLMTESTLAB_PROXY_URL = proxy.proxyUrl;
     process.env.LLMTESTLAB_CONTROL_URL = proxy.controlUrl;
@@ -26,7 +27,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
   });
 
   it("records Chat Completions tool flow", async () => {
-    const lab = createLab();
+    const lab = createLab({ defaultWait: { timeoutMs: 30_000, idleMs: 250 } });
     const client = new OpenAI(lab.openAI());
     const first = await client.chat.completions.create({
       model: "gpt-4.1-mini",
@@ -54,7 +55,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
   }, 60_000);
 
   it("records Responses tool flow", async () => {
-    const lab = createLab();
+    const lab = createLab({ defaultWait: { timeoutMs: 30_000, idleMs: 250 } });
     const client = new OpenAI(lab.openAI());
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
