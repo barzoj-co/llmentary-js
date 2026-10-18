@@ -1,0 +1,102 @@
+{
+  "name": "llm-test-lab",
+  "version": "0.0.0",
+  "description": "Deterministic trace-based integration tests for LLM apps using llm-test-lab.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs",
+    "LICENSE",
+    "licenses"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./vitest": {
+      "types": "./dist/esm/vitest.d.ts",
+      "import": "./dist/esm/vitest.js",
+      "require": "./dist/cjs/vitest.js"
+    },
+    "./jest": {
+      "types": "./dist/esm/jest.d.ts",
+      "import": "./dist/esm/jest.js",
+      "require": "./dist/cjs/jest.js"
+    },
+    "./jest/globalSetup": {
+      "types": "./dist/esm/jest/globalSetup.d.ts",
+      "import": "./dist/esm/jest/globalSetup.js",
+      "require": "./dist/cjs/jest/globalSetup.js"
+    },
+    "./jest/globalTeardown": {
+      "types": "./dist/esm/jest/globalTeardown.d.ts",
+      "import": "./dist/esm/jest/globalTeardown.js",
+      "require": "./dist/cjs/jest/globalTeardown.js"
+    },
+    "./jest/setup": {
+      "types": "./dist/esm/jest/setup.d.ts",
+      "import": "./dist/esm/jest/setup.js",
+      "require": "./dist/cjs/jest/setup.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && node scripts/write-cjs-package.cjs",
+    "clean": "rm -rf dist coverage .llm-test-lab",
+    "lint": "eslint src tests --ignore-pattern 'tests/jest/*.cjs'",
+    "test": "npm run test:unit && npm run test:proxy && npm run test:jest",
+    "test:unit": "vitest run tests/assertions.test.ts tests/binary.test.ts tests/control.test.ts tests/normalize.test.ts tests/lab.test.ts",
+    "test:vitest": "vitest run",
+    "test:proxy": "vitest run tests/proxy-real-binary.test.ts",
+    "test:jest": "npm run test:jest:unit && npm run test:jest:proxy",
+    "test:jest:unit": "npm run build && npx --yes jest@30.5.2 --config jest.config.cjs tests/jest/cjs-export.test.cjs",
+    "test:jest:proxy": "npm run build && npx --yes jest@30.5.2 --config jest.config.cjs tests/jest/proxy-real-binary.test.cjs",
+    "test:e2e:openai": "vitest run --config vitest.e2e.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  },
+  "peerDependencies": {
+    "vitest": ">=1"
+  },
+  "peerDependenciesMeta": {
+    "vitest": {
+      "optional": true
+    }
+  },
+  "optionalDependencies": {
+    "@llm-test-lab/darwin-arm64": "0.0.0",
+    "@llm-test-lab/darwin-x64": "0.0.0",
+    "@llm-test-lab/linux-arm64": "0.0.0",
+    "@llm-test-lab/linux-x64": "0.0.0",
+    "@llm-test-lab/win32-x64": "0.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.5",
+    "eslint": "^9.39.5",
+    "openai": "^7.38.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

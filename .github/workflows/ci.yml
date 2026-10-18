@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22]
+    steps:
+      - name: Checkout client
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Require LLMTESTLAB_REPO_TOKEN
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+        run: |
+          if [ -z "$LLMTESTLAB_REPO_TOKEN" ]; then
+            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llm-test-lab repository so CI can build the Go proxy binary."
+            exit 1
+          fi
+
+      # TODO: remove once llm-test-lab is public
+      - name: Checkout llm-test-lab proxy
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/checkout@v5
+        with:
+          repository: barzoj-co/llm-test-lab
+          # TODO: remove once llm-test-lab is public
+          token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          path: .cache/llm-test-lab-go
+          persist-credentials: false
+
+      - name: Setup Go
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: .cache/llm-test-lab-go/go.sum
+
+      - name: Build proxy binary
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.bin"
+          go build -o "$GITHUB_WORKSPACE/.bin/llmtestlab" ./cmd/llmtestlab
+          test -x "$GITHUB_WORKSPACE/.bin/llmtestlab"
+          echo "LLMTESTLAB_BIN=$GITHUB_WORKSPACE/.bin/llmtestlab" >> "$GITHUB_ENV"
+        working-directory: .cache/llm-test-lab-go
+
+      - name: Require built proxy binary
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ ! -x "$LLMTESTLAB_BIN" ]; then
+            echo "::error::CI did not produce LLMTESTLAB_BIN; real Go proxy tests cannot run."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm run test:unit && npm run test:jest:unit
+
+      - name: Real Go proxy tests
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: npm run test:proxy && npm run test:jest:proxy
+
+      - name: Require OPENAI_API_KEY
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::Missing required secret OPENAI_API_KEY for real OpenAI E2E tests. Fork PRs skip this step; same-repo PRs and pushes must provide it."
+            exit 1
+          fi
+
+      - name: OpenAI E2E
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: npm run test:e2e:openai
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: https://api.openai.com/v1
+
+      - name: Skip private-binary tests for fork PR
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: echo "Skipping private-binary and OpenAI E2E steps on fork PR because secrets are unavailable."

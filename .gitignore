@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.llm-test-lab/
+.cache/
+.bin/
+*.log
+packages/*/bin/*
+!packages/*/bin/.gitkeep
