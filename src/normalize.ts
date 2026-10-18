@@ -212,7 +212,7 @@ function inferStreamed(
   normalized: JsonObject | undefined,
   object: JsonObject,
 ): boolean | undefined {
-  if (valueAt(asObject(request), "stream") === true) return true;
+  if (valueAt(asObject(request), "stream") === true || valueAt(object, "stream") === true) return true;
   if (valueAt(normalized, "streamed") === true || valueAt(object, "streamed") === true) return true;
   if (valueAt(asObject(request), "stream") === false) return false;
   if (valueAt(normalized, "streamed") === false || valueAt(object, "streamed") === false) return false;

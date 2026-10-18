@@ -58,6 +58,15 @@ describe("process identity", () => {
     await expect(stopProcessIfMatches(recycledPid, { pid: recycledPid, instanceId })).resolves.toBe(false);
     expect(pidExists(recycledPid)).toBe(true);
   });
+
+  it("refuses to kill when the persisted record has no instance id", async () => {
+    const child = spawnUnrelated();
+    const pid = child.pid!;
+    await delay(50);
+    await expect(processMatchesIdentity(pid, { pid, exePath: process.execPath })).resolves.toBe(false);
+    await expect(stopProcessIfMatches(pid, { pid, exePath: process.execPath })).resolves.toBe(false);
+    expect(pidExists(pid)).toBe(true);
+  });
 });
 
 function spawnUnrelated(extraEnv: NodeJS.ProcessEnv = {}): ReturnType<typeof spawn> {

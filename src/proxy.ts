@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { resolveBinary } from "./binary.js";
 import { ControlClient } from "./control.js";
 import { firstNonEmpty } from "./env.js";
+import { forgetSpawnedProcess, rememberSpawnedProcess } from "./process.js";
 import type { ProxyHandle, ProxyLaunchOptions } from "./types.js";
 
 export { firstNonEmpty } from "./env.js";
@@ -179,6 +180,9 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     });
     try {
       await waitForHealth(controlUrl, bearerToken, options.healthTimeoutMs, child, logs);
+      if (child.pid) {
+        rememberSpawnedProcess({ pid: child.pid, instanceId, exePath: binaryPath, startedAtMs: Date.now() });
+      }
       return {
         proxyUrl,
         controlUrl,
@@ -188,6 +192,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
         exePath: binaryPath,
         async stop() {
           await stopChild(child);
+          if (child.pid) forgetSpawnedProcess(child.pid);
         },
       };
     } catch (error) {

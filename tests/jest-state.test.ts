@@ -114,6 +114,20 @@ describe("Jest state hardening", () => {
     expect(killed).toBe(false);
   });
 
+  it("does not recursively delete a custom state file parent directory", async () => {
+    stashEnv();
+    const { mkdtemp, writeFile: write, readFile: read } = await import("node:fs/promises");
+    const dir = await mkdtemp(join(tmpdir(), "ltl-jest-custom-"));
+    const custom = join(dir, "state.json");
+    const sibling = join(dir, "keep-me.txt");
+    await write(sibling, "keep\n");
+    process.env.LLMTESTLAB_JEST_STATE_FILE = custom;
+    process.env.LLMTESTLAB_JEST_RUN_ID = "custom-run";
+    await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }), "custom-run");
+    await deleteState();
+    expect(await read(sibling, "utf8")).toBe("keep\n");
+  });
+
   it("chmod 0600 wins even if the file previously existed world-readable", async () => {
     stashEnv();
     const ownerPid = 91_021;

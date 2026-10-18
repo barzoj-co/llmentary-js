@@ -344,8 +344,7 @@ export class AssertionScope {
       const parsed: JsonValue[] = [];
       const errors: string[] = [];
       for (const record of recordsForTrace(trace, this.query)) {
-        const assembled = assembledToolArgDeltas(record);
-        const entries = Object.entries(assembled);
+        const entries = assembledToolArgDeltas(record);
         const candidates =
           entries.length > 0
             ? entries
@@ -768,26 +767,56 @@ function streamRawText(record: CallRecord): string {
   }
 }
 
-function ssePayloads(text: string): JsonObject[] {
+function ssePayloads(record: CallRecord): JsonObject[] {
+  const fromText = ssePayloadsFromText(streamRawText(record));
+  if (fromText.length > 0) return fromText;
+  const out: JsonObject[] = [];
+  for (const event of asArray(valueAt(asObject(record.raw), "sse_events"))) {
+    const encoded = stringAt(asObject(event), "data");
+    if (!encoded || encoded === "[DONE]") continue;
+    const decoded = decodeSseData(encoded);
+    if (decoded) out.push(decoded);
+  }
+  return out;
+}
+
+function ssePayloadsFromText(text: string): JsonObject[] {
   const out: JsonObject[] = [];
   for (const block of text.split(/\r?\n\r?\n/)) {
     const line = block.split(/\r?\n/).find((candidate) => candidate.startsWith("data:"));
     if (!line) continue;
     const data = line.slice("data:".length).trim();
     if (!data || data === "[DONE]") continue;
-    try {
-      const parsed = JSON.parse(data) as JsonValue;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) out.push(parsed);
-    } catch {
-      // Ignore malformed SSE chunks.
-    }
+    const parsed = decodeSseData(data);
+    if (parsed) out.push(parsed);
   }
   return out;
 }
 
+function decodeSseData(data: string): JsonObject | undefined {
+  const trimmed = data.trim();
+  if (!trimmed || trimmed === "[DONE]") return undefined;
+  const candidates = [trimmed];
+  try {
+    candidates.push(Buffer.from(trimmed, "base64").toString("utf8"));
+  } catch {
+    // Keep the original payload.
+  }
+  for (const candidate of candidates) {
+    if (!candidate.startsWith("{") && !candidate.startsWith("[")) continue;
+    try {
+      const parsed = JSON.parse(candidate) as JsonValue;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch {
+      // Try the next encoding.
+    }
+  }
+  return undefined;
+}
+
 function concatenatedDeltasForRecord(record: CallRecord): string {
   let out = "";
-  for (const payload of ssePayloads(streamRawText(record))) {
+  for (const payload of ssePayloads(record)) {
     const type = stringAt(payload, "type");
     const delta = valueAt(payload, "delta");
     if (type === "response.output_text.delta" && typeof delta === "string") {
@@ -802,33 +831,43 @@ function concatenatedDeltasForRecord(record: CallRecord): string {
   return out;
 }
 
-function assembledToolArgDeltas(record: CallRecord): Record<string, string> {
-  const byIndex = new Map<number, { name?: string; args: string }>();
-  const byName: Record<string, string> = {};
-  for (const payload of ssePayloads(streamRawText(record))) {
+function assembledToolArgDeltas(record: CallRecord): Array<[string, string]> {
+  const byKey = new Map<string, { name?: string; args: string }>();
+  const entry = (key: string): { name?: string; args: string } => {
+    const current = byKey.get(key) ?? { args: "" };
+    byKey.set(key, current);
+    return current;
+  };
+  for (const payload of ssePayloads(record)) {
     const type = stringAt(payload, "type");
     const delta = valueAt(payload, "delta");
+    if (type === "response.output_item.added") {
+      const item = objectAt(payload, "item");
+      if (stringAt(item, "type") === "function_call") {
+        const key = `r:${numberAt(payload, "output_index") ?? stringAt(item, "id") ?? stringAt(item, "call_id")}`;
+        const name = stringAt(item, "name");
+        if (name) entry(key).name = name;
+      }
+      continue;
+    }
     if (type === "response.function_call_arguments.delta" && typeof delta === "string") {
-      const name = stringAt(payload, "name") ?? "unknown";
-      byName[name] = `${byName[name] ?? ""}${delta}`;
+      const key = `r:${numberAt(payload, "output_index") ?? stringAt(payload, "item_id")}`;
+      entry(key).args += delta;
+      continue;
     }
     for (const choice of asArray(valueAt(payload, "choices"))) {
+      const choiceIndex = numberAt(asObject(choice), "index") ?? 0;
       for (const toolCall of asArray(valueAt(objectAt(asObject(choice), "delta"), "tool_calls"))) {
         const object = asObject(toolCall);
-        const index = numberAt(object, "index") ?? 0;
-        const current = byIndex.get(index) ?? { args: "" };
+        const current = entry(`c:${choiceIndex}:${numberAt(object, "index") ?? 0}`);
         const name = stringAt(objectAt(object, "function"), "name") ?? stringAt(object, "name");
         const args = stringAt(objectAt(object, "function"), "arguments") ?? stringAt(object, "arguments");
         if (name) current.name = name;
         if (args) current.args += args;
-        byIndex.set(index, current);
       }
     }
   }
-  for (const current of byIndex.values()) {
-    if (current.name) byName[current.name] = current.args;
-  }
-  return byName;
+  return [...byKey.values()].map((current) => [current.name ?? "unknown", current.args]);
 }
 
 function usageDetailsForRecord(record: CallRecord): { cachedTokens?: number; reasoningTokens?: number } {

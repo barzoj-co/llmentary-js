@@ -75,6 +75,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
           temperature: 0,
           max_tokens: 8,
           stream: true,
+          stream_options: { include_usage: true },
           messages: [{ role: "user", content: "Reply with the single word ping." }],
         }),
       );
@@ -272,10 +273,10 @@ describe("OpenAI E2E through llm-test-lab", () => {
             max_tokens: 8,
             messages: [{ role: "user", content: "ping" }],
           }),
-        400,
+        404,
       );
       await lab.expect().hasError();
-      await lab.expect().errorStatus(400);
+      await lab.expect().errorStatus(404);
       await lab.expect().errorType(/invalid_request|invalid/i);
       await lab.expect().errorCode(/model/i);
       await lab.cleanup();
@@ -455,7 +456,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
         client.responses.create({
           model: TEXT_MODEL,
           temperature: 0,
-          max_output_tokens: 8,
+          max_output_tokens: 16,
           input: "Reply with the single word ping.",
         }),
       );
@@ -475,7 +476,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
         client.responses.create({
           model: TEXT_MODEL,
           temperature: 0,
-          max_output_tokens: 8,
+          max_output_tokens: 16,
           stream: true,
           input: "Reply with the single word ping.",
         }),
@@ -625,7 +626,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
         client.responses.create({
           model: TEXT_MODEL,
           temperature: 0,
-          max_output_tokens: 8,
+          max_output_tokens: 16,
           input: "Reply with the single word one.",
         }),
       );
@@ -665,14 +666,14 @@ describe("OpenAI E2E through llm-test-lab", () => {
           client.responses.create({
             model: "gpt-not-a-real-model-ltl-js-2",
             temperature: 0,
-            max_output_tokens: 8,
+            max_output_tokens: 16,
             input: "ping",
           }),
-        400,
+        404,
       );
       const scoped = lab.query({ apiType: "responses" }).expect();
       await scoped.hasError();
-      await scoped.errorStatus(400);
+      await scoped.errorStatus(404);
       await scoped.errorType(/invalid_request|invalid/i);
       await scoped.errorCode(/model/i);
       await lab.cleanup();
@@ -685,7 +686,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
             {
               model: TEXT_MODEL,
               temperature: 0,
-              max_output_tokens: 8,
+              max_output_tokens: 16,
               input: "ping",
             },
             { headers: { Authorization: "Bearer sk-invalid-ltl-js-2" } },
@@ -734,7 +735,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
         openaiClient(followUp).responses.create({
           model: TEXT_MODEL,
           temperature: 0,
-          max_output_tokens: 8,
+          max_output_tokens: 16,
           input: "Reply with the single word ok.",
         }),
       );
@@ -751,7 +752,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
         client.responses.create({
           model: TOOL_MODEL,
           temperature: 0,
-          max_output_tokens: 8,
+          max_output_tokens: 16,
           input: prompt,
         }),
       );
@@ -759,7 +760,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
         client.responses.create({
           model: TOOL_MODEL,
           temperature: 0,
-          max_output_tokens: 8,
+          max_output_tokens: 16,
           input: prompt,
         }),
       );
@@ -777,7 +778,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
           openaiClient(labA).responses.create({
             model: TEXT_MODEL,
             temperature: 0,
-            max_output_tokens: 8,
+            max_output_tokens: 16,
             input: "Reply with the exact token ALPHA_SESSION_A.",
           }),
         ),
@@ -785,7 +786,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
           openaiClient(labB).responses.create({
             model: TEXT_MODEL,
             temperature: 0,
-            max_output_tokens: 8,
+            max_output_tokens: 16,
             input: "Reply with the exact token BETA_SESSION_B.",
           }),
         ),
@@ -806,7 +807,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
         openaiClient(lab).responses.create({
           model: TEXT_MODEL,
           temperature: 0,
-          max_output_tokens: 8,
+          max_output_tokens: 16,
           input: "Reply with the single word ping.",
         }),
       );

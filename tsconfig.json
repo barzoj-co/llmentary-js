@@ -16,6 +16,6 @@
     "exactOptionalPropertyTypes": true,
     "types": ["node", "jest"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "eslint.config.js", "vitest.config.ts"],
+  "include": ["src/**/*.ts", "tests/**/*.ts", "eslint.config.js", "vitest.config.ts", "vitest.e2e.config.ts"],
   "exclude": ["dist", "node_modules"]
 }

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { dirname, join } from "node:path";
 import { firstNonEmpty } from "../env.js";
 import { processMatchesIdentity, stopProcessIfMatches, type ProcessIdentity } from "../process.js";
 import type { ProxyHandle } from "../types.js";
@@ -114,18 +114,10 @@ export async function readState(): Promise<JestProxyState> {
 export async function deleteState(): Promise<void> {
   const path = firstNonEmpty(process.env.LLMTESTLAB_JEST_STATE_FILE);
   const runId = firstNonEmpty(process.env.LLMTESTLAB_JEST_RUN_ID);
-  const targets = new Set<string>();
-  if (path) targets.add(path);
-  if (runId) targets.add(stateFilePath(runId));
-  await Promise.all(
-    [...targets].map(async (target) => {
-      await rm(target, { force: true });
-      const dir = dirname(target);
-      if (isPerRunStateDir(dir)) {
-        await rm(dir, { recursive: true, force: true });
-      }
-    }),
-  );
+  const generated = runId ? stateFilePath(runId) : undefined;
+  if (path) await rm(path, { force: true });
+  if (generated && generated !== path) await rm(generated, { force: true });
+  if (generated) await rm(dirname(generated), { recursive: true, force: true });
   await rm(pointerPath(), { force: true }).catch(() => undefined);
   await rm(pointerPath(process.pid), { force: true }).catch(() => undefined);
   await rm(pointerPath(process.ppid), { force: true }).catch(() => undefined);
@@ -139,22 +131,17 @@ export function applyState(state: Pick<JestProxyState, "proxyUrl" | "controlUrl"
 }
 
 export function identityFromState(state: JestProxyState): ProcessIdentity | undefined {
-  if (!state.pid) return undefined;
+  if (!state.pid || !state.instanceId) return undefined;
   return {
     pid: state.pid,
-    ...(state.instanceId ? { instanceId: state.instanceId } : {}),
+    instanceId: state.instanceId,
     ...(state.exePath ? { exePath: state.exePath } : {}),
   };
 }
 
 export async function stopOwnedProxy(state: JestProxyState): Promise<boolean> {
   const identity = identityFromState(state);
-  if (!state.pid || !identity) return false;
-  if (!(await processMatchesIdentity(state.pid, identity))) return false;
-  return stopProcessIfMatches(state.pid, identity);
-}
-
-function isPerRunStateDir(dir: string): boolean {
-  const marker = `${sep}llm-test-lab${sep}jest${sep}`;
-  return dir.includes(marker) && dir !== join(tmpdir(), "llm-test-lab", "jest");
+  if (!identity) return false;
+  if (!(await processMatchesIdentity(identity.pid, identity))) return false;
+  return stopProcessIfMatches(identity.pid, identity);
 }

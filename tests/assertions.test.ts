@@ -348,6 +348,29 @@ describe("AssertionScope", () => {
     });
     await expect(scopeFor(trace).streamedToolArgsJson("lookup_weather")).resolves.toMatchObject({ pass: true });
   });
+
+  it("correlates Responses argument deltas by output index, not tool name", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "responses",
+          request: { stream: true },
+          raw_response: Buffer.from(
+            [
+              'data: {"type":"response.output_item.added","output_index":0,"item":{"id":"fc_1","type":"function_call","name":"lookup_weather","call_id":"call_1"}}',
+              'data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","delta":"{\\"city\\":\\""}',
+              'data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","delta":"Oslo\\"}"}',
+              'data: {"type":"response.output_item.added","output_index":1,"item":{"id":"fc_2","type":"function_call","name":"lookup_weather","call_id":"call_2"}}',
+              'data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"fc_2","delta":"{\\"city\\":\\"Bergen\\"}"}',
+              "",
+            ].join("\n\n"),
+          ).toString("base64"),
+        },
+      ],
+    });
+    await expect(scopeFor(trace).streamedToolArgsJson("lookup_weather")).resolves.toMatchObject({ pass: true });
+  });
 });
 
 function scopeFor(trace: SessionTrace, query?: QueryOptions): AssertionScope {
