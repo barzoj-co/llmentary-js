@@ -173,6 +173,19 @@ describe("Jest state hardening", () => {
     expect(await read(sibling, "utf8")).toBe("keep\n");
   });
 
+  it("does not chmod the parent of a custom state file", async () => {
+    stashEnv();
+    const { mkdtemp } = await import("node:fs/promises");
+    const dir = await mkdtemp(join(tmpdir(), "ltl-jest-custom-mode-"));
+    const custom = join(dir, "state.json");
+    await chmod(dir, 0o755);
+    process.env.LLMTESTLAB_JEST_STATE_FILE = custom;
+    process.env.LLMTESTLAB_JEST_RUN_ID = "custom-mode-run";
+    await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }), "custom-mode-run");
+    expect((await stat(dir)).mode & 0o777).toBe(0o755);
+    expect((await stat(custom)).mode & 0o777).toBe(0o600);
+  });
+
   it("chmod 0600 wins even if the file previously existed world-readable", async () => {
     stashEnv();
     const ownerPid = 91_021;

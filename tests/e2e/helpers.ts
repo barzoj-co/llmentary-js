@@ -23,6 +23,15 @@ export const CITY_SCHEMA: JsonObject = {
   required: ["city", "ok"],
 };
 
+export const NAME_SCHEMA: JsonObject = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    name: { type: "string" },
+  },
+  required: ["name"],
+};
+
 export function newLab(proxy: ProxyHandle): LlmTestLab {
   return createLab({
     proxyUrl: proxy.proxyUrl,

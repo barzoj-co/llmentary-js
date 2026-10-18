@@ -92,10 +92,16 @@ export async function allocateRun(ownerPid = jestOwnerPid()): Promise<{ runId: s
 export async function writeState(handle: ProxyHandle, runId?: string): Promise<string> {
   const allocated = runId ?? (await resolveRunId());
   process.env.LLMTESTLAB_JEST_RUN_ID = allocated;
-  const path = firstNonEmpty(process.env.LLMTESTLAB_JEST_STATE_FILE) ?? stateFilePath(allocated);
+  const generated = stateFilePath(allocated);
+  const path = firstNonEmpty(process.env.LLMTESTLAB_JEST_STATE_FILE) ?? generated;
   process.env.LLMTESTLAB_JEST_STATE_FILE = path;
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  await chmod(dirname(path), 0o700);
+  const dir = dirname(path);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  // Only chmod directories we created for this run. A custom
+  // LLMTESTLAB_JEST_STATE_FILE may live under a shared parent such as /tmp.
+  if (path === generated) {
+    await chmod(dir, 0o700);
+  }
   const state: JestProxyState = {
     runId: allocated,
     proxyUrl: handle.proxyUrl,

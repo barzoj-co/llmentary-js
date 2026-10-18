@@ -139,6 +139,18 @@ describe("process identity", () => {
     expect(pidExists(pid)).toBe(true);
     forgetSpawnedProcess(pid);
   });
+
+  it("computes Linux start time from /proc/<pid>/stat field 22 plus btime", () => {
+    processLookups.readProcFileSync = ((path: string) => {
+      if (path === "/proc/stat") return "cpu 1\nbtime 1700000000\n";
+      if (path === "/proc/1/stat") {
+        return "1 (node) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 200 0 0";
+      }
+      throw new Error(`unexpected proc path ${path}`);
+    }) as unknown as typeof processLookups.readProcFileSync;
+    processLookups.spawnSync = () => ({ status: 0, stdout: "100\n" });
+    expect(readProcessStartMs(1)).toBe((1_700_000_000 + 200 / 100) * 1000);
+  });
 });
 
 describe("parsePsEtime", () => {

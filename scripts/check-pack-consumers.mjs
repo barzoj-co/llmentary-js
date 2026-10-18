@@ -1,16 +1,23 @@
 #!/usr/bin/env node
 import { execFileSync, execSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const packDir = mkdtempSync(join(tmpdir(), "ltl-pack-"));
-execSync("npm pack --pack-destination " + JSON.stringify(packDir), { cwd: root, stdio: "inherit" });
-const tarball = execFileSync("sh", ["-c", "ls *.tgz"], { cwd: packDir, encoding: "utf8" }).trim().split("\n")[0];
-if (!tarball) throw new Error("npm pack did not produce a tarball");
-const tarballPath = join(packDir, tarball);
+try {
+  runPackConsumerChecks();
+} finally {
+  rmSync(packDir, { recursive: true, force: true });
+}
+
+function runPackConsumerChecks() {
+  execSync("npm pack --pack-destination " + JSON.stringify(packDir), { cwd: root, stdio: "inherit" });
+  const tarball = execFileSync("sh", ["-c", "ls *.tgz"], { cwd: packDir, encoding: "utf8" }).trim().split("\n")[0];
+  if (!tarball) throw new Error("npm pack did not produce a tarball");
+  const tarballPath = join(packDir, tarball);
 
 function write(dir, name, contents) {
   writeFileSync(join(dir, name), contents);
@@ -138,3 +145,4 @@ tsConsumer(
 );
 
 console.log("pack consumers: esm-js, cjs-js, ts-nodenext, ts-node16-cjs, ts-bundler ok");
+}

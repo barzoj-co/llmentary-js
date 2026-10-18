@@ -169,13 +169,31 @@ function readLinuxStartMs(pid: number): number | undefined {
     const closeParen = stat.lastIndexOf(")");
     if (closeParen < 0) return undefined;
     const rest = stat.slice(closeParen + 2).trim().split(/\s+/);
+    // Field 22 is starttime in clock ticks after boot (`man 5 proc`).
     const startTicks = Number(rest[19]);
     if (!Number.isFinite(startTicks) || startTicks < 0) return undefined;
+    const ticks = clockTicksPerSecond();
+    const bootSec = readLinuxBootTimeSec();
+    if (bootSec !== undefined) {
+      return (bootSec + startTicks / ticks) * 1000;
+    }
     const uptime = Number(processLookups.readProcFileSync("/proc/uptime", "utf8").trim().split(/\s+/)[0]);
     if (!Number.isFinite(uptime) || uptime < 0) return undefined;
-    const elapsedSec = uptime - startTicks / clockTicksPerSecond();
+    const elapsedSec = uptime - startTicks / ticks;
     if (!Number.isFinite(elapsedSec) || elapsedSec < 0) return undefined;
     return Date.now() - elapsedSec * 1000;
+  } catch {
+    return undefined;
+  }
+}
+
+function readLinuxBootTimeSec(): number | undefined {
+  try {
+    const text = processLookups.readProcFileSync("/proc/stat", "utf8");
+    const match = /^btime\s+(\d+)\b/m.exec(String(text));
+    if (!match) return undefined;
+    const value = Number(match[1]);
+    return Number.isFinite(value) && value > 0 ? value : undefined;
   } catch {
     return undefined;
   }
