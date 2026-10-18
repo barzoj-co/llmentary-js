@@ -58,12 +58,12 @@ function clearProxyEnv(): void {
 }
 
 declare module "vitest" {
-  // T is part of Vitest's public Assertion declaration and must be repeated for module augmentation.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  interface Assertion<R extends void | Promise<void> = void, T = unknown> {
-    toHaveToolCalled(name: string, options?: Parameters<typeof toHaveToolCalled>[2]): R;
-    toHaveToolCalledTimes(name: string, count: number, options?: Parameters<typeof toHaveToolCalledTimes>[3]): R;
-    toHaveRequestParam(path: string, expected: Parameters<typeof toHaveRequestParam>[2]): R;
+  // Must match Vitest 3's Assertion type parameter.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  interface Assertion<T = any> {
+    toHaveToolCalled(name: string, options?: Parameters<typeof toHaveToolCalled>[2]): Promise<T> | T;
+    toHaveToolCalledTimes(name: string, count: number, options?: Parameters<typeof toHaveToolCalledTimes>[3]): Promise<T> | T;
+    toHaveRequestParam(path: string, expected: Parameters<typeof toHaveRequestParam>[2]): Promise<T> | T;
   }
   interface AsymmetricMatchersContaining {
     toHaveToolCalled(name: string, options?: Parameters<typeof toHaveToolCalled>[2]): unknown;

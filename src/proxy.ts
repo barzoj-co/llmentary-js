@@ -38,7 +38,8 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     ...(upstreamBaseUrl ? { LLMTESTLAB_UPSTREAM_BASE_URL: upstreamBaseUrl } : {}),
   };
 
-  const argSets = buildArgSets({
+  const argSets = await buildArgSets({
+    binaryPath,
     host,
     port,
     controlUrl,
@@ -49,10 +50,14 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
   });
   let lastError: Error | undefined;
   for (const args of argSets) {
+    const logs: string[] = [];
     const child = spawn(binaryPath, args, { env });
-    wireLogs(child, options.log);
+    wireLogs(child, (line) => {
+      logs.push(line);
+      options.log?.(line);
+    });
     try {
-      await waitForHealth(controlUrl, bearerToken, options.healthTimeoutMs, child);
+      await waitForHealth(controlUrl, bearerToken, options.healthTimeoutMs, child, logs);
       return {
         proxyUrl,
         controlUrl,
@@ -63,7 +68,8 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
         },
       };
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      const detail = logs.length ? `\nproxy output:\n${logs.join("\n")}` : "";
+      lastError = new Error(`${error instanceof Error ? error.message : String(error)} (args: ${JSON.stringify(args)})${detail}`);
       await stopChild(child);
     }
   }
@@ -78,13 +84,16 @@ export async function waitForHealth(
   bearerToken?: string,
   timeoutMs = 10_000,
   child?: ChildProcessWithoutNullStreams,
+  logs: string[] = [],
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   const client = new ControlClient({ controlUrl, ...(bearerToken ? { bearerToken } : {}) });
   let lastError: unknown;
   while (Date.now() < deadline) {
     if (child && child.exitCode !== null) {
-      throw new Error(`llm-test-lab proxy exited before becoming healthy (exit ${child.exitCode}).`);
+      throw new Error(
+        `llm-test-lab proxy exited before becoming healthy (exit ${child.exitCode}). ${logs.join("\n")}`.trim(),
+      );
     }
     try {
       await client.health();
@@ -115,6 +124,7 @@ async function getFreePort(host: string): Promise<number> {
 }
 
 interface ArgSetOptions {
+  binaryPath: string;
   host: string;
   port: number;
   controlUrl: string;
@@ -124,26 +134,104 @@ interface ArgSetOptions {
   extraArgs?: string[];
 }
 
-function buildArgSets(options: ArgSetOptions): string[][] {
+async function buildArgSets(options: ArgSetOptions): Promise<string[][]> {
   if (options.extraArgs?.length) return [options.extraArgs];
   if (process.env.LLMTESTLAB_PROXY_START_ARGS) return [splitArgs(process.env.LLMTESTLAB_PROXY_START_ARGS)];
   const listen = `${options.host}:${options.port}`;
+  const listenPort = `:${options.port}`;
+  const detected = await detectArgsFromHelp(options.binaryPath, {
+    listen,
+    listenPort,
+    ...(options.upstreamBaseUrl ? { upstreamBaseUrl: options.upstreamBaseUrl } : {}),
+    ...(options.bearerToken ? { bearerToken: options.bearerToken } : {}),
+    ...(options.controlListen ? { controlListen: options.controlListen } : {}),
+  });
   const args: string[] = ["--listen", listen];
   const serveArgs: string[] = ["serve", "--listen", listen];
   const proxyAddrArgs: string[] = ["serve", "--proxy-addr", listen];
+  const addrArgs: string[] = ["--addr", listen];
   const control = options.controlListen ? ["--control-listen", options.controlListen] : [];
   const controlAddr = options.controlListen ? ["--control-addr", options.controlListen] : [];
   const upstream = options.upstreamBaseUrl ? ["--upstream-base-url", options.upstreamBaseUrl] : [];
   const upstreamAlt = options.upstreamBaseUrl ? ["--upstream-url", options.upstreamBaseUrl] : [];
+  const upstreamShort = options.upstreamBaseUrl ? ["--upstream", options.upstreamBaseUrl] : [];
   const token = options.bearerToken ? ["--bearer-token", options.bearerToken] : [];
-  return [
+  return uniqueArgSets([
+    ...detected,
     [...serveArgs, ...control, ...upstream, ...token],
     [...args, ...control, ...upstream, ...token],
+    [...addrArgs, ...control, ...upstream, ...token],
     [...proxyAddrArgs, ...controlAddr, ...upstream, ...token],
     [...serveArgs, ...control, ...upstreamAlt, ...token],
     [...args, ...control, ...upstreamAlt, ...token],
+    [...serveArgs, ...control, ...upstreamShort, ...token],
+    [...args, ...control, ...upstreamShort, ...token],
+    ["serve", "--listen", listenPort, ...upstreamShort],
+    ["--listen", listenPort, ...upstreamShort],
     [],
-  ];
+  ]);
+}
+
+function uniqueArgSets(sets: string[][]): string[][] {
+  const seen = new Set<string>();
+  const out: string[][] = [];
+  for (const set of sets) {
+    const key = JSON.stringify(set);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(set);
+  }
+  return out;
+}
+
+async function detectArgsFromHelp(
+  binaryPath: string,
+  options: { listen: string; listenPort: string; upstreamBaseUrl?: string; bearerToken?: string; controlListen?: string },
+): Promise<string[][]> {
+  const help = await readHelp(binaryPath);
+  if (!help) return [];
+  const listenFlag = flagFromHelp(help, ["--listen", "--addr", "--bind", "--http", "--proxy-addr", "--listen-addr"]);
+  const upstreamFlag = flagFromHelp(help, ["--upstream-base-url", "--upstream-url", "--upstream", "--openai-url", "--base-url"]);
+  const tokenFlag = flagFromHelp(help, ["--bearer-token", "--token", "--auth-token"]);
+  const controlFlag = flagFromHelp(help, ["--control-listen", "--control-addr", "--control"]);
+  if (!listenFlag && !upstreamFlag) return [];
+  const args: string[] = [];
+  if (listenFlag) args.push(listenFlag, options.listen);
+  if (upstreamFlag && options.upstreamBaseUrl) args.push(upstreamFlag, options.upstreamBaseUrl);
+  if (tokenFlag && options.bearerToken) args.push(tokenFlag, options.bearerToken);
+  if (controlFlag && options.controlListen) args.push(controlFlag, options.controlListen);
+  const servePrefix = /\bserve\b/.test(help) ? ["serve"] : [];
+  return [args, [...servePrefix, ...args]];
+}
+
+function flagFromHelp(help: string, candidates: string[]): string | undefined {
+  return candidates.find((flag) => help.includes(flag));
+}
+
+async function readHelp(binaryPath: string): Promise<string> {
+  for (const args of [["--help"], ["-h"], ["help"]]) {
+    const text = await capture(binaryPath, args);
+    if (text.trim()) return text;
+  }
+  return "";
+}
+
+async function capture(binaryPath: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    const child = spawn(binaryPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const chunks: Buffer[] = [];
+    child.stdout.on("data", (chunk: string | Uint8Array) => chunks.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk: string | Uint8Array) => chunks.push(Buffer.from(chunk)));
+    const finish = () => resolve(Buffer.concat(chunks).toString("utf8"));
+    child.once("error", () => resolve(""));
+    child.once("exit", finish);
+    void delay(2_000).then(() => {
+      if (child.exitCode === null) {
+        child.kill("SIGKILL");
+        finish();
+      }
+    });
+  });
 }
 
 function splitArgs(value: string): string[] {

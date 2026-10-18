@@ -12,6 +12,16 @@ npm install --save-dev llm-test-lab
 
 Node 18 or newer is required.
 
+npm installs one optional platform package matching the current OS/CPU when it is published:
+
+- `@llm-test-lab/linux-x64`
+- `@llm-test-lab/linux-arm64`
+- `@llm-test-lab/darwin-x64`
+- `@llm-test-lab/darwin-arm64`
+- `@llm-test-lab/win32-x64`
+
+Those packages are version-pinned to the same version as this client and to the GoReleaser-built proxy binary. There is no `postinstall` download.
+
 ## Quickstart with Vitest
 
 ```ts
@@ -81,14 +91,27 @@ test("uses the weather tool", async () => {
 
 Resolution order:
 
-1. `LLMTESTLAB_BIN`
-2. `llmtestlab` or `llm-test-lab` on `PATH`
-3. cached release binary under `~/.cache/llm-test-lab`
-4. optional GitHub Releases download from `barzoj-co/llm-test-lab`
+1. `LLMTESTLAB_BIN` (always wins)
+2. optional dependency `@llm-test-lab/<os>-<cpu>/bin/llmtestlab`
+3. `llmtestlab` or `llm-test-lab` on `PATH`
+4. previously extracted cache under `~/.cache/llm-test-lab`
 
-The upstream proxy repository is private today. If release download receives a 401/403/404, the client fails clearly and asks you to set `LLMTESTLAB_BIN` or provide `LLMTESTLAB_GITHUB_TOKEN`/`GITHUB_TOKEN` with release access. Downloaded archives are checked against a GoReleaser `checksums.txt` asset when present.
+This package never downloads binaries during `npm install` or at runtime. CI builds the proxy from `barzoj-co/llm-test-lab` source. The release workflow copies GoReleaser artifacts into the optional packages after verifying `checksums.txt` SHA-256.
 
 Use `LLMTESTLAB_PROXY_URL` to attach to an already-running proxy instead of starting a process.
+
+## Release / trusted publishing
+
+Tags matching `v*` run `.github/workflows/release.yml`. That workflow:
+
+1. Builds this client
+2. Downloads GoReleaser assets for the same tag from `barzoj-co/llm-test-lab`
+3. Verifies each archive against `checksums.txt`
+4. Writes the binary into `@llm-test-lab/<platform>`
+5. Pins root and platform `package.json` versions to the tag
+6. Dry-runs npm pack/publish with provenance
+
+It is prepared for npm trusted publishing (`id-token: write` + `registry-url`). It does **not** publish yet. When publishing is enabled, publish the five platform packages first, then `llm-test-lab`, all at the Go binary version.
 
 ## Assertions
 
@@ -107,12 +130,11 @@ See [docs/api.md](docs/api.md) for the full API.
 
 The included CI workflow expects:
 
-- `LLMTESTLAB_REPO_TOKEN`: a GitHub token that can read the private `barzoj-co/llm-test-lab` repo so CI can run `go build ./cmd/llmtestlab`.
-- `OPENAI_API_KEY`: required for real OpenAI E2E tests on same-repo PRs and pushes. Fork PRs skip only this E2E step because secrets are unavailable.
-- npm release: either `NPM_TOKEN` or trusted publishing configured for provenance on `v*` tags.
+- `LLMTESTLAB_REPO_TOKEN`: a GitHub token that can read the private `barzoj-co/llm-test-lab` repo so CI can run `go build ./cmd/llmtestlab`. Remove this secret/workflow usage once that repo is public.
+- `OPENAI_API_KEY`: required for real OpenAI E2E tests on same-repo PRs and pushes. Fork PRs skip private-binary checkout and this E2E step because secrets are unavailable.
 
 ## License
 
-This TypeScript client library is MIT licensed; see [LICENSE](LICENSE).
+This TypeScript client library, including the npm package metadata, is MIT licensed; see [LICENSE](LICENSE).
 
-The `llm-test-lab` proxy binary that this client starts or talks to is AGPL-3.0 licensed and runs as a separate process.
+The bundled `llm-test-lab` proxy binary (the optional `@llm-test-lab/<platform>` packages, or a binary you point at with `LLMTESTLAB_BIN`) is AGPL-3.0 licensed and runs as a separate process. The MIT client talks to that process over HTTP; it does not statically link it.

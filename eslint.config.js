@@ -1,5 +1,9 @@
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
+
+const tsconfigRootDir = dirname(fileURLToPath(import.meta.url));
 
 export default tseslint.config(
   js.configs.recommended,
@@ -8,12 +12,12 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: true,
-        tsconfigRootDir: import.meta.dirname,
+        tsconfigRootDir,
       },
     },
   },
   {
-    ignores: ["dist/**", "coverage/**", "node_modules/**", ".llm-test-lab/**"],
+    ignores: ["dist/**", "coverage/**", "node_modules/**", ".llm-test-lab/**", "packages/**", "scripts/**"],
   },
   {
     files: ["**/*.js", "**/*.cjs"],

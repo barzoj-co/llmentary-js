@@ -1,0 +1,9 @@
+{
+  "name": "@llm-test-lab/win32-x64",
+  "version": "0.0.0",
+  "description": "Windows x64 llm-test-lab proxy binary package.",
+  "license": "MIT",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": ["bin", "README.md"]
+}

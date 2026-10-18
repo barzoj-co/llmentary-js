@@ -1,0 +1,9 @@
+{
+  "name": "@llm-test-lab/linux-arm64",
+  "version": "0.0.0",
+  "description": "Linux arm64 llm-test-lab proxy binary package.",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["bin", "README.md"]
+}

@@ -54,9 +54,13 @@
     "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && node scripts/write-cjs-package.cjs",
     "clean": "rm -rf dist coverage .llm-test-lab",
     "lint": "eslint src tests --ignore-pattern 'tests/jest/*.cjs'",
-    "test": "npm run test:vitest && npm run test:jest",
+    "test": "npm run test:unit && npm run test:proxy && npm run test:jest",
+    "test:unit": "vitest run tests/assertions.test.ts tests/binary.test.ts",
     "test:vitest": "vitest run",
-    "test:jest": "npm run build && npx --yes jest@30.5.2 --config jest.config.cjs",
+    "test:proxy": "vitest run tests/proxy-real-binary.test.ts",
+    "test:jest": "npm run test:jest:unit && npm run test:jest:proxy",
+    "test:jest:unit": "npm run build && npx --yes jest@30.5.2 --config jest.config.cjs tests/jest/cjs-export.test.cjs",
+    "test:jest:proxy": "npm run build && npx --yes jest@30.5.2 --config jest.config.cjs tests/jest/proxy-real-binary.test.cjs",
     "test:e2e:openai": "vitest run tests/e2e/openai.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepack": "npm run build"
@@ -72,6 +76,13 @@
       "optional": true
     }
   },
+  "optionalDependencies": {
+    "@llm-test-lab/darwin-arm64": "0.0.0",
+    "@llm-test-lab/darwin-x64": "0.0.0",
+    "@llm-test-lab/linux-arm64": "0.0.0",
+    "@llm-test-lab/linux-x64": "0.0.0",
+    "@llm-test-lab/win32-x64": "0.0.0"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@types/jest": "^30.0.0",
@@ -81,7 +92,7 @@
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.2",
-    "vitest": "^5.0.5"
+    "vitest": "^3.2.4"
   },
   "publishConfig": {
     "access": "public",

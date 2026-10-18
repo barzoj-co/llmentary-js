@@ -26,28 +26,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and pack
+      - name: Build
         run: |
           npm run typecheck
           npm run lint
           npm run build
-          npm pack --dry-run
 
-      - name: Plan optional native proxy packages
-        run: |
-          cat <<'PLAN'
-          Planned esbuild-style optional dependency package names (not published by this workflow yet):
-          - @llm-test-lab/linux-x64
-          - @llm-test-lab/linux-arm64
-          - @llm-test-lab/darwin-x64
-          - @llm-test-lab/darwin-arm64
-          - @llm-test-lab/win32-x64
-          Each package should contain one GoReleaser-built llmtestlab binary plus package.json
-          cpu/os metadata, and the root package can list them under optionalDependencies once
-          the private proxy release pipeline is ready.
-          PLAN
-
-      - name: Publish to npm with provenance
-        run: npm publish --provenance
+      # TODO: remove LLMTESTLAB_REPO_TOKEN once llm-test-lab is public
+      - name: Pack optional platform binaries from GoReleaser
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+        run: node scripts/pack-platform-binaries.mjs
+
+      - name: Dry-run npm publish with provenance
+        run: |
+          npm pack --dry-run
+          for pkg in packages/*; do
+            npm pack --dry-run --workspace "$(node -p "require('./$pkg/package.json').name")"
+          done
+          echo "Trusted publishing is configured (id-token: write, registry-url). Real npm publish is intentionally not run yet."
+          echo "When ready: npm publish --provenance --access public for each @llm-test-lab/<platform> package, then the root llm-test-lab package at the same version as the GoReleaser tag."

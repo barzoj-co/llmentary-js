@@ -51,11 +51,11 @@ try {
 `startProxy()` attaches when `LLMTESTLAB_PROXY_URL` is set. Otherwise it resolves a binary from:
 
 1. `LLMTESTLAB_BIN`
-2. `PATH`
-3. cache
-4. GitHub Releases download
+2. optional dependency `@llm-test-lab/<os>-<cpu>`
+3. `PATH`
+4. cache
 
-If the Go binary changes its CLI flags, pass `args` or set `LLMTESTLAB_PROXY_START_ARGS`. The default launcher tries common forms (`serve --listen`, `--listen`, `serve --proxy-addr`) and always health-checks `/healthz`.
+There is no install-time or runtime GitHub download. If the Go binary uses different flags, pass `args` or set `LLMTESTLAB_PROXY_START_ARGS`. The default launcher probes `--help` and then tries common forms (`serve --listen`, `--listen`, `--addr`, `serve --proxy-addr`) and always health-checks `/healthz`.
 
 ## Queries
 

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { access, chmod, mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import type { BinaryDownloadOptions, BinaryResolutionOptions } from "./types.js";
@@ -10,12 +10,29 @@ import type { BinaryDownloadOptions, BinaryResolutionOptions } from "./types.js"
 const DEFAULT_REPO = "barzoj-co/llm-test-lab";
 const DEFAULT_BINARY_NAME = "llmtestlab";
 
+export interface NativePackageSpec {
+  name: string;
+  os: NodeJS.Platform;
+  cpu: NodeJS.Architecture;
+}
+
+export const NATIVE_PACKAGES: NativePackageSpec[] = [
+  { name: "@llm-test-lab/linux-x64", os: "linux", cpu: "x64" },
+  { name: "@llm-test-lab/linux-arm64", os: "linux", cpu: "arm64" },
+  { name: "@llm-test-lab/darwin-x64", os: "darwin", cpu: "x64" },
+  { name: "@llm-test-lab/darwin-arm64", os: "darwin", cpu: "arm64" },
+  { name: "@llm-test-lab/win32-x64", os: "win32", cpu: "x64" },
+];
+
 export async function resolveBinary(options: BinaryResolutionOptions = {}): Promise<string> {
   const envBin = process.env.LLMTESTLAB_BIN;
   if (envBin) {
     await assertExecutable(envBin, "LLMTESTLAB_BIN");
     return envBin;
   }
+
+  const native = await findNativePackageBinary(options.platform ?? process.platform, options.arch ?? process.arch);
+  if (native) return native;
 
   const binaryName = options.binaryName ?? DEFAULT_BINARY_NAME;
   const pathMatch = await findOnPath(binaryName);
@@ -26,13 +43,16 @@ export async function resolveBinary(options: BinaryResolutionOptions = {}): Prom
   const cached = await findCachedBinary(options);
   if (cached) return cached;
 
-  if (options.allowDownload === false || process.env.LLMTESTLAB_DOWNLOAD === "0") {
-    throw new Error(
-      "Could not find the llm-test-lab proxy binary. Set LLMTESTLAB_BIN, put llmtestlab on PATH, or enable release download.",
-    );
-  }
+  throw new Error(
+    "Could not find the llm-test-lab proxy binary. Set LLMTESTLAB_BIN, install the optional platform package (@llm-test-lab/<os>-<cpu>), or put llmtestlab on PATH. This client never downloads binaries at install or runtime.",
+  );
+}
 
-  return downloadBinary(options);
+export function nativePackageName(
+  platform: NodeJS.Platform = process.platform,
+  arch: NodeJS.Architecture = process.arch,
+): string | undefined {
+  return NATIVE_PACKAGES.find((pkg) => pkg.os === platform && pkg.cpu === arch)?.name;
 }
 
 export async function downloadBinary(options: BinaryDownloadOptions = {}): Promise<string> {
@@ -42,7 +62,7 @@ export async function downloadBinary(options: BinaryDownloadOptions = {}): Promi
   const asset = chooseAsset(release.assets, options.platform ?? process.platform, options.arch ?? process.arch);
   if (!asset) {
     throw new Error(
-      `No llm-test-lab release asset matched ${process.platform}/${process.arch}. Set LLMTESTLAB_BIN to a local binary.`,
+      `No llm-test-lab release asset matched ${options.platform ?? process.platform}/${options.arch ?? process.arch}. Set LLMTESTLAB_BIN to a local binary.`,
     );
   }
 
@@ -53,7 +73,10 @@ export async function downloadBinary(options: BinaryDownloadOptions = {}): Promi
   const archivePath = join(versionDir, asset.name);
   await downloadAsset(asset.browser_download_url, archivePath, token);
   const checksums = await downloadChecksumsIfPresent(release.assets, versionDir, token);
-  if (checksums) await verifyChecksum(archivePath, checksums);
+  if (!checksums) {
+    throw new Error(`Release ${release.tag_name} did not include checksums.txt; refusing to use an unverified archive.`);
+  }
+  await verifyChecksum(archivePath, checksums);
 
   const binaryPath = join(versionDir, targetBinaryName(options.platform ?? process.platform));
   await extractArchive(archivePath, versionDir, binaryPath);
@@ -71,6 +94,39 @@ export function assetNameCandidates(platform: NodeJS.Platform, arch: NodeJS.Arch
     new RegExp(`llm-test-lab[_-]${os}[_-]${machine}${ext}$`, "i"),
     new RegExp(`${os}[_-]${machine}${ext}$`, "i"),
   ];
+}
+
+export function parseChecksumFile(checksums: string, fileName: string): string | undefined {
+  const name = basename(fileName);
+  const line = checksums
+    .split(/\r?\n/)
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate.endsWith(`  ${name}`) || candidate.endsWith(` *${name}`) || candidate.split(/\s+/).includes(name));
+  if (!line) return undefined;
+  return line.split(/\s+/)[0];
+}
+
+async function findNativePackageBinary(platform: NodeJS.Platform, arch: NodeJS.Architecture): Promise<string | undefined> {
+  const pkg = nativePackageName(platform, arch);
+  if (!pkg) return undefined;
+  const binName = targetBinaryName(platform);
+  const roots = new Set<string>([process.cwd()]);
+  if (process.argv[1]) roots.add(dirname(process.argv[1]));
+  for (const root of roots) {
+    let dir = root;
+    for (let i = 0; i < 12; i += 1) {
+      const candidate = join(dir, "node_modules", pkg, "bin", binName);
+      try {
+        await access(candidate);
+        return candidate;
+      } catch {
+        const parent = dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+    }
+  }
+  return undefined;
 }
 
 async function assertExecutable(path: string, source: string): Promise<void> {
@@ -201,22 +257,19 @@ async function downloadChecksumsIfPresent(
 }
 
 async function verifyChecksum(path: string, checksums: string): Promise<void> {
-  const name = basename(path);
-  const line = checksums
-    .split(/\r?\n/)
-    .map((candidate) => candidate.trim())
-    .find((candidate) => candidate.endsWith(`  ${name}`) || candidate.endsWith(` *${name}`) || candidate.endsWith(name));
-  if (!line) return;
-  const expected = line.split(/\s+/)[0];
+  const expected = parseChecksumFile(checksums, path);
+  if (!expected) {
+    throw new Error(`checksums.txt did not list ${basename(path)}`);
+  }
   const data = await readFile(path);
   const actual = createHash("sha256").update(data).digest("hex");
   if (actual !== expected) {
     await rm(path, { force: true });
-    throw new Error(`Checksum verification failed for ${name}: expected ${expected}, got ${actual}`);
+    throw new Error(`Checksum verification failed for ${basename(path)}: expected ${expected}, got ${actual}`);
   }
 }
 
-async function extractArchive(archivePath: string, versionDir: string, binaryPath: string): Promise<void> {
+export async function extractArchive(archivePath: string, versionDir: string, binaryPath: string): Promise<void> {
   const before = await snapshotFiles(versionDir);
   if (archivePath.endsWith(".zip")) {
     await extractZip(archivePath, versionDir);
@@ -270,12 +323,7 @@ async function extractZip(archivePath: string, versionDir: string): Promise<void
       quotePowerShellLiteral(versionDir),
       "-Force",
     ].join(" ");
-    await run("powershell.exe", [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      command,
-    ]);
+    await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command]);
     return;
   }
   await run("unzip", ["-q", archivePath, "-d", versionDir]);
@@ -308,4 +356,3 @@ export async function fileExists(path: string): Promise<boolean> {
     return false;
   }
 }
-

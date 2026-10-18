@@ -2,22 +2,27 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
 import { createLab, startProxy, type ProxyHandle } from "../../src/index.js";
 
-const skip = process.env.SKIP_OPENAI_E2E === "1";
-
-describe.skipIf(skip)("OpenAI E2E through llm-test-lab", () => {
+describe("OpenAI E2E through llm-test-lab", () => {
   let proxy: ProxyHandle;
 
   beforeAll(async () => {
     if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is required for OpenAI E2E tests. Set the GitHub secret or SKIP_OPENAI_E2E=1 for fork PRs.");
+      throw new Error("OPENAI_API_KEY is required for OpenAI E2E tests on push and non-fork PRs.");
     }
-    proxy = await startProxy();
+    if (!process.env.LLMTESTLAB_BIN && !process.env.LLMTESTLAB_PROXY_URL) {
+      throw new Error("LLMTESTLAB_BIN is required so E2E traffic goes through the real Go proxy.");
+    }
+    proxy = await startProxy({
+      upstreamBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+    });
     process.env.LLMTESTLAB_PROXY_URL = proxy.proxyUrl;
     process.env.LLMTESTLAB_CONTROL_URL = proxy.controlUrl;
   }, 30_000);
 
   afterAll(async () => {
     await proxy?.stop();
+    delete process.env.LLMTESTLAB_PROXY_URL;
+    delete process.env.LLMTESTLAB_CONTROL_URL;
   });
 
   it("records Chat Completions tool flow", async () => {
