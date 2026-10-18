@@ -82,7 +82,16 @@ def parse_permissions(block: str | None) -> set[tuple[str, str]]:
         if stripped == "contents: read":
             return {("contents", "read")}
         return set()
-    perms: set[tuple[str, str]] = set()
+    flow = re.fullmatch(r"\{(.+)\}", stripped, re.S)
+    if flow and "\n" not in stripped:
+        perms: set[tuple[str, str]] = set()
+        for part in flow.group(1).split(","):
+            match = re.match(r"^[ \t]*([A-Za-z0-9_-]+):[ \t]*(\S+)[ \t]*$", part.strip())
+            if match:
+                perms.add((match.group(1), match.group(2).strip("'\"")))
+        return perms or {("*", "unparsed")}
+
+    perms = set()
     for raw in block.splitlines():
         line = raw.split("#", 1)[0].rstrip()
         if not line.strip():
@@ -90,6 +99,10 @@ def parse_permissions(block: str | None) -> set[tuple[str, str]]:
         match = re.match(r"^[ \t]+([A-Za-z0-9_-]+):[ \t]*(\S+)[ \t]*$", line)
         if match:
             perms.add((match.group(1), match.group(2).strip("'\"")))
+    # Fail closed: a non-empty permissions value that we cannot parse must not
+    # look like "no permissions" (e.g. permissions: {contents: write}).
+    if not perms:
+        return {("*", "unparsed")}
     return perms
 
 
