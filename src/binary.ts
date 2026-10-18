@@ -262,20 +262,27 @@ async function run(command: string, args: string[]): Promise<void> {
 
 async function extractZip(archivePath: string, versionDir: string): Promise<void> {
   if (process.platform === "win32") {
+    const command = [
+      "Expand-Archive",
+      "-LiteralPath",
+      quotePowerShellLiteral(archivePath),
+      "-DestinationPath",
+      quotePowerShellLiteral(versionDir),
+      "-Force",
+    ].join(" ");
     await run("powershell.exe", [
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      "Expand-Archive",
-      "-LiteralPath",
-      archivePath,
-      "-DestinationPath",
-      versionDir,
-      "-Force",
+      command,
     ]);
     return;
   }
   await run("unzip", ["-q", archivePath, "-d", versionDir]);
+}
+
+function quotePowerShellLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function compareReleaseTags(a: string, b: string): number {
