@@ -91,7 +91,7 @@ describe("ControlClient", () => {
   it("combines caller cancellation with a timeout signal", async () => {
     const idle = new AbortController();
     const timed = combineAbortSignals(idle.signal, AbortSignal.timeout(40));
-    await new Promise((resolve) => timed.addEventListener("abort", resolve, { once: true }));
+    await waitForAbort(timed);
     expect(timed.aborted).toBe(true);
 
     const controller = new AbortController();
@@ -100,3 +100,10 @@ describe("ControlClient", () => {
     expect(combined.aborted).toBe(true);
   });
 });
+
+async function waitForAbort(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}

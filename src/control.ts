@@ -89,7 +89,6 @@ export function parseControlBody(text: string): JsonValue {
 }
 
 export function combineAbortSignals(left: AbortSignal, right: AbortSignal): AbortSignal {
-  if (typeof AbortSignal.any === "function") return AbortSignal.any([left, right]);
   const controller = new AbortController();
   const onAbort = (): void => {
     controller.abort();
