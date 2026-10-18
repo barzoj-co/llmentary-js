@@ -62,6 +62,9 @@ describe("proxy CLI helpers", () => {
   it("formats named upstream specs", () => {
     expect(formatUpstreamSpec("openai", "https://api.openai.com/v1")).toBe("openai=https://api.openai.com/v1");
     expect(formatUpstreamSpec("openai", "openai=http://127.0.0.1:9/v1")).toBe("openai=http://127.0.0.1:9/v1");
+    expect(formatUpstreamSpec("openai", "https://host/openai/deployments/x?api-version=2024-02-01")).toBe(
+      "openai=https://host/openai/deployments/x?api-version=2024-02-01",
+    );
     expect(() => formatUpstreamSpec("openai;rm", "http://127.0.0.1")).toThrow(/Invalid upstream name/);
   });
 

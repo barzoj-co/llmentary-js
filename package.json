@@ -55,7 +55,7 @@
     "clean": "rm -rf dist coverage .llm-test-lab",
     "lint": "eslint src tests --ignore-pattern 'tests/jest/*.cjs'",
     "test": "npm run test:unit && npm run test:proxy && npm run test:jest",
-    "test:unit": "vitest run tests/assertions.test.ts tests/binary.test.ts",
+    "test:unit": "vitest run tests/assertions.test.ts tests/binary.test.ts tests/control.test.ts",
     "test:vitest": "vitest run",
     "test:proxy": "vitest run tests/proxy-real-binary.test.ts",
     "test:jest": "npm run test:jest:unit && npm run test:jest:proxy",

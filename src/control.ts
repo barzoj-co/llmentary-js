@@ -60,8 +60,17 @@ export class ControlClient {
     if (response.status === 204) return null;
     const text = await response.text();
     if (!text) return null;
-    return JSON.parse(text) as JsonValue;
+    return parseControlBody(text);
   }
+}
+
+export function parseControlBody(text: string): JsonValue {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith('"')) {
+    return JSON.parse(trimmed) as JsonValue;
+  }
+  return trimmed;
 }
 
 function trimTrailingSlash(value: string): string {

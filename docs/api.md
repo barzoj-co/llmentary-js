@@ -48,7 +48,9 @@ try {
 }
 ```
 
-`startProxy()` attaches when `LLMTESTLAB_PROXY_URL` is set (`LLMTESTLAB_CONTROL_URL` for the separate control port). Otherwise it resolves a binary from:
+`startProxy()` attaches when `LLMTESTLAB_PROXY_URL` is set (`LLMTESTLAB_CONTROL_URL` for the separate control port). Control auth is `LLMTESTLAB_CONTROL_TOKEN` or `LLMTESTLAB_BEARER_TOKEN`. If no upstream is given, it defaults to `openai=https://api.openai.com/v1` (or `OPENAI_BASE_URL`).
+
+When it starts a process, the binary is resolved from:
 
 1. `LLMTESTLAB_BIN`
 2. optional dependency `@llm-test-lab/<os>-<cpu>`

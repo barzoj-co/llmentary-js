@@ -48,13 +48,17 @@ export { createLab };
 function applyProxyEnv(handle: ProxyHandle): void {
   process.env.LLMTESTLAB_PROXY_URL = handle.proxyUrl;
   process.env.LLMTESTLAB_CONTROL_URL = handle.controlUrl;
-  if (handle.bearerToken) process.env.LLMTESTLAB_BEARER_TOKEN = handle.bearerToken;
+  if (handle.bearerToken) {
+    process.env.LLMTESTLAB_BEARER_TOKEN = handle.bearerToken;
+    process.env.LLMTESTLAB_CONTROL_TOKEN = handle.bearerToken;
+  }
 }
 
 function clearProxyEnv(): void {
   delete process.env.LLMTESTLAB_PROXY_URL;
   delete process.env.LLMTESTLAB_CONTROL_URL;
   delete process.env.LLMTESTLAB_BEARER_TOKEN;
+  delete process.env.LLMTESTLAB_CONTROL_TOKEN;
 }
 
 declare module "vitest" {

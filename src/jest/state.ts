@@ -36,5 +36,8 @@ export async function deleteState(): Promise<void> {
 export function applyState(state: JestProxyState): void {
   process.env.LLMTESTLAB_PROXY_URL = state.proxyUrl;
   process.env.LLMTESTLAB_CONTROL_URL = state.controlUrl;
-  if (state.bearerToken) process.env.LLMTESTLAB_BEARER_TOKEN = state.bearerToken;
+  if (state.bearerToken) {
+    process.env.LLMTESTLAB_BEARER_TOKEN = state.bearerToken;
+    process.env.LLMTESTLAB_CONTROL_TOKEN = state.bearerToken;
+  }
 }

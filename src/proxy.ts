@@ -9,9 +9,13 @@ const SECRET_FLAGS = new Set(["-control-token", "--control-token", "--bearer-tok
 
 export function formatUpstreamSpec(name: string, url: string): string {
   const trimmed = url.trim();
-  if (trimmed.includes("=")) {
-    const separator = trimmed.indexOf("=");
-    return `${sanitizeUpstreamName(trimmed.slice(0, separator))}=${trimmed.slice(separator + 1)}`;
+  const separator = trimmed.indexOf("=");
+  if (separator > 0) {
+    const maybeName = trimmed.slice(0, separator);
+    const maybeUrl = trimmed.slice(separator + 1);
+    if (/^[A-Za-z0-9._-]+$/.test(maybeName) && /:\/\//.test(maybeUrl)) {
+      return `${maybeName}=${maybeUrl}`;
+    }
   }
   return `${sanitizeUpstreamName(name)}=${trimmed}`;
 }
@@ -71,12 +75,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
   const upstreamSpec =
     options.upstreams ??
     process.env.LLMTESTLAB_UPSTREAMS ??
-    (upstreamBaseUrl ? formatUpstreamSpec(upstreamName, upstreamBaseUrl) : undefined);
-  if (!upstreamSpec && !options.args?.length && !process.env.LLMTESTLAB_PROXY_START_ARGS) {
-    throw new Error(
-      "startProxy requires an upstream. Pass upstreamBaseUrl (or upstreams / LLMTESTLAB_UPSTREAMS) as name=https://host/base.",
-    );
-  }
+    formatUpstreamSpec(upstreamName, upstreamBaseUrl ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1");
 
   const env = {
     ...process.env,
