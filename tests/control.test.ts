@@ -88,6 +88,34 @@ describe("ControlClient", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it("aborts wait at its timeout while the caller signal remains active", async () => {
+    const controller = new AbortController();
+    const abortedFetch: ControlFetch = async (input, init) => {
+      void input;
+      await new Promise((_, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            const error = new Error("The operation was aborted");
+            error.name = "AbortError";
+            reject(error);
+          },
+          { once: true },
+        );
+      });
+      return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
+    };
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      requestTimeoutMs: 40,
+      fetch: abortedFetch,
+    });
+    await expect(client.wait("s1", { timeoutMs: 40, signal: controller.signal })).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expect(controller.signal.aborted).toBe(false);
+  }, 10_000);
+
   it("combines caller cancellation with a timeout signal", async () => {
     const idle = new AbortController();
     const timed = combineAbortSignals(idle.signal, AbortSignal.timeout(40));
