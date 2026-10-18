@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AssertionScope, LabAssertionError } from "../src/assertions.js";
+import { AssertionScope, LabAssertionError, recordsForTrace } from "../src/assertions.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { QueryOptions, SessionTrace } from "../src/types.js";
 
@@ -204,6 +204,22 @@ describe("AssertionScope", () => {
       ],
     });
     await expect(scopeFor(errored).midStreamError(/boom|error/i)).resolves.toMatchObject({ pass: true });
+  });
+
+  it("matches OpenAI alias models against dated snapshots", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "chat_completions",
+          request: { model: "gpt-4.1-mini" },
+          model: "gpt-4.1-mini-2025-04-14",
+        },
+      ],
+    });
+    await expect(scopeFor(trace).model("gpt-4.1-mini")).resolves.toMatchObject({ pass: true });
+    expect(recordsForTrace(trace, { model: "gpt-4.1-mini" })).toHaveLength(1);
+    expect(recordsForTrace(trace, { model: "gpt-4.1" })).toHaveLength(0);
   });
 });
 

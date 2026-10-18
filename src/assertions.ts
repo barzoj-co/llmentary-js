@@ -158,9 +158,12 @@ export class AssertionScope {
   async model(expected: string | RegExp): Promise<AssertionResult> {
     return this.check(`expected model ${String(expected)}`, (trace) => {
       const records = recordsForTrace(trace, this.query);
-      const models = records.map((record) => record.model).filter(Boolean) as string[];
-      const pass = models.some((model) => (expected instanceof RegExp ? expected.test(model) : model === expected));
-      return { pass, message: `expected model ${String(expected)}, saw ${models.join(", ") || "<none>"}` };
+      const models = records.flatMap((record) => {
+        const requested = stringAt(asObject(record.request), "model");
+        return [record.model, requested].filter((value): value is string => Boolean(value));
+      });
+      const pass = models.some((model) => matchesModel(model, expected));
+      return { pass, message: `expected model ${String(expected)}, saw ${[...new Set(models)].join(", ") || "<none>"}` };
     });
   }
 
@@ -319,15 +322,23 @@ export function recordsForTrace(trace: SessionTrace, query: QueryOptions = {}): 
   return trace.calls.filter((record) => {
     if (query.apiType && record.apiType !== query.apiType) return false;
     if (query.model) {
-      if (!record.model) return false;
-      if (query.model instanceof RegExp) {
-        if (!query.model.test(record.model)) return false;
-      } else if (record.model !== query.model) {
-        return false;
-      }
+      const requested = stringAt(asObject(record.request), "model");
+      if (!matchesModel(record.model, query.model) && !matchesModel(requested, query.model)) return false;
     }
     return true;
   });
+}
+
+const MODEL_SNAPSHOT_SUFFIX = /^(.+)-\d{4}-\d{2}-\d{2}$/;
+
+/** Aliases match dated snapshots (`gpt-4.1-mini` vs `gpt-4.1-mini-2025-04-14`). */
+export function matchesModel(actual: string | undefined, expected: string | RegExp): boolean {
+  if (!actual) return false;
+  if (expected instanceof RegExp) return expected.test(actual);
+  if (actual === expected) return true;
+  const actualAlias = actual.match(MODEL_SNAPSHOT_SUFFIX)?.[1];
+  const expectedAlias = expected.match(MODEL_SNAPSHOT_SUFFIX)?.[1];
+  return actualAlias === expected || expectedAlias === actual;
 }
 
 export function toolCallsForTrace(trace: SessionTrace, query: QueryOptions = {}): NormalizedToolCall[] {

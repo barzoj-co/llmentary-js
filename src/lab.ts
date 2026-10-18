@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { AssertionScope } from "./assertions.js";
+import { AssertionScope, recordsForTrace } from "./assertions.js";
 import { ControlClient } from "./control.js";
 import { firstNonEmpty } from "./env.js";
 import type { LabConfig, QueryOptions, SessionTrace, WaitOptions } from "./types.js";
@@ -132,15 +132,7 @@ export class LlmTestLabQuery {
     const trace = await this.lab.wait(options);
     return {
       ...trace,
-      calls: trace.calls.filter((record) => {
-        if (this.queryOptions.apiType && record.apiType !== this.queryOptions.apiType) return false;
-        if (this.queryOptions.model) {
-          if (!record.model) return false;
-          if (this.queryOptions.model instanceof RegExp) return this.queryOptions.model.test(record.model);
-          return record.model === this.queryOptions.model;
-        }
-        return true;
-      }),
+      calls: recordsForTrace(trace, this.queryOptions),
     };
   }
 }
