@@ -2,7 +2,7 @@ export { LabAssertionError, AssertionScope, formatTraceSummary } from "./asserti
 export { resolveBinary, assetNameCandidates, nativePackageName, NATIVE_PACKAGES } from "./binary.js";
 export { ControlClient, parseControlBody } from "./control.js";
 export { createLab, LlmTestLab, LlmTestLabQuery, sessionHeaders } from "./lab.js";
-export { startProxy, waitForHealth, formatUpstreamSpec } from "./proxy.js";
+export { startProxy, waitForHealth, formatUpstreamSpec, resolveUpstreamSpec, originForGoUpstream } from "./proxy.js";
 export type {
   ApiType,
   AssertionResult,

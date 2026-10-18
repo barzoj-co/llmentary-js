@@ -42,11 +42,60 @@ export function redactArgs(args: string[]): string[] {
   return redacted;
 }
 
+export function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    if (value === undefined) continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
+/** Go joins `-upstream` with the client path (`/v1/...`), so OpenAI-style `/v1` bases become `/v1/v1`. */
+export function originForGoUpstream(url: string): string {
+  return url.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+}
+
+export function resolveUpstreamSpec(options: {
+  upstreams?: string;
+  upstreamName?: string;
+  upstreamBaseUrl?: string;
+  env?: NodeJS.ProcessEnv;
+} = {}): string {
+  const env = options.env ?? process.env;
+  const name = firstNonEmpty(options.upstreamName, env.LLMTESTLAB_UPSTREAM_NAME) ?? "openai";
+  const spec = firstNonEmpty(options.upstreams, env.LLMTESTLAB_UPSTREAMS);
+  if (spec) return rewriteUpstreamSpec(spec);
+  const url =
+    firstNonEmpty(options.upstreamBaseUrl, env.LLMTESTLAB_UPSTREAM_BASE_URL, env.OPENAI_BASE_URL) ??
+    "https://api.openai.com/v1";
+  return formatUpstreamSpec(name, originForGoUpstream(url));
+}
+
+function rewriteUpstreamSpec(spec: string): string {
+  const separator = spec.indexOf("=");
+  if (separator > 0) {
+    const maybeName = spec.slice(0, separator);
+    const maybeUrl = spec.slice(separator + 1);
+    if (/^[A-Za-z0-9._-]+$/.test(maybeName) && /:\/\//.test(maybeUrl)) {
+      return `${maybeName}=${originForGoUpstream(maybeUrl)}`;
+    }
+  }
+  return originForGoUpstream(spec);
+}
+
 export async function startProxy(options: ProxyLaunchOptions = {}): Promise<ProxyHandle> {
-  if (options.proxyUrl ?? process.env.LLMTESTLAB_PROXY_URL) {
-    const proxyUrl = trimTrailingSlash(options.proxyUrl ?? process.env.LLMTESTLAB_PROXY_URL ?? "");
-    const controlUrl = trimTrailingSlash(options.controlUrl ?? process.env.LLMTESTLAB_CONTROL_URL ?? proxyUrl);
-    const bearerToken = options.bearerToken ?? process.env.LLMTESTLAB_BEARER_TOKEN ?? process.env.LLMTESTLAB_CONTROL_TOKEN;
+  const attachedProxyUrl = firstNonEmpty(options.proxyUrl, process.env.LLMTESTLAB_PROXY_URL);
+  if (attachedProxyUrl) {
+    const proxyUrl = trimTrailingSlash(attachedProxyUrl);
+    const controlUrl = trimTrailingSlash(
+      firstNonEmpty(options.controlUrl, process.env.LLMTESTLAB_CONTROL_URL) ?? proxyUrl,
+    );
+    const bearerToken = firstNonEmpty(
+      options.bearerToken,
+      process.env.LLMTESTLAB_BEARER_TOKEN,
+      process.env.LLMTESTLAB_CONTROL_TOKEN,
+    );
     await waitForHealth(controlUrl, bearerToken, options.healthTimeoutMs);
     return {
       proxyUrl,
@@ -59,7 +108,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
   }
 
   const binaryPath = options.binaryPath ?? (await resolveBinary());
-  const host = options.host ?? process.env.LLMTESTLAB_HOST ?? "127.0.0.1";
+  const host = firstNonEmpty(options.host, process.env.LLMTESTLAB_HOST) ?? "127.0.0.1";
   const reserved = await getFreePorts(host, 2);
   const port = options.port ?? reserved[0]!;
   const controlPort = options.controlPort ?? reserved.find((candidate) => candidate !== port) ?? reserved[1]!;
@@ -69,13 +118,18 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
   const proxyUrl = `http://${host}:${port}`;
   const controlUrl = `http://${host}:${controlPort}`;
   const controlListen = `${host}:${controlPort}`;
-  const bearerToken = options.bearerToken ?? process.env.LLMTESTLAB_BEARER_TOKEN ?? process.env.LLMTESTLAB_CONTROL_TOKEN;
-  const upstreamName = options.upstreamName ?? process.env.LLMTESTLAB_UPSTREAM_NAME ?? "openai";
-  const upstreamBaseUrl = options.upstreamBaseUrl ?? process.env.LLMTESTLAB_UPSTREAM_BASE_URL;
-  const upstreamSpec =
-    options.upstreams ??
-    process.env.LLMTESTLAB_UPSTREAMS ??
-    formatUpstreamSpec(upstreamName, upstreamBaseUrl ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1");
+  const bearerToken = firstNonEmpty(
+    options.bearerToken,
+    process.env.LLMTESTLAB_BEARER_TOKEN,
+    process.env.LLMTESTLAB_CONTROL_TOKEN,
+  );
+  const upstreamName = firstNonEmpty(options.upstreamName, process.env.LLMTESTLAB_UPSTREAM_NAME) ?? "openai";
+  const upstreamSpec = resolveUpstreamSpec({
+    ...(options.upstreams !== undefined ? { upstreams: options.upstreams } : {}),
+    upstreamName,
+    ...(options.upstreamBaseUrl !== undefined ? { upstreamBaseUrl: options.upstreamBaseUrl } : {}),
+    env: { ...process.env, ...options.env },
+  });
 
   const env = {
     ...process.env,

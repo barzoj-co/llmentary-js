@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { assetNameCandidates, nativePackageName, parseChecksumFile, resolveBinary } from "../src/binary.js";
-import { formatUpstreamSpec, redactArgs } from "../src/proxy.js";
+import { formatUpstreamSpec, originForGoUpstream, redactArgs, resolveUpstreamSpec } from "../src/proxy.js";
 
 describe("binary release asset matching", () => {
   it("matches GoReleaser-style Linux x64 tarballs", () => {
@@ -77,5 +77,26 @@ describe("proxy CLI helpers", () => {
       "-upstream",
       "openai=http://x",
     ]);
+  });
+
+  it("strips trailing /v1 so the Go binary does not join /v1/v1", () => {
+    expect(originForGoUpstream("https://api.openai.com/v1")).toBe("https://api.openai.com");
+    expect(originForGoUpstream("http://127.0.0.1:9/v1/")).toBe("http://127.0.0.1:9");
+    expect(originForGoUpstream("https://host/openai/deployments/x?api-version=2024-02-01")).toBe(
+      "https://host/openai/deployments/x?api-version=2024-02-01",
+    );
+    expect(resolveUpstreamSpec({ upstreamBaseUrl: "http://127.0.0.1:9/v1" })).toBe("openai=http://127.0.0.1:9");
+    expect(resolveUpstreamSpec({ upstreams: "openai=https://api.openai.com/v1" })).toBe("openai=https://api.openai.com");
+    expect(
+      resolveUpstreamSpec({
+        env: { LLMTESTLAB_UPSTREAM_BASE_URL: "", OPENAI_BASE_URL: "  " },
+      }),
+    ).toBe("openai=https://api.openai.com");
+    expect(
+      resolveUpstreamSpec({
+        upstreamBaseUrl: "",
+        env: { OPENAI_BASE_URL: "https://api.openai.com/v1" },
+      }),
+    ).toBe("openai=https://api.openai.com");
   });
 });

@@ -48,7 +48,7 @@ try {
 }
 ```
 
-`startProxy()` attaches when `LLMTESTLAB_PROXY_URL` is set (`LLMTESTLAB_CONTROL_URL` for the separate control port). Control auth is `LLMTESTLAB_CONTROL_TOKEN` or `LLMTESTLAB_BEARER_TOKEN`. If no upstream is given, it defaults to `openai=https://api.openai.com/v1` (or `OPENAI_BASE_URL`).
+`startProxy()` attaches when `LLMTESTLAB_PROXY_URL` is set (`LLMTESTLAB_CONTROL_URL` for the separate control port). Control auth is `LLMTESTLAB_CONTROL_TOKEN` or `LLMTESTLAB_BEARER_TOKEN`. Empty env values are treated as unset. If no upstream is given, it defaults to `openai=https://api.openai.com` (or `OPENAI_BASE_URL` with a trailing `/v1` stripped). The Go binary prefixes the client request path (`/v1/chat/completions`, `/v1/responses`), so passing `https://api.openai.com/v1` would otherwise become `/v1/v1/...`.
 
 When it starts a process, the binary is resolved from:
 
@@ -60,7 +60,7 @@ When it starts a process, the binary is resolved from:
 There is no install-time or runtime GitHub download. The Go proxy CLI is:
 
 ```
-llmtestlab -listen 127.0.0.1:7777 -control 127.0.0.1:7778 -upstream openai=https://api.openai.com/v1
+llmtestlab -listen 127.0.0.1:7777 -control 127.0.0.1:7778 -upstream openai=https://api.openai.com
 ```
 
 Equivalent env: `LLMTESTLAB_LISTEN`, `LLMTESTLAB_CONTROL_LISTEN`, `LLMTESTLAB_UPSTREAMS`, optional `LLMTESTLAB_CONTROL_TOKEN`. `/healthz` is on the control listener, not the proxy listener. OpenAI-compatible clients use `${proxyUrl}/v1`. Override with `args` or `LLMTESTLAB_PROXY_START_ARGS` if needed.
@@ -166,4 +166,4 @@ await control.getOtlp("session-id");
 await control.deleteSession("session-id");
 ```
 
-The raw JSON returned by the proxy is preserved on `SessionTrace.raw` and `CallRecord.raw`. The client normalizes common snake_case/camelCase envelopes for assertion convenience without mutating the raw shape.
+The raw JSON returned by the proxy is preserved on `SessionTrace.raw` and `CallRecord.raw`. The client maps the Go control schema (`api_family`, base64 `raw_request`/`raw_response`, `normalized.model` / `tool_calls` / `output_text` / `usage` / `error.mid_stream`) plus common snake_case/camelCase envelopes for assertion convenience without mutating the raw shape.

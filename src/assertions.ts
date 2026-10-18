@@ -232,7 +232,18 @@ export class AssertionScope {
   }
 
   async midStreamError(pattern?: string | RegExp): Promise<AssertionResult> {
-    return this.hasError(pattern);
+    return this.check("expected a mid-stream error", (trace) => {
+      const errors = recordsForTrace(trace, this.query)
+        .map((record) => record.error)
+        .filter((error): error is JsonValue => error !== undefined && isMidStreamError(error));
+      const pass = pattern
+        ? errors.some((error) => matchesText(extractText(error), pattern))
+        : errors.length > 0;
+      return {
+        pass,
+        message: `expected a mid-stream error${pattern ? ` matching ${String(pattern)}` : ""}, saw ${stringify(errors)}`,
+      };
+    });
   }
 
   async promptContains(textOrPattern: string | RegExp): Promise<AssertionResult> {
@@ -421,6 +432,12 @@ function containsToolResult(value: JsonValue | undefined, toolCallIds: Set<strin
     return true;
   }
   return Object.values(object).some((child) => containsToolResult(child, toolCallIds));
+}
+
+function isMidStreamError(error: JsonValue): boolean {
+  if (!error || typeof error !== "object" || Array.isArray(error)) return false;
+  const object = asObject(error);
+  return valueAt(object, "mid_stream") === true || valueAt(object, "midStream") === true;
 }
 
 function finishReasons(value: JsonValue | undefined): string[] {
