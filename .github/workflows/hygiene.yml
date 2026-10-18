@@ -1,0 +1,209 @@
+name: Hygiene
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Install actionlint
+        env:
+          # renovate: datasource=github-releases depName=rhysd/actionlint
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C /tmp actionlint
+          /tmp/actionlint -version
+          /tmp/actionlint -color -shellcheck="$(command -v shellcheck)"
+
+      - name: Check README badges
+        run: scripts/check-readme.sh
+
+  pinned-actions:
+    name: pinned-actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Check pinned actions
+        run: scripts/check-pinned-actions.sh
+
+      - name: Self-test pinned-actions fixtures
+        run: scripts/check-pinned-actions.sh --self-test
+
+      - name: Workflow policy
+        run: scripts/check-workflow-policy.sh
+
+  renovate-config:
+    name: renovate-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+
+      - name: Validate renovate.json
+        env:
+          # renovate: datasource=npm depName=renovate
+          RENOVATE_VERSION: 41.159.4
+        run: npx --yes --package "renovate@${RENOVATE_VERSION}" -- renovate-config-validator --strict
+
+  codecov-config:
+    name: codecov-config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Validate codecov.yml
+        run: |
+          response="$(curl -fsS --data-binary @codecov.yml https://codecov.io/validate)"
+          echo "$response"
+          echo "$response" | grep -q '^Valid!'
+
+  labels:
+    name: labels (dry run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Require autorelease labels
+        run: |
+          grep -q 'autorelease: pending' .github/labels.yml
+          grep -q 'autorelease: tagged' .github/labels.yml
+
+      - name: Validate issue forms
+        env:
+          # renovate: datasource=pypi depName=check-jsonschema
+          CHECK_JSONSCHEMA_VERSION: 0.38.2
+        run: |
+          python3 -m pip install --user "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
+          export PATH="$HOME/.local/bin:$PATH"
+          check-jsonschema --builtin-schema vendor.github-issue-forms .github/ISSUE_TEMPLATE/bug_report.yml
+          check-jsonschema --builtin-schema vendor.github-issue-forms .github/ISSUE_TEMPLATE/feature_request.yml
+
+      - name: Labeler dry run
+        uses: crazy-max/ghaction-github-labeler@24d110aa46a59976b8a7f35518cb7f14f434c916 # v5.3.0
+        with:
+          github-token: ${{ github.token }}
+          yaml-file: .github/labels.yml
+          skip-delete: true
+          dry-run: true
+
+  release-please-dry-run:
+    name: release-please (dry run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+
+      - name: Dry-run release-please
+        env:
+          # renovate: datasource=npm depName=release-please
+          RELEASE_PLEASE_VERSION: 17.11.2
+          RELEASE_PLEASE_TOKEN: ${{ github.token }}
+          RELEASE_PLEASE_TARGET: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || github.base_ref || github.ref_name }}
+        run: |
+          npx --yes "release-please@${RELEASE_PLEASE_VERSION}" release-pr \
+            --dry-run \
+            --repo-url=barzoj-co/llm-test-lab-js \
+            --target-branch="${RELEASE_PLEASE_TARGET}" \
+            --config-file=release-please-config.json \
+            --manifest-file=.release-please-manifest.json \
+            --token="${RELEASE_PLEASE_TOKEN}"
+
+  publish-dry-run:
+    name: publish (dry run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack dry-run
+        run: |
+          npm pack --dry-run
+          for pkg in ./packages/*/; do
+            echo "Packing $pkg"
+            npm pack --dry-run "$pkg"
+          done
+
+      - name: Publish dry-run (root, no token)
+        run: npm publish --dry-run --access public
+
+      - name: Assert root tarball license files
+        run: node scripts/check-pack-licenses.mjs
+
+      - name: Option B version unit tests
+        run: node --test scripts/pack-platform-binaries.test.mjs
+
+      - name: Assert release workflow contract
+        run: scripts/check-release-workflow.sh

@@ -6,11 +6,10 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO = process.env.LLMTESTLAB_REPO ?? "barzoj-co/llm-test-lab";
-const TAG = process.env.LLMTESTLAB_TAG ?? process.env.GITHUB_REF_NAME ?? "";
 
-const PACKAGES = [
+export const PACKAGES = [
   { dir: "linux-x64", os: "linux", cpu: "x64", bin: "llmtestlab" },
   { dir: "linux-arm64", os: "linux", cpu: "arm64", bin: "llmtestlab" },
   { dir: "darwin-x64", os: "darwin", cpu: "x64", bin: "llmtestlab" },
@@ -18,8 +17,48 @@ const PACKAGES = [
   { dir: "win32-x64", os: "win32", cpu: "x64", bin: "llmtestlab.exe" },
 ];
 
-function versionFromTag(tag) {
+export function versionFromTag(tag) {
   return tag.replace(/^v/, "");
+}
+
+export async function readProxyVersion(root = ROOT) {
+  try {
+    return (await readFile(join(root, "PROXY_VERSION"), "utf8")).trim();
+  } catch {
+    return "";
+  }
+}
+
+export function resolveTag({ env = process.env, proxyVersion = "" } = {}) {
+  return env.LLMTESTLAB_TAG || env.GITHUB_REF_NAME || proxyVersion || "";
+}
+
+/**
+ * Option B: when keepRootVersion is true (LLMTESTLAB_ROOT_VERSION set), leave
+ * the root package version alone and pin optionalDependencies + platform
+ * packages to the proxy tag. When false, keep the old lockstep behaviour.
+ */
+export function applyVersions(rootPkg, tag, { keepRootVersion = false } = {}) {
+  const version = versionFromTag(tag);
+  const next = structuredClone(rootPkg);
+  if (!keepRootVersion) {
+    next.version = version;
+  }
+  for (const name of Object.keys(next.optionalDependencies ?? {})) {
+    next.optionalDependencies[name] = version;
+  }
+  return { version, rootPkg: next };
+}
+
+export async function writePackageVersions(root, tag, { keepRootVersion = false } = {}) {
+  const rootPkgPath = join(root, "package.json");
+  const rootPkg = JSON.parse(await readFile(rootPkgPath, "utf8"));
+  const { version, rootPkg: nextRoot } = applyVersions(rootPkg, tag, { keepRootVersion });
+  await writeFile(rootPkgPath, `${JSON.stringify(nextRoot, null, 2)}\n`);
+  for (const spec of PACKAGES) {
+    await setPackageVersion(root, spec.dir, version);
+  }
+  return { version, rootPkg: nextRoot };
 }
 
 function assetPatterns(os, cpu) {
@@ -67,41 +106,38 @@ async function extract(archivePath, dest) {
 async function findBinary(dir) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
   const match = entries.find(
-    (entry) => entry.isFile() && /(?:^|[/\\])llm(?:-?test-?lab|testlab)(?:\.exe)?$/i.test(join(entry.parentPath ?? entry.path, entry.name)),
+    (entry) =>
+      entry.isFile() &&
+      /(?:^|[/\\])llm(?:-?test-?lab|testlab)(?:\.exe)?$/i.test(join(entry.parentPath ?? entry.path, entry.name)),
   );
   if (!match) throw new Error(`No llmtestlab binary in ${dir}`);
   return join(match.parentPath ?? match.path, match.name);
 }
 
-async function setPackageVersion(dir, version) {
-  const path = join(ROOT, "packages", dir, "package.json");
+async function setPackageVersion(root, dir, version) {
+  const path = join(root, "packages", dir, "package.json");
   const pkg = JSON.parse(await readFile(path, "utf8"));
   pkg.version = version;
-  pkg.license = "MIT AND AGPL-3.0-only";
   pkg.files = ["bin", "README.md", "LICENSE", "LICENSE.AGPL-3.0"];
   await writeFile(path, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
 async function main() {
-  if (!TAG) {
-    throw new Error("LLMTESTLAB_TAG or GITHUB_REF_NAME is required (for example v0.1.0).");
+  const proxyVersion = await readProxyVersion(ROOT);
+  const tag = resolveTag({ env: process.env, proxyVersion });
+  if (!tag) {
+    throw new Error("LLMTESTLAB_TAG, GITHUB_REF_NAME, or PROXY_VERSION is required (for example v0.1.0).");
   }
-  const version = versionFromTag(TAG);
+  const keepRootVersion = Boolean(process.env.LLMTESTLAB_ROOT_VERSION);
   const work = await mkdtemp(join(tmpdir(), "llm-test-lab-rel-"));
   try {
-    await run("gh", ["release", "download", TAG, "--repo", REPO, "--dir", work]);
+    await run("gh", ["release", "download", tag, "--repo", REPO, "--dir", work]);
     const files = await readdir(work);
     const checksumFile = files.find((name) => /checksums?\.txt$/i.test(name));
     if (!checksumFile) throw new Error("GoReleaser checksums.txt was not in the release assets.");
     const checksums = await readFile(join(work, checksumFile), "utf8");
 
-    const rootPkgPath = join(ROOT, "package.json");
-    const rootPkg = JSON.parse(await readFile(rootPkgPath, "utf8"));
-    rootPkg.version = version;
-    for (const name of Object.keys(rootPkg.optionalDependencies ?? {})) {
-      rootPkg.optionalDependencies[name] = version;
-    }
-    await writeFile(rootPkgPath, `${JSON.stringify(rootPkg, null, 2)}\n`);
+    await writePackageVersions(ROOT, tag, { keepRootVersion });
 
     for (const spec of PACKAGES) {
       const patterns = assetPatterns(spec.os, spec.cpu);
@@ -125,11 +161,12 @@ async function main() {
         join(ROOT, "packages", spec.dir, "LICENSE.AGPL-3.0"),
         await readFile(join(ROOT, "licenses", "AGPL-3.0.txt")),
       );
-      await setPackageVersion(spec.dir, version);
     }
   } finally {
     await rm(work, { recursive: true, force: true });
   }
 }
 
-await main();
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  await main();
+}
