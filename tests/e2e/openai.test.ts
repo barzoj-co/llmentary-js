@@ -337,7 +337,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
       expect(health).toBe("ok");
       const rawHealth = await fetch(`${proxy.controlUrl.replace(/\/$/, "")}/healthz`);
       expect(rawHealth.status).toBe(200);
-      expect(JSON.parse((await rawHealth.text()).trim())).toBe("ok");
+      expect((await rawHealth.text()).trim()).toBe("ok");
       const followUp = newLab(proxy);
       const followClient = openaiClient(followUp);
       await retryNetwork(() =>
@@ -769,7 +769,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
       expect(health).toBe("ok");
       const rawHealth = await fetch(`${proxy.controlUrl.replace(/\/$/, "")}/healthz`);
       expect(rawHealth.status).toBe(200);
-      expect(JSON.parse((await rawHealth.text()).trim())).toBe("ok");
+      expect((await rawHealth.text()).trim()).toBe("ok");
       const followUp = newLab(proxy);
       await retryNetwork(() =>
         openaiClient(followUp).responses.create({
