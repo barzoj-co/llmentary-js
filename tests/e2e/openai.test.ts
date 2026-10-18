@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
 import { ControlClient, LabAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
 import {
+  CACHE_SECOND_CALL_ATTEMPTS,
   CITY_SCHEMA,
   NAME_SCHEMA,
   REASONING_MODEL,
@@ -10,10 +11,14 @@ import {
   TOOL_MODEL,
   chatFunctionCall,
   consumeChatStream,
+  expectCachedTokensMatchRaw,
   expectHttpError,
   longPrompt,
   newLab,
+  newPromptCacheKey,
+  noteResponsesCacheMiss,
   openaiClient,
+  recordedCachedTokens,
   retryNetwork,
   timeToolChat,
   timeToolResponses,
@@ -354,33 +359,51 @@ describe("OpenAI E2E through llm-test-lab", () => {
     });
 
     it("parses cached_tokens from a repeated long prompt", async () => {
-      // Automatic prefix caching: unique >=1024-token prompt. Only the SECOND call may have cached_tokens > 0.
+      // Unique >=1024-token prompt. Index 0 must not satisfy cachedTokens.min=1.
+      // The second call is retried up to 3 times; a hit is still required.
+      // Index 1 recorded cached_tokens must equal nested cached_tokens in the raw body.
       const lab = newLab(proxy);
       const client = openaiClient(lab);
       const prompt = longPrompt();
+      const promptCacheKey = newPromptCacheKey();
       await retryNetwork(() =>
         client.chat.completions.create({
           model: TOOL_MODEL,
           temperature: 0,
           max_tokens: 8,
+          prompt_cache_key: promptCacheKey,
           messages: [{ role: "user", content: prompt }],
         }),
       );
-      await retryNetwork(() =>
-        client.chat.completions.create({
-          model: TOOL_MODEL,
-          temperature: 0,
-          max_tokens: 8,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      );
-      await lab.expect().callCount(2);
+      let hitIndex: number | undefined;
+      for (let attempt = 0; attempt < CACHE_SECOND_CALL_ATTEMPTS; attempt += 1) {
+        if (attempt > 0) await delay(250 * 2 ** (attempt - 1));
+        await retryNetwork(() =>
+          client.chat.completions.create({
+            model: TOOL_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            prompt_cache_key: promptCacheKey,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        );
+        const index = 1 + attempt;
+        await lab.query({ index }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+        const record = (await lab.query({ index }).wait()).calls[0];
+        expect(record).toBeDefined();
+        if ((recordedCachedTokens(record!) ?? 0) > 0) {
+          hitIndex = index;
+          break;
+        }
+      }
+      const firstRepeat = (await lab.query({ index: 1 }).wait()).calls[0];
+      expect(firstRepeat).toBeDefined();
+      expectCachedTokensMatchRaw(firstRepeat!);
       await lab.query({ index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
-      await lab.query({ index: 1 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
       await expect(lab.query({ index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } })).rejects.toThrow(
         /usage details/i,
       );
-      await lab.query({ index: 1 }).expect().usageDetails({ cachedTokens: { min: 1 } });
+      await lab.query({ index: hitIndex ?? 1 }).expect().usageDetails({ cachedTokens: { min: 1 } });
       await lab.cleanup();
     });
 
@@ -784,46 +807,61 @@ describe("OpenAI E2E through llm-test-lab", () => {
       await followUp.cleanup();
     });
 
-    it.fails(
-      "parses cached_tokens from a repeated long prompt — OpenAI Responses returns cached_tokens=0 on the second identical >=1024-token call while Chat Completions in this suite records cached_tokens>0",
-      async () => {
-        // Automatic prefix caching: unique >=1024-token prompt. Only the SECOND call may have cached_tokens > 0.
-        const lab = newLab(proxy);
-        const client = openaiClient(lab);
-        const prompt = longPrompt();
+    it("records cached_tokens from the raw Responses body", async () => {
+      // Stable assertion: recorded cached_tokens on call index 1 equals
+      // usage.input_tokens_details.cached_tokens in the raw upstream body.
+      // A prefix-cache hit is optional. Both calls share prompt_cache_key; the
+      // second call is retried up to 3 times. If none hit, warn/notice and do
+      // not fail — OpenAI Responses often returns cached_tokens=0 here.
+      const lab = newLab(proxy);
+      const client = openaiClient(lab);
+      const prompt = longPrompt();
+      const promptCacheKey = newPromptCacheKey();
+      const responsesQuery = { apiType: "responses" as const };
+      await retryNetwork(() =>
+        client.responses.create({
+          model: TOOL_MODEL,
+          temperature: 0,
+          max_output_tokens: 16,
+          prompt_cache_key: promptCacheKey,
+          input: prompt,
+        }),
+      );
+      let hitIndex: number | undefined;
+      for (let attempt = 0; attempt < CACHE_SECOND_CALL_ATTEMPTS; attempt += 1) {
+        await delay(250 * 2 ** attempt);
         await retryNetwork(() =>
           client.responses.create({
             model: TOOL_MODEL,
             temperature: 0,
             max_output_tokens: 16,
+            prompt_cache_key: promptCacheKey,
             input: prompt,
           }),
         );
-        await delay(1_000);
-        await retryNetwork(() =>
-          client.responses.create({
-            model: TOOL_MODEL,
-            temperature: 0,
-            max_output_tokens: 16,
-            input: prompt,
-          }),
-        );
-        await lab.query({ apiType: "responses" }).expect().callCount(2);
-        await lab
-          .query({ apiType: "responses", index: 0 })
-          .expect()
-          .tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
-        await lab
-          .query({ apiType: "responses", index: 1 })
-          .expect()
-          .tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
-        await expect(
-          lab.query({ apiType: "responses", index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } }),
-        ).rejects.toThrow(/usage details/i);
-        await lab.query({ apiType: "responses", index: 1 }).expect().usageDetails({ cachedTokens: { min: 1 } });
-        await lab.cleanup();
-      },
-    );
+        const index = 1 + attempt;
+        await lab.query({ ...responsesQuery, index }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+        const record = (await lab.query({ ...responsesQuery, index }).wait()).calls[0];
+        expect(record).toBeDefined();
+        if ((recordedCachedTokens(record!) ?? 0) > 0) {
+          hitIndex = index;
+          break;
+        }
+      }
+      const firstRepeat = (await lab.query({ ...responsesQuery, index: 1 }).wait()).calls[0];
+      expect(firstRepeat).toBeDefined();
+      expectCachedTokensMatchRaw(firstRepeat!);
+      await lab.query({ ...responsesQuery, index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+      await expect(
+        lab.query({ ...responsesQuery, index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } }),
+      ).rejects.toThrow(/usage details/i);
+      if (hitIndex !== undefined) {
+        await lab.query({ ...responsesQuery, index: hitIndex }).expect().usageDetails({ cachedTokens: { min: 1 } });
+      } else {
+        noteResponsesCacheMiss();
+      }
+      await lab.cleanup();
+    });
 
     it("isolates concurrent sessions", async () => {
       const labA = newLab(proxy);

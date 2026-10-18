@@ -56,10 +56,12 @@ describe("concurrent Jest processes with the real proxy", () => {
       expect(a.instanceId).toBeDefined();
       expect(b.instanceId).toBeDefined();
       expect(a.instanceId).not.toBe(b.instanceId);
-      expect(a.stateMode).toBe(0o600);
-      expect(b.stateMode).toBe(0o600);
-      expect(a.dirMode).toBe(0o700);
-      expect(b.dirMode).toBe(0o700);
+      if (process.platform !== "win32") {
+        expect(a.stateMode).toBe(0o600);
+        expect(b.stateMode).toBe(0o600);
+        expect(a.dirMode).toBe(0o700);
+        expect(b.dirMode).toBe(0o700);
+      }
 
       expect(await new ControlClient({ controlUrl: a.controlUrl }).health()).toBe("ok");
       expect(await new ControlClient({ controlUrl: b.controlUrl }).health()).toBe("ok");

@@ -144,7 +144,7 @@ See [docs/api.md](docs/api.md) for the full API.
 The included CI workflow expects:
 
 - `LLMTESTLAB_REPO_TOKEN`: a GitHub token that can read the private `barzoj-co/llm-test-lab` repo so CI can run `go build ./cmd/llmtestlab`. Remove this secret/workflow usage once that repo is public.
-- `OPENAI_API_KEY`: required for real OpenAI E2E tests on same-repo PRs and pushes. Fork PRs skip private-binary checkout and this E2E step because secrets are unavailable.
+- `OPENAI_API_KEY`: required for real OpenAI E2E tests on same-repo PRs and pushes. Fork PRs skip private-binary checkout and this E2E step because secrets are unavailable. Prefix-cache hits are required for Chat Completions (up to 3 attempts) and optional for Responses; both always check that recorded `cached_tokens` match the nested value in the raw upstream body. See [docs/api.md](docs/api.md).
 
 ## License
 

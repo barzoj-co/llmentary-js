@@ -59,9 +59,14 @@ describe("Jest state hardening", () => {
       exePath: "/tmp/llmtestlab",
     });
     const written = await writeState(handle, runId);
-    const mode = (await stat(written)).mode & 0o777;
-    expect(mode).toBe(0o600);
-    expect((await stat(dirname(written))).mode & 0o777).toBe(0o700);
+    const fileStat = await stat(written);
+    const dirStat = await stat(dirname(written));
+    expect(fileStat.isFile()).toBe(true);
+    expect(dirStat.isDirectory()).toBe(true);
+    if (process.platform !== "win32") {
+      expect(fileStat.mode & 0o777).toBe(0o600);
+      expect(dirStat.mode & 0o777).toBe(0o700);
+    }
 
     const raw = await readFile(written, "utf8");
     expect(raw).not.toContain("super-secret-control-token");
@@ -141,7 +146,9 @@ describe("Jest state hardening", () => {
         }),
         runId,
       );
-      expect((await stat(statePath)).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect((await stat(statePath)).mode & 0o777).toBe(0o600);
+      }
       const killed = await stopOwnedProxy(await readState());
       expect(killed).toBe(false);
       expect(pidExists(pid)).toBe(true);
@@ -182,8 +189,10 @@ describe("Jest state hardening", () => {
     process.env.LLMTESTLAB_JEST_STATE_FILE = custom;
     process.env.LLMTESTLAB_JEST_RUN_ID = "custom-mode-run";
     await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }), "custom-mode-run");
-    expect((await stat(dir)).mode & 0o777).toBe(0o755);
-    expect((await stat(custom)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(dir)).mode & 0o777).toBe(0o755);
+      expect((await stat(custom)).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("chmod 0600 wins even if the file previously existed world-readable", async () => {
@@ -194,7 +203,9 @@ describe("Jest state hardening", () => {
     await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }), runId);
     await chmod(statePath, 0o644);
     await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }), runId);
-    expect((await stat(statePath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(statePath)).mode & 0o777).toBe(0o600);
+    }
   });
 });
 

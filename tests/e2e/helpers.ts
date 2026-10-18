@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import { expect } from "vitest";
 import OpenAI, { APIError } from "openai";
 import {
   LabAssertionError,
   createLab,
+  type CallRecord,
   type JsonObject,
+  type JsonValue,
   type LlmTestLab,
   type ProxyHandle,
 } from "../../src/index.js";
+import { asObject, numberAt, objectAt, stringAt } from "../../src/normalize.js";
 
 export const TEXT_MODEL = "gpt-4.1-nano";
 export const TOOL_MODEL = "gpt-4.1-mini";
@@ -165,6 +169,71 @@ export function timeToolResponses(): OpenAI.Responses.Tool {
 export function longPrompt(): string {
   const unit = "The quick brown fox jumps over the lazy dog. ";
   return `Cache-key ${randomUUID()}. Repeat this prefix silently and reply with the single word pong.\n${unit.repeat(250)}`;
+}
+
+export const CACHE_SECOND_CALL_ATTEMPTS = 3;
+
+export function newPromptCacheKey(): string {
+  return `ltl-js-2-${randomUUID()}`;
+}
+
+/** Normalized `cached_tokens` the proxy recorded on the call. */
+export function recordedCachedTokens(record: CallRecord): number | undefined {
+  const usage = asObject(record.usage);
+  return (
+    numberAt(usage, "cached_tokens") ??
+    numberAt(objectAt(usage, "input_tokens_details"), "cached_tokens") ??
+    numberAt(objectAt(usage, "prompt_tokens_details"), "cached_tokens")
+  );
+}
+
+/**
+ * Nested cached_tokens from the raw upstream JSON body
+ * (`usage.input_tokens_details.cached_tokens`, falling back to Chat Completions
+ * `usage.prompt_tokens_details.cached_tokens`).
+ */
+export function rawUpstreamCachedTokens(record: CallRecord): number | undefined {
+  const usage = objectAt(asObject(decodeRawResponse(record)), "usage");
+  return (
+    numberAt(objectAt(usage, "input_tokens_details"), "cached_tokens") ??
+    numberAt(objectAt(usage, "prompt_tokens_details"), "cached_tokens")
+  );
+}
+
+/** Proxy recorded cached_tokens must equal the nested value in the raw upstream body. */
+export function expectCachedTokensMatchRaw(record: CallRecord): void {
+  expect(recordedCachedTokens(record)).toBe(rawUpstreamCachedTokens(record));
+}
+
+export function noteResponsesCacheMiss(): void {
+  const message =
+    "OpenAI Responses returned no cache hit after 3 attempts with a stable prompt_cache_key; proxy faithfulness is still asserted against usage.input_tokens_details.cached_tokens in the raw upstream body.";
+  console.warn(message);
+  console.log(`::notice::${message}`);
+}
+
+function decodeRawResponse(record: CallRecord): JsonValue | undefined {
+  const encoded = stringAt(asObject(record.raw), "raw_response");
+  if (!encoded) return undefined;
+  const trimmed = encoded.trim();
+  const candidates = [trimmed];
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[") && !trimmed.startsWith("data:")) {
+    try {
+      candidates.push(Buffer.from(trimmed, "base64").toString("utf8"));
+    } catch {
+      // Keep the original payload.
+    }
+  }
+  for (const candidate of candidates) {
+    const text = candidate.trim();
+    if (!text.startsWith("{") && !text.startsWith("[")) continue;
+    try {
+      return JSON.parse(text) as JsonValue;
+    } catch {
+      // Try the next encoding.
+    }
+  }
+  return undefined;
 }
 
 export function chatFunctionCall(

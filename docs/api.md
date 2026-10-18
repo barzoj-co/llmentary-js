@@ -81,6 +81,8 @@ lab.query({ index: 1 }).expect();
 
 Other strings are accepted for passthrough/future API types. `index` is 0-based into the filtered call list (use it to assert on the second cached-token call rather than `some()` over the session).
 
+OpenAI prefix caching is not guaranteed even for identical ≥1024-token prompts. The e2e suite therefore always asserts that the proxy’s recorded `cached_tokens` on call index 1 equals `usage.input_tokens_details.cached_tokens` (Chat Completions: `usage.prompt_tokens_details.cached_tokens`) in the raw upstream body. Chat Completions still requires a cache hit on a later call (up to 3 attempts). Responses retries the second call up to 3 times with a stable `prompt_cache_key`; if OpenAI returns no hit, the suite logs a warning / GitHub `::notice::` and does not fail.
+
 ## Assertions
 
 All assertion methods wait for quiescence through `/sessions/{id}/wait` before evaluating.
