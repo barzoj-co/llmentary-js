@@ -100,7 +100,7 @@
     "test:proxy": "vitest run tests/proxy-real-binary.test.ts",
     "test:jest": "npm run test:jest:unit && npm run test:jest:proxy",
     "test:jest:unit": "npm run build && npx --yes jest@30.5.2 --config jest.config.cjs tests/jest/cjs-export.test.cjs",
-    "test:jest:proxy": "npm run build && npx --yes jest@30.5.2 --config jest.config.cjs tests/jest/proxy-real-binary.test.cjs && vitest run tests/jest-concurrent-proxy.test.ts",
+    "test:jest:proxy": "npm run build && npx --yes jest@30.5.2 --config jest.config.cjs tests/jest/proxy-real-binary.test.cjs && vitest run --config vitest.concurrent.config.ts",
     "attw": "attw --pack .",
     "test:pack": "node scripts/check-pack-consumers.mjs",
     "test:e2e:openai": "vitest run --config vitest.e2e.config.ts",

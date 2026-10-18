@@ -146,6 +146,20 @@ describe("normalizeCallRecord Go control schema", () => {
     expect(record.httpStatus).toBe(400);
     expect(record.usage).toMatchObject({ cached_tokens: 6, reasoning_tokens: 2, total_tokens: 14 });
   });
+
+  it("prefers nested usage details over a top-level zero", () => {
+    const record = normalizeCallRecord({
+      api_family: "openai.responses",
+      usage: {
+        cached_tokens: 0,
+        reasoning_tokens: 0,
+        input_tokens_details: { cached_tokens: 1100 },
+        output_tokens_details: { reasoning_tokens: 40 },
+        total_tokens: 1200,
+      },
+    });
+    expect(record.usage).toMatchObject({ cached_tokens: 1100, reasoning_tokens: 40, total_tokens: 1200 });
+  });
 });
 
 describe("normalizeSessionTrace", () => {

@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
 import { ControlClient, LabAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
@@ -770,15 +771,16 @@ describe("OpenAI E2E through llm-test-lab", () => {
           model: TOOL_MODEL,
           temperature: 0,
           max_output_tokens: 16,
-          input: prompt,
+          input: [{ type: "message", role: "user", content: prompt }],
         }),
       );
+      await delay(1_000);
       await retryNetwork(() =>
         client.responses.create({
           model: TOOL_MODEL,
           temperature: 0,
           max_output_tokens: 16,
-          input: prompt,
+          input: [{ type: "message", role: "user", content: prompt }],
         }),
       );
       await lab.query({ apiType: "responses" }).expect().callCount(2);
@@ -895,9 +897,10 @@ describe("OpenAI E2E through llm-test-lab", () => {
       await retryNetwork(() =>
         openaiClient(lab).responses.create({
           model: REASONING_MODEL,
-          max_output_tokens: 128,
-          reasoning: { effort: "low" },
-          input: "Add 17 and 25. Reply with only the integer result.",
+          max_output_tokens: 256,
+          reasoning: { effort: "medium" },
+          input:
+            "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How many cents does the ball cost? Reply with only the integer.",
         }),
       );
       await lab.expect().model(REASONING_MODEL);

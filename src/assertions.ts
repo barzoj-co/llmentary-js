@@ -3,6 +3,7 @@ import { ControlClient } from "./control.js";
 import {
   asArray,
   asObject,
+  firstPositiveOrDefined,
   numberAt,
   objectAt,
   stringAt,
@@ -875,14 +876,20 @@ function assembledToolArgDeltas(record: CallRecord): Array<[string, string]> {
 
 function usageDetailsForRecord(record: CallRecord): { cachedTokens?: number; reasoningTokens?: number } {
   const usage = record.usage ?? objectAt(asObject(record.response), "usage") ?? {};
-  const cachedTokens =
-    numberAt(usage, "cached_tokens") ??
-    numberAt(objectAt(usage, "prompt_tokens_details"), "cached_tokens") ??
-    numberAt(objectAt(usage, "input_tokens_details"), "cached_tokens");
-  const reasoningTokens =
-    numberAt(usage, "reasoning_tokens") ??
-    numberAt(objectAt(usage, "completion_tokens_details"), "reasoning_tokens") ??
-    numberAt(objectAt(usage, "output_tokens_details"), "reasoning_tokens");
+  const cachedTokens = firstPositiveOrDefined(
+    numberAt(objectAt(usage, "input_tokens_details"), "cached_tokens"),
+    numberAt(objectAt(usage, "prompt_tokens_details"), "cached_tokens"),
+    numberAt(objectAt(usage, "inputTokensDetails"), "cached_tokens"),
+    numberAt(objectAt(usage, "promptTokensDetails"), "cached_tokens"),
+    numberAt(usage, "cached_tokens"),
+  );
+  const reasoningTokens = firstPositiveOrDefined(
+    numberAt(objectAt(usage, "output_tokens_details"), "reasoning_tokens"),
+    numberAt(objectAt(usage, "completion_tokens_details"), "reasoning_tokens"),
+    numberAt(objectAt(usage, "outputTokensDetails"), "reasoning_tokens"),
+    numberAt(objectAt(usage, "completionTokensDetails"), "reasoning_tokens"),
+    numberAt(usage, "reasoning_tokens"),
+  );
   return {
     ...(cachedTokens !== undefined ? { cachedTokens } : {}),
     ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),

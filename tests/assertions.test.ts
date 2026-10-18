@@ -393,6 +393,26 @@ describe("AssertionScope", () => {
     await expect(scopeFor(trace, { index: 1 }).usageDetails({ cachedTokens: { min: 1 } })).resolves.toMatchObject({ pass: true });
     expect(recordsForTrace(trace, { index: 1 })).toHaveLength(1);
   });
+
+  it("reads nested usage details even when the top-level count is zero", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "responses",
+          usage: {
+            cached_tokens: 0,
+            reasoning_tokens: 0,
+            input_tokens_details: { cached_tokens: 2048 },
+            output_tokens_details: { reasoning_tokens: 12 },
+          },
+        },
+      ],
+    });
+    await expect(scopeFor(trace).usageDetails({ cachedTokens: { min: 1 }, reasoningTokens: { min: 1 } })).resolves.toMatchObject({
+      pass: true,
+    });
+  });
 });
 
 function scopeFor(trace: SessionTrace, query?: QueryOptions): AssertionScope {

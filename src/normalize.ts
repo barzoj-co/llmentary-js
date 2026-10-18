@@ -248,17 +248,27 @@ function enrichUsageDetails(
   const base = usage ?? fromResponse;
   if (!base && !fromResponse) return usage;
   const merged: JsonObject = { ...(fromResponse ?? {}), ...(base ?? {}) };
-  const cached =
-    numberAt(merged, "cached_tokens") ??
-    numberAt(objectAt(merged, "prompt_tokens_details"), "cached_tokens") ??
-    numberAt(objectAt(merged, "input_tokens_details"), "cached_tokens") ??
-    numberAt(objectAt(merged, "promptTokensDetails"), "cached_tokens");
-  const reasoning =
-    numberAt(merged, "reasoning_tokens") ??
-    numberAt(objectAt(merged, "completion_tokens_details"), "reasoning_tokens") ??
-    numberAt(objectAt(merged, "output_tokens_details"), "reasoning_tokens") ??
-    numberAt(objectAt(merged, "completionTokensDetails"), "reasoning_tokens");
-  if (cached !== undefined && merged.cached_tokens === undefined) merged.cached_tokens = cached;
-  if (reasoning !== undefined && merged.reasoning_tokens === undefined) merged.reasoning_tokens = reasoning;
+  const cached = firstPositiveOrDefined(
+    numberAt(objectAt(merged, "input_tokens_details"), "cached_tokens"),
+    numberAt(objectAt(merged, "prompt_tokens_details"), "cached_tokens"),
+    numberAt(objectAt(merged, "promptTokensDetails"), "cached_tokens"),
+    numberAt(objectAt(merged, "inputTokensDetails"), "cached_tokens"),
+    numberAt(merged, "cached_tokens"),
+  );
+  const reasoning = firstPositiveOrDefined(
+    numberAt(objectAt(merged, "output_tokens_details"), "reasoning_tokens"),
+    numberAt(objectAt(merged, "completion_tokens_details"), "reasoning_tokens"),
+    numberAt(objectAt(merged, "completionTokensDetails"), "reasoning_tokens"),
+    numberAt(objectAt(merged, "outputTokensDetails"), "reasoning_tokens"),
+    numberAt(merged, "reasoning_tokens"),
+  );
+  if (cached !== undefined) merged.cached_tokens = cached;
+  if (reasoning !== undefined) merged.reasoning_tokens = reasoning;
   return Object.keys(merged).length > 0 ? merged : usage;
+}
+
+/** Prefer a nested >0 detail over a top-level 0 that would otherwise shadow it via `??`. */
+export function firstPositiveOrDefined(...values: Array<number | undefined>): number | undefined {
+  const defined = values.filter((value): value is number => value !== undefined);
+  return defined.find((value) => value > 0) ?? defined[0];
 }
