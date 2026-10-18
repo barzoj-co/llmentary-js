@@ -107,6 +107,18 @@ await lab.expect().midStreamError();
 await lab.expect().promptContains("weather");
 await lab.expect().responseContains(/rain|sun/i);
 await lab.expect().responseJsonValid({ schema: { type: "object" } });
+await lab.expect().callCount(2);
+await lab.expect().streamed(true);
+await lab.expect().outputText();
+await lab.expect().outputMatchesDeltas();
+await lab.expect().streamedToolArgsJson("lookup_weather");
+await lab.expect().outputJsonValid({ type: "object", required: ["city"] });
+await lab.expect().usageDetails({ cachedTokens: { min: 0 }, reasoningTokens: { min: 0 } });
+await lab.expect().errorStatus(400);
+await lab.expect().errorType(/invalid_request/i);
+await lab.expect().errorCode(/model/i);
+await lab.expect().incomplete();
+await lab.expect().rawRecorded();
 ```
 
 Failures throw `LabAssertionError`; its message appends the proxy trace summary when present, or a generated summary with call count, API type, model, tools, finish reasons, and error markers.
@@ -165,7 +177,7 @@ module.exports = {
 };
 ```
 
-Jest global setup persists proxy state in `.llm-test-lab/jest-state.json` so setup files and global teardown can share the proxy URL/PID.
+Jest `globalSetup` runs in a separate process, so workers cannot inherit its environment. The client writes a unique per-run state file under `os.tmpdir()/llm-test-lab/jest/<runId>/state.json` with mode `0600` (owner-only) and a pointer at `.llm-test-lab/jest-runs/<jestMainPid>` that contains only the run id. Control tokens are never written to disk. Concurrent Jest runs in the same directory get different run ids and must not attach to or kill each other's proxy. Teardown sends SIGTERM/SIGKILL only after verifying process identity (`LLMTESTLAB_INSTANCE_ID` in the child environment, falling back to the executable path), so a recycled PID is left alone.
 
 ## Control API client
 

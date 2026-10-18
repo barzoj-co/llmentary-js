@@ -104,7 +104,8 @@ jobs:
 
       - name: OpenAI E2E
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        run: npm run test:e2e:openai
+        run: |
+          npm run test:e2e:openai
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: https://api.openai.com/v1

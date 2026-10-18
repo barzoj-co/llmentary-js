@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { resolveBinary } from "./binary.js";
@@ -143,6 +144,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     env: { ...process.env, ...options.env },
   });
 
+  const instanceId = randomUUID();
   const env = {
     ...process.env,
     ...options.env,
@@ -151,6 +153,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     LLMTESTLAB_PROXY_URL: proxyUrl,
     LLMTESTLAB_CONTROL_URL: controlUrl,
     LLMTESTLAB_UPSTREAM_NAME: upstreamName,
+    LLMTESTLAB_INSTANCE_ID: instanceId,
     ...(upstreamSpec ? { LLMTESTLAB_UPSTREAMS: upstreamSpec } : {}),
     ...(bearerToken
       ? { LLMTESTLAB_BEARER_TOKEN: bearerToken, LLMTESTLAB_CONTROL_TOKEN: bearerToken }
@@ -181,6 +184,8 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
         controlUrl,
         ...(bearerToken ? { bearerToken } : {}),
         ...(child.pid ? { pid: child.pid } : {}),
+        instanceId,
+        exePath: binaryPath,
         async stop() {
           await stopChild(child);
         },

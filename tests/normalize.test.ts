@@ -117,6 +117,35 @@ describe("normalizeCallRecord Go control schema", () => {
 
     expect(record.error).toMatchObject({ message: "boom mid-stream", mid_stream: true });
   });
+
+  it("marks streamed requests and flattens cached/reasoning token details", () => {
+    const record = normalizeCallRecord({
+      api_family: "openai.chat",
+      status: 400,
+      request: { headers: { Connection: ["keep-alive"] } },
+      response: { headers: { "Keep-Alive": ["timeout=5"] } },
+      raw_request: Buffer.from(JSON.stringify({ model: "gpt-4.1-mini", stream: true })).toString("base64"),
+      raw_response: Buffer.from(
+        JSON.stringify({
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 4,
+            total_tokens: 14,
+            prompt_tokens_details: { cached_tokens: 6 },
+            completion_tokens_details: { reasoning_tokens: 2 },
+          },
+        }),
+      ).toString("base64"),
+      normalized: {
+        error: { message: "nope", type: "invalid_request_error", code: "model_not_found", http_status: 400 },
+        usage: { input_tokens: 10, output_tokens: 4, total_tokens: 14 },
+      },
+    });
+
+    expect(record.streamed).toBe(true);
+    expect(record.httpStatus).toBe(400);
+    expect(record.usage).toMatchObject({ cached_tokens: 6, reasoning_tokens: 2, total_tokens: 14 });
+  });
 });
 
 describe("normalizeSessionTrace", () => {
