@@ -24,7 +24,7 @@ check_ref() {
   fi
   short="$(git rev-parse --short "$commit")"
 
-  if git merge-base --is-ancestor "$commit" origin/main; then
+  if git merge-base --is-ancestor "$commit" refs/remotes/origin/main; then
     echo "$commit"
     return 0
   fi
@@ -105,6 +105,9 @@ self_test() {
   run_in_work "main tip" 0 "" HEAD
   run_in_work "annotated tag on a main commit" 0 "" annotated-main
   run_in_work "lightweight tag on an unmerged side-branch commit" 1 "is not on main; refusing to release" lightweight-side
+  git -C "$work" tag origin/main lightweight-side
+  run_in_work "origin/main tag collision" 1 "is not on main; refusing to release" lightweight-side
+  git -C "$work" tag -d origin/main >/dev/null
   run_in_work "commit only on a deleted branch" 1 "is not on main; refusing to release" "$doomed"
 
   git -C "$work" update-ref -d refs/remotes/origin/main
