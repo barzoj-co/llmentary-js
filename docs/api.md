@@ -48,14 +48,20 @@ try {
 }
 ```
 
-`startProxy()` attaches when `LLMTESTLAB_PROXY_URL` is set. Otherwise it resolves a binary from:
+`startProxy()` attaches when `LLMTESTLAB_PROXY_URL` is set (`LLMTESTLAB_CONTROL_URL` for the separate control port). Otherwise it resolves a binary from:
 
 1. `LLMTESTLAB_BIN`
 2. optional dependency `@llm-test-lab/<os>-<cpu>`
 3. `PATH`
 4. cache
 
-There is no install-time or runtime GitHub download. If the Go binary uses different flags, pass `args` or set `LLMTESTLAB_PROXY_START_ARGS`. The default launcher probes `--help` and then tries common forms (`serve --listen`, `--listen`, `--addr`, `serve --proxy-addr`) and always health-checks `/healthz`.
+There is no install-time or runtime GitHub download. The Go proxy CLI is:
+
+```
+llmtestlab -listen 127.0.0.1:7777 -control 127.0.0.1:7778 -upstream openai=https://api.openai.com/v1
+```
+
+Equivalent env: `LLMTESTLAB_LISTEN`, `LLMTESTLAB_CONTROL_LISTEN`, `LLMTESTLAB_UPSTREAMS`, optional `LLMTESTLAB_CONTROL_TOKEN`. `/healthz` is on the control listener, not the proxy listener. OpenAI-compatible clients use `${proxyUrl}/v1`. Override with `args` or `LLMTESTLAB_PROXY_START_ARGS` if needed.
 
 ## Queries
 

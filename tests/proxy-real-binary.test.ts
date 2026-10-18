@@ -115,11 +115,12 @@ describe("real Go proxy with fake upstream", () => {
 
 async function startFakeUpstream(): Promise<{ url: string; stop(): Promise<void> }> {
   const server = createServer(async (request, response) => {
-    if (request.url === "/v1/chat/completions" || request.url === "/chat/completions") {
+    const url = request.url ?? "";
+    if (url.includes("chat/completions")) {
       await handleChat(request, response);
       return;
     }
-    if (request.url === "/v1/responses" || request.url === "/responses") {
+    if (url.includes("responses")) {
       await handleResponses(request, response);
       return;
     }

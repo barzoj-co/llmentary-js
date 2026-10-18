@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { assetNameCandidates, nativePackageName, parseChecksumFile, resolveBinary } from "../src/binary.js";
+import { formatUpstreamSpec, redactArgs } from "../src/proxy.js";
 
 describe("binary release asset matching", () => {
   it("matches GoReleaser-style Linux x64 tarballs", () => {
@@ -54,5 +55,24 @@ describe("resolveBinary LLMTESTLAB_BIN override", () => {
   it("throws when LLMTESTLAB_BIN is set but missing", async () => {
     process.env.LLMTESTLAB_BIN = join(tmpdir(), "missing-llmtestlab-binary");
     await expect(resolveBinary()).rejects.toThrow(/LLMTESTLAB_BIN/);
+  });
+});
+
+describe("proxy CLI helpers", () => {
+  it("formats named upstream specs", () => {
+    expect(formatUpstreamSpec("openai", "https://api.openai.com/v1")).toBe("openai=https://api.openai.com/v1");
+    expect(formatUpstreamSpec("openai", "openai=http://127.0.0.1:9/v1")).toBe("openai=http://127.0.0.1:9/v1");
+    expect(() => formatUpstreamSpec("openai;rm", "http://127.0.0.1")).toThrow(/Invalid upstream name/);
+  });
+
+  it("redacts control tokens from logged args", () => {
+    expect(redactArgs(["-listen", ":7777", "-control-token", "secret", "-upstream", "openai=http://x"])).toEqual([
+      "-listen",
+      ":7777",
+      "-control-token",
+      "***",
+      "-upstream",
+      "openai=http://x",
+    ]);
   });
 });

@@ -98,7 +98,7 @@ Resolution order:
 
 This package never downloads binaries during `npm install` or at runtime. CI builds the proxy from `barzoj-co/llm-test-lab` source. The release workflow copies GoReleaser artifacts into the optional packages after verifying `checksums.txt` SHA-256.
 
-Use `LLMTESTLAB_PROXY_URL` to attach to an already-running proxy instead of starting a process.
+Use `LLMTESTLAB_PROXY_URL` (and `LLMTESTLAB_CONTROL_URL` — control listens on a separate port) to attach to an already-running proxy instead of starting a process. When this client starts the binary it passes `-listen`, `-control`, and `-upstream name=url`.
 
 ## Release / trusted publishing
 

@@ -29,6 +29,8 @@ export interface ProxyLaunchOptions {
   bearerToken?: string;
   binaryPath?: string;
   upstreamBaseUrl?: string;
+  upstreamName?: string;
+  upstreams?: string;
   host?: string;
   port?: number;
   controlPort?: number;
