@@ -247,6 +247,172 @@ describe("AssertionScope", () => {
     expect(recordsForTrace(trace, { model: "gpt-4.1-mini" })).toHaveLength(1);
     expect(recordsForTrace(trace, { model: "gpt-4.1" })).toHaveLength(0);
   });
+
+  it("counts calls, marks streams, and compares concatenated deltas", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "chat_completions",
+          request: { model: "gpt-4.1-nano", stream: true },
+          raw_response: Buffer.from(
+            [
+              'data: {"choices":[{"delta":{"content":"hel"}}]}',
+              'data: {"choices":[{"delta":{"content":"lo"}}]}',
+              "data: [DONE]",
+              "",
+            ].join("\n\n"),
+          ).toString("base64"),
+          normalized: { output_text: "hello", finish_reason: "stop", usage: { total_tokens: 4 } },
+        },
+      ],
+    });
+    const scope = scopeFor(trace);
+    await expect(scope.callCount(1)).resolves.toMatchObject({ pass: true });
+    await expect(scope.streamed(true)).resolves.toMatchObject({ pass: true });
+    await expect(scope.outputText("hello")).resolves.toMatchObject({ pass: true });
+    await expect(scope.outputMatchesDeltas()).resolves.toMatchObject({ pass: true });
+    await expect(scope.soft().callCount(2)).resolves.toMatchObject({ pass: false });
+    expect((await scope.soft().callCount(2)).message).toMatch(/got 1/);
+  });
+
+  it("parses usage details, error fields, incomplete traces, and raw recording", async () => {
+    const ok = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_family: "openai.chat",
+          raw_request: Buffer.from(JSON.stringify({ model: "gpt-4.1-mini" })).toString("base64"),
+          raw_response: Buffer.from(
+            JSON.stringify({
+              usage: {
+                prompt_tokens: 20,
+                completion_tokens: 5,
+                total_tokens: 25,
+                prompt_tokens_details: { cached_tokens: 8 },
+                completion_tokens_details: { reasoning_tokens: 3 },
+              },
+            }),
+          ).toString("base64"),
+          normalized: {
+            usage: {
+              input_tokens: 20,
+              output_tokens: 5,
+              total_tokens: 25,
+              prompt_tokens_details: { cached_tokens: 8 },
+              completion_tokens_details: { reasoning_tokens: 3 },
+            },
+          },
+        },
+      ],
+    });
+    await expect(scopeFor(ok).usageDetails({ cachedTokens: { min: 1 }, reasoningTokens: { min: 1 } })).resolves.toMatchObject({
+      pass: true,
+    });
+    await expect(scopeFor(ok).rawRecorded()).resolves.toMatchObject({ pass: true });
+
+    const errored = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_family: "openai.chat",
+          status: 400,
+          error: { message: "nope", type: "invalid_request_error", code: "model_not_found", http_status: 400 },
+        },
+      ],
+    });
+    await expect(scopeFor(errored).errorStatus(400)).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(errored).errorType("invalid_request_error")).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(errored).errorCode("model_not_found")).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(errored).incomplete()).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(errored).soft().errorStatus(500)).resolves.toMatchObject({ pass: false });
+  });
+
+  it("assembles streamed tool-call argument deltas as JSON", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "chat_completions",
+          request: { stream: true },
+          raw_response: Buffer.from(
+            [
+              'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"lookup_weather","arguments":"{\\"ci"}}]}}]}',
+              'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ty\\":\\"Oslo\\"}"}}]}}]}',
+              "data: [DONE]",
+              "",
+            ].join("\n\n"),
+          ).toString("base64"),
+        },
+      ],
+    });
+    await expect(scopeFor(trace).streamedToolArgsJson("lookup_weather")).resolves.toMatchObject({ pass: true });
+  });
+
+  it("correlates Responses argument deltas by output index, not tool name", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "responses",
+          request: { stream: true },
+          raw_response: Buffer.from(
+            [
+              'data: {"type":"response.output_item.added","output_index":0,"item":{"id":"fc_1","type":"function_call","name":"lookup_weather","call_id":"call_1"}}',
+              'data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","delta":"{\\"city\\":\\""}',
+              'data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","delta":"Oslo\\"}"}',
+              'data: {"type":"response.output_item.added","output_index":1,"item":{"id":"fc_2","type":"function_call","name":"lookup_weather","call_id":"call_2"}}',
+              'data: {"type":"response.function_call_arguments.delta","output_index":1,"item_id":"fc_2","delta":"{\\"city\\":\\"Bergen\\"}"}',
+              "",
+            ].join("\n\n"),
+          ).toString("base64"),
+        },
+      ],
+    });
+    await expect(scopeFor(trace).streamedToolArgsJson("lookup_weather")).resolves.toMatchObject({ pass: true });
+  });
+
+  it("scopes usage details to a single call by index", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "chat_completions",
+          usage: { prompt_tokens: 1200, total_tokens: 1210, prompt_tokens_details: { cached_tokens: 0 } },
+        },
+        {
+          api_type: "chat_completions",
+          usage: { prompt_tokens: 1200, total_tokens: 1210, prompt_tokens_details: { cached_tokens: 1100 } },
+        },
+      ],
+    });
+    await expect(scopeFor(trace).soft().usageDetails({ cachedTokens: { min: 1 } })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace, { index: 0 }).soft().usageDetails({ cachedTokens: { min: 1 } })).resolves.toMatchObject({
+      pass: false,
+    });
+    await expect(scopeFor(trace, { index: 1 }).usageDetails({ cachedTokens: { min: 1 } })).resolves.toMatchObject({ pass: true });
+    expect(recordsForTrace(trace, { index: 1 })).toHaveLength(1);
+  });
+
+  it("reads nested usage details even when the top-level count is zero", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "responses",
+          usage: {
+            cached_tokens: 0,
+            reasoning_tokens: 0,
+            input_tokens_details: { cached_tokens: 2048 },
+            output_tokens_details: { reasoning_tokens: 12 },
+          },
+        },
+      ],
+    });
+    await expect(scopeFor(trace).usageDetails({ cachedTokens: { min: 1 }, reasoningTokens: { min: 1 } })).resolves.toMatchObject({
+      pass: true,
+    });
+  });
 });
 
 function scopeFor(trace: SessionTrace, query?: QueryOptions): AssertionScope {

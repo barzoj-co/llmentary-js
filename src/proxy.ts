@@ -1,9 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { resolveBinary } from "./binary.js";
 import { ControlClient } from "./control.js";
 import { firstNonEmpty } from "./env.js";
+import { forgetSpawnedProcess, rememberSpawnedProcess } from "./process.js";
 import type { ProxyHandle, ProxyLaunchOptions } from "./types.js";
 
 export { firstNonEmpty } from "./env.js";
@@ -143,6 +145,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     env: { ...process.env, ...options.env },
   });
 
+  const instanceId = randomUUID();
   const env = {
     ...process.env,
     ...options.env,
@@ -151,6 +154,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     LLMTESTLAB_PROXY_URL: proxyUrl,
     LLMTESTLAB_CONTROL_URL: controlUrl,
     LLMTESTLAB_UPSTREAM_NAME: upstreamName,
+    LLMTESTLAB_INSTANCE_ID: instanceId,
     ...(upstreamSpec ? { LLMTESTLAB_UPSTREAMS: upstreamSpec } : {}),
     ...(bearerToken
       ? { LLMTESTLAB_BEARER_TOKEN: bearerToken, LLMTESTLAB_CONTROL_TOKEN: bearerToken }
@@ -174,6 +178,14 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
       logs.push(line);
       options.log?.(line);
     });
+    if (child.pid) {
+      rememberSpawnedProcess({
+        pid: child.pid,
+        instanceId,
+        exePath: binaryPath,
+        startedAtMs: Date.now(),
+      });
+    }
     try {
       await waitForHealth(controlUrl, bearerToken, options.healthTimeoutMs, child, logs);
       return {
@@ -181,8 +193,11 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
         controlUrl,
         ...(bearerToken ? { bearerToken } : {}),
         ...(child.pid ? { pid: child.pid } : {}),
+        instanceId,
+        exePath: binaryPath,
         async stop() {
           await stopChild(child);
+          if (child.pid) forgetSpawnedProcess(child.pid);
         },
       };
     } catch (error) {
@@ -194,6 +209,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
         ),
       );
       await stopChild(child);
+      if (child.pid) forgetSpawnedProcess(child.pid);
     }
   }
   throw new Error(

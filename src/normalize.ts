@@ -61,6 +61,9 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
   const retries = numberAt(object, "retries") ?? numberAt(metadata, "retries");
   const startedAt = stringAt(object, "started_at") ?? stringAt(object, "startedAt");
   const finishedAt = stringAt(object, "ended_at") ?? stringAt(object, "finished_at") ?? stringAt(object, "finishedAt");
+  const streamed = inferStreamed(request, normalized, object);
+  const httpStatus = inferHttpStatus(object, error, metadata);
+  const usageWithDetails = enrichUsageDetails(usage, response, decodedResponse);
   return {
     raw,
     ...(id ? { id } : {}),
@@ -70,12 +73,14 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     ...(response !== undefined ? { response } : {}),
     ...(error !== undefined ? { error } : {}),
     ...(metadata ? { metadata } : {}),
-    ...(usage ? { usage } : {}),
+    ...(usageWithDetails ? { usage: usageWithDetails } : {}),
     ...(latencyMs !== undefined ? { latencyMs } : {}),
     ...(ttftMs !== undefined ? { ttftMs } : {}),
     ...(retries !== undefined ? { retries } : {}),
     ...(startedAt ? { startedAt } : {}),
     ...(finishedAt ? { finishedAt } : {}),
+    ...(streamed !== undefined ? { streamed } : {}),
+    ...(httpStatus !== undefined ? { httpStatus } : {}),
   };
 }
 
@@ -200,4 +205,70 @@ function decodeMaybeBase64(value: string): string {
   } catch {
     return trimmed;
   }
+}
+
+function inferStreamed(
+  request: JsonValue | undefined,
+  normalized: JsonObject | undefined,
+  object: JsonObject,
+): boolean | undefined {
+  if (valueAt(asObject(request), "stream") === true || valueAt(object, "stream") === true) return true;
+  if (valueAt(normalized, "streamed") === true || valueAt(object, "streamed") === true) return true;
+  if (valueAt(asObject(request), "stream") === false) return false;
+  if (valueAt(normalized, "streamed") === false || valueAt(object, "streamed") === false) return false;
+  return undefined;
+}
+
+function inferHttpStatus(
+  object: JsonObject,
+  error: JsonValue | undefined,
+  metadata: JsonObject | undefined,
+): number | undefined {
+  const errorObject = asObject(error);
+  const nestedError = objectAt(errorObject, "error") ?? asObject(valueAt(asObject(objectAt(object, "response")), "error"));
+  return (
+    numberAt(object, "status") ??
+    numberAt(object, "status_code") ??
+    numberAt(object, "http_status") ??
+    numberAt(errorObject, "status") ??
+    numberAt(errorObject, "http_status") ??
+    numberAt(nestedError, "status") ??
+    numberAt(nestedError, "http_status") ??
+    numberAt(metadata, "status") ??
+    numberAt(metadata, "http_status")
+  );
+}
+
+function enrichUsageDetails(
+  usage: JsonObject | undefined,
+  response: JsonValue | undefined,
+  decodedResponse: JsonValue | undefined,
+): JsonObject | undefined {
+  const fromResponse = objectAt(asObject(response), "usage") ?? objectAt(asObject(decodedResponse), "usage");
+  const base = usage ?? fromResponse;
+  if (!base && !fromResponse) return usage;
+  const merged: JsonObject = { ...(fromResponse ?? {}), ...(base ?? {}) };
+  const cached = firstPositiveOrDefined(
+    numberAt(objectAt(merged, "input_tokens_details"), "cached_tokens"),
+    numberAt(objectAt(merged, "prompt_tokens_details"), "cached_tokens"),
+    numberAt(objectAt(merged, "promptTokensDetails"), "cached_tokens"),
+    numberAt(objectAt(merged, "inputTokensDetails"), "cached_tokens"),
+    numberAt(merged, "cached_tokens"),
+  );
+  const reasoning = firstPositiveOrDefined(
+    numberAt(objectAt(merged, "output_tokens_details"), "reasoning_tokens"),
+    numberAt(objectAt(merged, "completion_tokens_details"), "reasoning_tokens"),
+    numberAt(objectAt(merged, "completionTokensDetails"), "reasoning_tokens"),
+    numberAt(objectAt(merged, "outputTokensDetails"), "reasoning_tokens"),
+    numberAt(merged, "reasoning_tokens"),
+  );
+  if (cached !== undefined) merged.cached_tokens = cached;
+  if (reasoning !== undefined) merged.reasoning_tokens = reasoning;
+  return Object.keys(merged).length > 0 ? merged : usage;
+}
+
+/** Prefer a nested >0 detail over a top-level 0 that would otherwise shadow it via `??`. */
+export function firstPositiveOrDefined(...values: Array<number | undefined>): number | undefined {
+  const defined = values.filter((value): value is number => value !== undefined);
+  return defined.find((value) => value > 0) ?? defined[0];
 }

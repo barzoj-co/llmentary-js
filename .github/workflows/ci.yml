@@ -92,23 +92,102 @@ jobs:
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: npm run test:proxy && npm run test:jest:proxy
 
+      - name: Skip private-binary tests for fork PR
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: echo "Skipping private-binary tests on fork PR because secrets are unavailable."
+
+  e2e-openai:
+    name: OpenAI E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    steps:
+      - name: Checkout client
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Require LLMTESTLAB_REPO_TOKEN
+        env:
+          LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+        run: |
+          if [ -z "$LLMTESTLAB_REPO_TOKEN" ]; then
+            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llm-test-lab repository so CI can build the Go proxy binary."
+            exit 1
+          fi
+
+      # TODO: remove once llm-test-lab is public
+      - name: Checkout llm-test-lab proxy
+        uses: actions/checkout@v5
+        with:
+          repository: barzoj-co/llm-test-lab
+          # TODO: remove once llm-test-lab is public
+          token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          path: .cache/llm-test-lab-go
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache-dependency-path: .cache/llm-test-lab-go/go.sum
+
+      - name: Build proxy binary
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.bin"
+          go build -o "$GITHUB_WORKSPACE/.bin/llmtestlab" ./cmd/llmtestlab
+          test -x "$GITHUB_WORKSPACE/.bin/llmtestlab"
+          echo "LLMTESTLAB_BIN=$GITHUB_WORKSPACE/.bin/llmtestlab" >> "$GITHUB_ENV"
+        working-directory: .cache/llm-test-lab-go
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Require OPENAI_API_KEY
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
-            echo "::error::Missing required secret OPENAI_API_KEY for real OpenAI E2E tests. Fork PRs skip this step; same-repo PRs and pushes must provide it."
+            echo "::error::Missing required secret OPENAI_API_KEY for real OpenAI E2E tests."
             exit 1
           fi
 
       - name: OpenAI E2E
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: npm run test:e2e:openai
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: https://api.openai.com/v1
 
-      - name: Skip private-binary tests for fork PR
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: echo "Skipping private-binary and OpenAI E2E steps on fork PR because secrets are unavailable."
+  pack:
+    name: Pack consumers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout client
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Are the types wrong
+        run: npm run attw
+
+      - name: Install packed tarball into JS and TS consumers
+        run: npm run test:pack

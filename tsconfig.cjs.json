@@ -6,8 +6,8 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "ignoreDeprecations": "6.0",
-    "declaration": false,
-    "declarationMap": false,
+    "declaration": true,
+    "declarationMap": true,
     "sourceMap": true
   },
   "include": ["src/**/*.ts"],

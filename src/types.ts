@@ -13,6 +13,8 @@ export interface WaitOptions {
 export interface QueryOptions {
   apiType?: ApiType;
   model?: string | RegExp;
+  /** 0-based index into the filtered call list. */
+  index?: number;
 }
 
 export interface LabConfig {
@@ -46,6 +48,8 @@ export interface ProxyHandle {
   controlUrl: string;
   bearerToken?: string;
   pid?: number;
+  instanceId?: string;
+  exePath?: string;
   stop(): Promise<void>;
 }
 
@@ -63,6 +67,8 @@ export interface CallRecord {
   retries?: number;
   startedAt?: string;
   finishedAt?: string;
+  streamed?: boolean;
+  httpStatus?: number;
   raw: JsonValue;
 }
 
@@ -102,6 +108,11 @@ export interface TokenBounds {
   prompt?: Bounds;
   completion?: Bounds;
   total?: Bounds;
+}
+
+export interface UsageDetailsBounds {
+  cachedTokens?: Bounds;
+  reasoningTokens?: Bounds;
 }
 
 export interface Bounds {

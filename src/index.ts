@@ -23,5 +23,6 @@ export type {
   SessionTrace,
   TokenBounds,
   ToolCallAssertionOptions,
+  UsageDetailsBounds,
   WaitOptions,
 } from "./types.js";

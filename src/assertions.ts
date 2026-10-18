@@ -3,6 +3,7 @@ import { ControlClient } from "./control.js";
 import {
   asArray,
   asObject,
+  firstPositiveOrDefined,
   numberAt,
   objectAt,
   stringAt,
@@ -20,6 +21,7 @@ import type {
   SessionTrace,
   TokenBounds,
   ToolCallAssertionOptions,
+  UsageDetailsBounds,
   WaitOptions,
 } from "./types.js";
 
@@ -289,6 +291,180 @@ export class AssertionScope {
     return this.responseJsonValid({ schema });
   }
 
+  async callCount(expected: number): Promise<AssertionResult> {
+    return this.check(`expected ${expected} recorded call(s)`, (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      return {
+        pass: records.length === expected,
+        message: `expected ${expected} recorded call(s), got ${records.length}`,
+      };
+    });
+  }
+
+  async streamed(expected = true): Promise<AssertionResult> {
+    return this.check(`expected streamed=${expected}`, (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      const flags = records.map((record) => record.streamed === true);
+      const pass = expected ? flags.some(Boolean) : records.length > 0 && flags.every((flag) => !flag);
+      return {
+        pass,
+        message: `expected streamed=${expected}, saw ${flags.map(String).join(", ") || "<none>"}`,
+      };
+    });
+  }
+
+  async outputText(expected?: string | RegExp): Promise<AssertionResult> {
+    return this.check("expected output text", (trace) => {
+      const texts = recordsForTrace(trace, this.query).flatMap(outputTextsForRecord);
+      const pass =
+        expected === undefined ? texts.some((text) => text.trim().length > 0) : texts.some((text) => matchesText(text, expected));
+      return {
+        pass,
+        message: `expected output text${expected ? ` matching ${String(expected)}` : " to be present"}, saw ${stringify(texts)}`,
+      };
+    });
+  }
+
+  async outputMatchesDeltas(): Promise<AssertionResult> {
+    return this.check("expected output text to equal concatenated stream deltas", (trace) => {
+      const comparisons = recordsForTrace(trace, this.query).map((record) => {
+        const output = outputTextsForRecord(record)[0] ?? "";
+        const deltas = concatenatedDeltasForRecord(record);
+        return { output, deltas, equal: output.length > 0 && output === deltas };
+      });
+      const pass = comparisons.some((comparison) => comparison.equal);
+      return {
+        pass,
+        message: `expected output text to equal concatenated stream deltas, saw ${stringify(comparisons)}`,
+      };
+    });
+  }
+
+  async streamedToolArgsJson(name?: string): Promise<AssertionResult> {
+    return this.check("expected streamed tool arguments to be valid JSON", (trace) => {
+      const parsed: JsonValue[] = [];
+      const errors: string[] = [];
+      for (const record of recordsForTrace(trace, this.query)) {
+        const entries = assembledToolArgDeltas(record);
+        const candidates =
+          entries.length > 0
+            ? entries
+            : toolCallsForRecords([record])
+                .filter((call) => (name ? call.name === name : true))
+                .map((call) => [call.name, typeof call.args === "string" ? call.args : JSON.stringify(call.args)] as const);
+        for (const [toolName, args] of candidates) {
+          if (name && toolName !== name) continue;
+          try {
+            parsed.push(JSON.parse(args) as JsonValue);
+          } catch (error) {
+            errors.push(`${toolName}: ${args} (${error instanceof Error ? error.message : String(error)})`);
+          }
+        }
+      }
+      const pass = parsed.length > 0 && errors.length === 0;
+      return {
+        pass,
+        message: pass
+          ? "streamed tool arguments were valid JSON"
+          : `expected streamed tool arguments to be valid JSON, parsed=${parsed.length} errors=${errors.join("; ") || "<none>"}`,
+      };
+    });
+  }
+
+  async outputJsonValid(schema: JsonObject): Promise<AssertionResult> {
+    return this.check("expected output JSON to match schema", (trace) => {
+      const ajv = new Ajv2020({ strict: false });
+      const validate = ajv.compile(schema);
+      const texts = recordsForTrace(trace, this.query).flatMap(outputTextsForRecord);
+      const values: JsonValue[] = [];
+      for (const text of texts) {
+        try {
+          values.push(JSON.parse(text) as JsonValue);
+        } catch {
+          // Keep looking at other payloads.
+        }
+      }
+      const pass = values.some((value) => validate(value));
+      return {
+        pass,
+        message: pass
+          ? "output JSON matched schema"
+          : `expected output text JSON to match schema; last errors: ${stringify(validate.errors ?? [])}; texts=${stringify(texts)}`,
+      };
+    });
+  }
+
+  async usageDetails(bounds: UsageDetailsBounds): Promise<AssertionResult> {
+    return this.check("expected usage details", (trace) => {
+      const details = recordsForTrace(trace, this.query).map(usageDetailsForRecord);
+      const pass = details.some(
+        (detail) =>
+          checkBounds(detail.cachedTokens, bounds.cachedTokens) &&
+          checkBounds(detail.reasoningTokens, bounds.reasoningTokens),
+      );
+      return { pass, message: `expected usage details ${stringify(bounds)}, saw ${stringify(details)}` };
+    });
+  }
+
+  async errorStatus(expected: number | Bounds): Promise<AssertionResult> {
+    return this.check(`expected error status ${stringify(expected)}`, (trace) => {
+      const statuses = recordsForTrace(trace, this.query)
+        .map((record) => record.httpStatus ?? httpStatusFromError(record.error) ?? httpStatusFromError(record.response))
+        .filter((status): status is number => status !== undefined);
+      const pass = statuses.some((status) =>
+        typeof expected === "number" ? status === expected : checkBounds(status, expected),
+      );
+      return {
+        pass,
+        message: `expected error status ${stringify(expected)}, saw ${statuses.join(", ") || "<none>"}`,
+      };
+    });
+  }
+
+  async errorType(expected: string | RegExp): Promise<AssertionResult> {
+    return this.check(`expected error type ${String(expected)}`, (trace) => {
+      const types = recordsForTrace(trace, this.query).flatMap((record) => errorFields(record, "type"));
+      const pass = types.some((type) => matchesText(type, expected));
+      return { pass, message: `expected error type ${String(expected)}, saw ${types.join(", ") || "<none>"}` };
+    });
+  }
+
+  async errorCode(expected: string | RegExp): Promise<AssertionResult> {
+    return this.check(`expected error code ${String(expected)}`, (trace) => {
+      const codes = recordsForTrace(trace, this.query).flatMap((record) => errorFields(record, "code"));
+      const pass = codes.some((code) => matchesText(code, expected));
+      return { pass, message: `expected error code ${String(expected)}, saw ${codes.join(", ") || "<none>"}` };
+    });
+  }
+
+  async incomplete(): Promise<AssertionResult> {
+    return this.check("expected an incomplete or errored trace", (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      const pass = records.some((record) => isIncompleteRecord(record));
+      return {
+        pass,
+        message: pass
+          ? "trace is incomplete or errored"
+          : `expected an incomplete or errored trace, saw ${records
+              .map((record) => stringify({ error: record.error, finish: finishReasons(record.response), streamed: record.streamed }))
+              .join("; ") || "<none>"}`,
+      };
+    });
+  }
+
+  async rawRecorded(): Promise<AssertionResult> {
+    return this.check("expected raw request/response to be recorded", (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      const pass = records.some((record) => hasRawPayload(record));
+      return {
+        pass,
+        message: pass
+          ? "raw request/response was recorded"
+          : "expected raw_request or raw_response to be recorded on the trace",
+      };
+    });
+  }
+
   private async numericRecordBound(field: "latencyMs" | "ttftMs" | "retries", bounds: Bounds): Promise<AssertionResult> {
     return this.check(`expected ${field} bounds`, (trace) => {
       const records = recordsForTrace(trace, this.query);
@@ -325,7 +501,7 @@ export class AssertionScope {
 }
 
 export function recordsForTrace(trace: SessionTrace, query: QueryOptions = {}): CallRecord[] {
-  return trace.calls.filter((record) => {
+  const records = trace.calls.filter((record) => {
     if (query.apiType && record.apiType !== query.apiType) return false;
     if (query.model) {
       const requested = stringAt(asObject(record.request), "model");
@@ -333,6 +509,9 @@ export function recordsForTrace(trace: SessionTrace, query: QueryOptions = {}): 
     }
     return true;
   });
+  if (query.index === undefined) return records;
+  const record = records[query.index];
+  return record ? [record] : [];
 }
 
 const MODEL_SNAPSHOT_SUFFIX = /^(.+)-\d{4}-\d{2}-\d{2}$/;
@@ -548,6 +727,218 @@ function extractText(value: JsonValue | undefined): string {
 
 function matchesText(text: string, pattern: string | RegExp): boolean {
   return pattern instanceof RegExp ? pattern.test(text) : text.includes(pattern);
+}
+
+function outputTextsForRecord(record: CallRecord): string[] {
+  const texts: string[] = [];
+  const add = (value: string | undefined): void => {
+    if (value && value.trim()) texts.push(value);
+  };
+  const response = record.response;
+  if (typeof response === "string") add(response);
+  const object = asObject(response);
+  add(stringAt(object, "output_text"));
+  for (const choice of asArray(valueAt(object, "choices"))) {
+    const message = objectAt(asObject(choice), "message");
+    const content = valueAt(message, "content");
+    if (typeof content === "string") add(content);
+  }
+  for (const item of asArray(valueAt(object, "output"))) {
+    const itemObject = asObject(item);
+    if (stringAt(itemObject, "type") === "message") {
+      for (const part of asArray(valueAt(itemObject, "content"))) {
+        if (typeof part === "string") add(part);
+        else add(stringAt(asObject(part), "text"));
+      }
+    }
+  }
+  return texts;
+}
+
+function streamRawText(record: CallRecord): string {
+  const response = record.response;
+  if (typeof response === "string") return response;
+  const rawText = stringAt(asObject(response), "raw_text");
+  if (rawText) return rawText;
+  const encoded = stringAt(asObject(record.raw), "raw_response");
+  if (!encoded) return "";
+  const trimmed = encoded.trim();
+  if (trimmed.startsWith("data:") || trimmed.startsWith("{")) return trimmed;
+  try {
+    return Buffer.from(trimmed, "base64").toString("utf8");
+  } catch {
+    return trimmed;
+  }
+}
+
+function ssePayloads(record: CallRecord): JsonObject[] {
+  const fromText = ssePayloadsFromText(streamRawText(record));
+  if (fromText.length > 0) return fromText;
+  const out: JsonObject[] = [];
+  for (const event of asArray(valueAt(asObject(record.raw), "sse_events"))) {
+    const encoded = stringAt(asObject(event), "data");
+    if (!encoded || encoded === "[DONE]") continue;
+    const decoded = decodeSseData(encoded);
+    if (decoded) out.push(decoded);
+  }
+  return out;
+}
+
+function ssePayloadsFromText(text: string): JsonObject[] {
+  const out: JsonObject[] = [];
+  for (const block of text.split(/\r?\n\r?\n/)) {
+    const line = block.split(/\r?\n/).find((candidate) => candidate.startsWith("data:"));
+    if (!line) continue;
+    const data = line.slice("data:".length).trim();
+    if (!data || data === "[DONE]") continue;
+    const parsed = decodeSseData(data);
+    if (parsed) out.push(parsed);
+  }
+  return out;
+}
+
+function decodeSseData(data: string): JsonObject | undefined {
+  const trimmed = data.trim();
+  if (!trimmed || trimmed === "[DONE]") return undefined;
+  const candidates = [trimmed];
+  try {
+    candidates.push(Buffer.from(trimmed, "base64").toString("utf8"));
+  } catch {
+    // Keep the original payload.
+  }
+  for (const candidate of candidates) {
+    if (!candidate.startsWith("{") && !candidate.startsWith("[")) continue;
+    try {
+      const parsed = JSON.parse(candidate) as JsonValue;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    } catch {
+      // Try the next encoding.
+    }
+  }
+  return undefined;
+}
+
+function concatenatedDeltasForRecord(record: CallRecord): string {
+  let out = "";
+  for (const payload of ssePayloads(record)) {
+    const type = stringAt(payload, "type");
+    const delta = valueAt(payload, "delta");
+    if (type === "response.output_text.delta" && typeof delta === "string") {
+      out += delta;
+      continue;
+    }
+    for (const choice of asArray(valueAt(payload, "choices"))) {
+      const content = valueAt(objectAt(asObject(choice), "delta"), "content");
+      if (typeof content === "string") out += content;
+    }
+  }
+  return out;
+}
+
+function assembledToolArgDeltas(record: CallRecord): Array<[string, string]> {
+  const byKey = new Map<string, { name?: string; args: string }>();
+  const entry = (key: string): { name?: string; args: string } => {
+    const current = byKey.get(key) ?? { args: "" };
+    byKey.set(key, current);
+    return current;
+  };
+  for (const payload of ssePayloads(record)) {
+    const type = stringAt(payload, "type");
+    const delta = valueAt(payload, "delta");
+    if (type === "response.output_item.added") {
+      const item = objectAt(payload, "item");
+      if (stringAt(item, "type") === "function_call") {
+        const key = `r:${numberAt(payload, "output_index") ?? stringAt(item, "id") ?? stringAt(item, "call_id")}`;
+        const name = stringAt(item, "name");
+        if (name) entry(key).name = name;
+      }
+      continue;
+    }
+    if (type === "response.function_call_arguments.delta" && typeof delta === "string") {
+      const key = `r:${numberAt(payload, "output_index") ?? stringAt(payload, "item_id")}`;
+      entry(key).args += delta;
+      continue;
+    }
+    for (const choice of asArray(valueAt(payload, "choices"))) {
+      const choiceIndex = numberAt(asObject(choice), "index") ?? 0;
+      for (const toolCall of asArray(valueAt(objectAt(asObject(choice), "delta"), "tool_calls"))) {
+        const object = asObject(toolCall);
+        const current = entry(`c:${choiceIndex}:${numberAt(object, "index") ?? 0}`);
+        const name = stringAt(objectAt(object, "function"), "name") ?? stringAt(object, "name");
+        const args = stringAt(objectAt(object, "function"), "arguments") ?? stringAt(object, "arguments");
+        if (name) current.name = name;
+        if (args) current.args += args;
+      }
+    }
+  }
+  return [...byKey.values()].map((current) => [current.name ?? "unknown", current.args]);
+}
+
+function usageDetailsForRecord(record: CallRecord): { cachedTokens?: number; reasoningTokens?: number } {
+  const usage = record.usage ?? objectAt(asObject(record.response), "usage") ?? {};
+  const cachedTokens = firstPositiveOrDefined(
+    numberAt(objectAt(usage, "input_tokens_details"), "cached_tokens"),
+    numberAt(objectAt(usage, "prompt_tokens_details"), "cached_tokens"),
+    numberAt(objectAt(usage, "inputTokensDetails"), "cached_tokens"),
+    numberAt(objectAt(usage, "promptTokensDetails"), "cached_tokens"),
+    numberAt(usage, "cached_tokens"),
+  );
+  const reasoningTokens = firstPositiveOrDefined(
+    numberAt(objectAt(usage, "output_tokens_details"), "reasoning_tokens"),
+    numberAt(objectAt(usage, "completion_tokens_details"), "reasoning_tokens"),
+    numberAt(objectAt(usage, "outputTokensDetails"), "reasoning_tokens"),
+    numberAt(objectAt(usage, "completionTokensDetails"), "reasoning_tokens"),
+    numberAt(usage, "reasoning_tokens"),
+  );
+  return {
+    ...(cachedTokens !== undefined ? { cachedTokens } : {}),
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+  };
+}
+
+function httpStatusFromError(value: JsonValue | undefined): number | undefined {
+  const object = asObject(value);
+  return (
+    numberAt(object, "status") ??
+    numberAt(object, "http_status") ??
+    numberAt(objectAt(object, "error"), "status") ??
+    numberAt(objectAt(object, "error"), "http_status")
+  );
+}
+
+function errorFields(record: CallRecord, key: "type" | "code"): string[] {
+  const values: string[] = [];
+  const visit = (candidate: JsonValue | undefined): void => {
+    if (candidate === undefined || candidate === null) return;
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) visit(item);
+      return;
+    }
+    if (typeof candidate !== "object") return;
+    const object = asObject(candidate);
+    const value = stringAt(object, key);
+    if (value) values.push(value);
+    visit(valueAt(object, "error"));
+  };
+  visit(record.error);
+  visit(record.response);
+  visit(record.raw);
+  return [...new Set(values)];
+}
+
+function isIncompleteRecord(record: CallRecord): boolean {
+  if (record.error !== undefined) return true;
+  const reasons = finishReasons(record.response);
+  if (reasons.some((reason) => /incomplete|cancel|abort|error/i.test(reason))) return true;
+  const raw = asObject(record.raw);
+  if (valueAt(objectAt(raw, "normalized"), "stream_truncated") === true) return true;
+  if (record.streamed === true && reasons.length === 0) return true;
+  return false;
+}
+
+function hasRawPayload(record: CallRecord): boolean {
+  const raw = asObject(record.raw);
+  return Boolean(stringAt(raw, "raw_request") || stringAt(raw, "raw_response"));
 }
 
 export function formatTraceSummary(trace: SessionTrace): string {
