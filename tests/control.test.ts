@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ControlClient, parseControlBody, type ControlFetch } from "../src/control.js";
+import { ControlClient, combineAbortSignals, parseControlBody, type ControlFetch } from "../src/control.js";
 
 describe("parseControlBody", () => {
   it("accepts the Go proxy plain-text healthz body", () => {
@@ -65,19 +65,38 @@ describe("ControlClient", () => {
     await expect(client.wait("s1", { timeoutMs: 200 })).resolves.toMatchObject({ id: "s1" });
   });
 
-  it("preserves a caller-supplied AbortSignal", async () => {
+  it("aborts wait when the caller signal fires", async () => {
     const controller = new AbortController();
-    let seen: AbortSignal | null | undefined;
-    const fetchImpl: ControlFetch = async (input, init) => {
+    const abortedFetch: ControlFetch = async (input, init) => {
       void input;
-      seen = init?.signal;
+      await new Promise((_, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          const error = new Error("The operation was aborted");
+          error.name = "AbortError";
+          reject(error);
+        });
+      });
       return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
     };
     const client = new ControlClient({
       controlUrl: "http://127.0.0.1:9",
-      fetch: fetchImpl,
+      requestTimeoutMs: 5_000,
+      fetch: abortedFetch,
     });
-    await client.wait("s1", { signal: controller.signal });
-    expect(seen).toBe(controller.signal);
+    const pending = client.wait("s1", { timeoutMs: 5_000, signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("combines caller cancellation with a timeout signal", async () => {
+    const idle = new AbortController();
+    const timed = combineAbortSignals(idle.signal, AbortSignal.timeout(40));
+    await new Promise((resolve) => timed.addEventListener("abort", resolve, { once: true }));
+    expect(timed.aborted).toBe(true);
+
+    const controller = new AbortController();
+    const combined = combineAbortSignals(controller.signal, AbortSignal.timeout(5_000));
+    controller.abort();
+    expect(combined.aborted).toBe(true);
   });
 });

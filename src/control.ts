@@ -46,9 +46,9 @@ export class ControlClient {
     const query = params.toString();
     const suffix = query ? `?${query}` : "";
     const waitMs = options.timeoutMs ?? this.requestTimeoutMs;
+    const timeout = AbortSignal.timeout(Math.max(this.requestTimeoutMs, waitMs + WAIT_ABORT_PADDING_MS));
     const body = await this.request(`/sessions/${encodeURIComponent(sessionId)}/wait${suffix}`, {
-      signal:
-        options.signal ?? AbortSignal.timeout(Math.max(this.requestTimeoutMs, waitMs + WAIT_ABORT_PADDING_MS)),
+      signal: options.signal ? combineAbortSignals(options.signal, timeout) : timeout,
     });
     return normalizeSessionTrace(sessionId, body);
   }
@@ -86,6 +86,23 @@ export function parseControlBody(text: string): JsonValue {
     return JSON.parse(trimmed) as JsonValue;
   }
   return trimmed;
+}
+
+export function combineAbortSignals(left: AbortSignal, right: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === "function") return AbortSignal.any([left, right]);
+  const controller = new AbortController();
+  const onAbort = (): void => {
+    controller.abort();
+    left.removeEventListener("abort", onAbort);
+    right.removeEventListener("abort", onAbort);
+  };
+  if (left.aborted || right.aborted) {
+    controller.abort();
+    return controller.signal;
+  }
+  left.addEventListener("abort", onAbort, { once: true });
+  right.addEventListener("abort", onAbort, { once: true });
+  return controller.signal;
 }
 
 function trimTrailingSlash(value: string): string {
