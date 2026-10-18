@@ -1,0 +1,113 @@
+name: Bug report
+description: Report a problem in the TypeScript/JavaScript client
+title: "[bug] "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Remove API keys, tokens, and private prompts before submitting.
+        Proxy-binary bugs belong in https://github.com/barzoj-co/llm-test-lab/issues.
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      description: Version of `llm-test-lab` (npm).
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: proxy-version
+    attributes:
+      label: Bundled proxy version
+      description: `PROXY_VERSION` / platform package version, or the `LLMTESTLAB_BIN` path you used.
+      placeholder: "@llm-test-lab/linux-x64@0.1.0 or LLMTESTLAB_BIN=/path/to/llmtestlab"
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version
+      placeholder: 22.11.0
+    validations:
+      required: true
+  - type: input
+    id: runner
+    attributes:
+      label: Test runner and version
+      description: Vitest or Jest, including the version.
+      placeholder: vitest 3.2.4
+    validations:
+      required: true
+  - type: dropdown
+    id: module-system
+    attributes:
+      label: Module system
+      options:
+        - ESM
+        - CJS
+        - TypeScript (module=NodeNext / Node16)
+        - TypeScript (module=CommonJS)
+        - TypeScript (other)
+    validations:
+      required: true
+  - type: input
+    id: os-arch
+    attributes:
+      label: OS / arch
+      placeholder: linux x64
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      placeholder: OpenAI
+    validations:
+      required: true
+  - type: dropdown
+    id: api
+    attributes:
+      label: API
+      options:
+        - Chat Completions
+        - Responses
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: streaming
+    attributes:
+      label: Streaming
+      options:
+        - "Yes"
+        - "No"
+        - Both
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Smallest script or test that shows the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Secrets
+      options:
+        - label: I removed keys and private prompts
+          required: true

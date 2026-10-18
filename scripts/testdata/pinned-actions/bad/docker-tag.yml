@@ -1,0 +1,4 @@
+jobs:
+  bad:
+    steps:
+      - uses: docker://alpine:3.19

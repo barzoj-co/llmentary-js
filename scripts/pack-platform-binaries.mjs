@@ -10,6 +10,27 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO = process.env.LLMTESTLAB_REPO ?? "barzoj-co/llm-test-lab";
 const TAG = process.env.LLMTESTLAB_TAG ?? process.env.GITHUB_REF_NAME ?? "";
 
+export function keepRootVersion(rootVersionEnv = process.env.LLMTESTLAB_ROOT_VERSION) {
+  return rootVersionEnv != null && String(rootVersionEnv) !== "";
+}
+
+export function pinRootPackage(rootPkg, proxyVersion, rootVersionEnv = process.env.LLMTESTLAB_ROOT_VERSION) {
+  if (!keepRootVersion(rootVersionEnv)) {
+    rootPkg.version = proxyVersion;
+  }
+  for (const name of Object.keys(rootPkg.optionalDependencies ?? {})) {
+    rootPkg.optionalDependencies[name] = proxyVersion;
+  }
+  return rootPkg;
+}
+
+export function pinPlatformPackage(pkg, version) {
+  pkg.version = version;
+  pkg.license = "MIT AND AGPL-3.0-only";
+  pkg.files = ["bin", "README.md", "LICENSE", "LICENSE.AGPL-3.0"];
+  return pkg;
+}
+
 const PACKAGES = [
   { dir: "linux-x64", os: "linux", cpu: "x64", bin: "llmtestlab" },
   { dir: "linux-arm64", os: "linux", cpu: "arm64", bin: "llmtestlab" },
@@ -75,10 +96,7 @@ async function findBinary(dir) {
 
 async function setPackageVersion(dir, version) {
   const path = join(ROOT, "packages", dir, "package.json");
-  const pkg = JSON.parse(await readFile(path, "utf8"));
-  pkg.version = version;
-  pkg.license = "MIT AND AGPL-3.0-only";
-  pkg.files = ["bin", "README.md", "LICENSE", "LICENSE.AGPL-3.0"];
+  const pkg = pinPlatformPackage(JSON.parse(await readFile(path, "utf8")), version);
   await writeFile(path, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
@@ -96,11 +114,7 @@ async function main() {
     const checksums = await readFile(join(work, checksumFile), "utf8");
 
     const rootPkgPath = join(ROOT, "package.json");
-    const rootPkg = JSON.parse(await readFile(rootPkgPath, "utf8"));
-    rootPkg.version = version;
-    for (const name of Object.keys(rootPkg.optionalDependencies ?? {})) {
-      rootPkg.optionalDependencies[name] = version;
-    }
+    const rootPkg = pinRootPackage(JSON.parse(await readFile(rootPkgPath, "utf8")), version);
     await writeFile(rootPkgPath, `${JSON.stringify(rootPkg, null, 2)}\n`);
 
     for (const spec of PACKAGES) {
@@ -132,4 +146,7 @@ async function main() {
   }
 }
 
-await main();
+const invokedDirectly = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (invokedDirectly) {
+  await main();
+}

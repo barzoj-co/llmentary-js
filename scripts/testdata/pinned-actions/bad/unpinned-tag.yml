@@ -1,0 +1,4 @@
+jobs:
+  bad:
+    steps:
+      - uses: actions/checkout@v5

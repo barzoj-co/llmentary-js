@@ -1,6 +1,23 @@
 # llm-test-lab
 
+[![CI](https://github.com/barzoj-co/llm-test-lab-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llm-test-lab-js/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/barzoj-co/llm-test-lab-js/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llm-test-lab-js)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/barzoj-co/llm-test-lab-js/badge)](https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llm-test-lab-js)
+[![License: MIT](https://img.shields.io/github/license/barzoj-co/llm-test-lab-js)](LICENSE)
+[![npm](https://img.shields.io/npm/v/llm-test-lab)](https://www.npmjs.com/package/llm-test-lab)
+
 TypeScript client for [`llm-test-lab`](https://github.com/barzoj-co/llm-test-lab): deterministic trace-based integration tests for LLM apps.
+
+<!-- ltl-repos:start -->
+## llm-test-lab repositories
+
+| Repository | What | License |
+|---|---|---|
+| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) | AGPL-3.0 |
+| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` | MIT |
+| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin | MIT |
+| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest | MIT |
+<!-- ltl-repos:end -->
 
 The client starts or attaches to the Go proxy, creates a unique test session per test, routes OpenAI-compatible traffic through the proxy, waits for quiescence, and asserts against the recorded trace. It is deterministic only: there is no LLM judge.
 
@@ -20,7 +37,7 @@ npm installs one optional platform package matching the current OS/CPU when it i
 - `@llm-test-lab/darwin-arm64`
 - `@llm-test-lab/win32-x64`
 
-Those packages are version-pinned to the same version as this client and to the GoReleaser-built proxy binary. There is no `postinstall` download.
+Those packages are pinned to the bundled proxy version in [`PROXY_VERSION`](PROXY_VERSION), independently of this client's semver. There is no `postinstall` download.
 
 ## Quickstart with Vitest
 
@@ -115,16 +132,18 @@ Use `LLMTESTLAB_PROXY_URL` (and `LLMTESTLAB_CONTROL_URL` — control listens on 
 
 ## Release / trusted publishing
 
-Tags matching `v*` run `.github/workflows/release.yml`. That workflow:
+This client has its own semver. The bundled proxy version is the tag in [`PROXY_VERSION`](PROXY_VERSION). See [docs/releasing.md](docs/releasing.md).
+
+`release-please` tags `v*` on `main`. That dispatch runs `.github/workflows/release.yml`, which:
 
 1. Builds this client
-2. Downloads GoReleaser assets for the same tag from `barzoj-co/llm-test-lab`
+2. Downloads GoReleaser assets for `PROXY_VERSION` from `barzoj-co/llm-test-lab`
 3. Verifies each archive against `checksums.txt`
 4. Writes the binary into `@llm-test-lab/<platform>`
-5. Pins root and platform `package.json` versions to the tag
-6. Dry-runs npm pack/publish with provenance
+5. Pins platform package versions and root `optionalDependencies` to the proxy version, leaving the root version unchanged
+6. Packs tarballs and, when `NPM_PUBLISH_ENABLED` is set, publishes with npm trusted publishing (`id-token: write`, `--provenance`, no npm token)
 
-It is prepared for npm trusted publishing (`id-token: write` + `registry-url`). It does **not** publish yet. When publishing is enabled, publish the five platform packages first, then `llm-test-lab`, all at the Go binary version.
+It does **not** publish until the maintainer configures npm and sets that variable.
 
 ## Assertions
 
