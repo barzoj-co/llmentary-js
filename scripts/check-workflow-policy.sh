@@ -31,9 +31,10 @@ ALLOWED_JOB_PERMS = {
         ("issues", "write"),
         ("actions", "write"),
     },
+    "release-please-dry": {("contents", "read"), ("pull-requests", "read")},
     "release-build": {("contents", "read")},
     "publish": {("contents", "read"), ("id-token", "write")},
-    "label-sync": {("issues", "write")},
+    "label-sync": {("contents", "read"), ("issues", "write")},
     "label-dry": {("contents", "read"), ("issues", "read")},
     "default": {("contents", "read")},
 }
@@ -47,7 +48,7 @@ def fail(errors: list[str]) -> int:
 
 def top_level_blocks(text: str) -> dict[str, str]:
     blocks: dict[str, str] = {}
-    matches = list(re.finditer(r"^([A-Za-z0-9_-]+):\s*(.*)$", text, re.M))
+    matches = list(re.finditer(r"^([A-Za-z0-9_-]+):[ \t]*(.*)$", text, re.M))
     for index, match in enumerate(matches):
         key = match.group(1)
         rest = match.group(2)
@@ -60,7 +61,7 @@ def top_level_blocks(text: str) -> dict[str, str]:
 
 def job_blocks(jobs_text: str) -> dict[str, str]:
     jobs: dict[str, str] = {}
-    matches = list(re.finditer(r"^  ([A-Za-z0-9_-]+):\s*$", jobs_text, re.M))
+    matches = list(re.finditer(r"^  ([A-Za-z0-9_-]+):[ \t]*$", jobs_text, re.M))
     for index, match in enumerate(matches):
         key = match.group(1)
         start = match.end()
@@ -73,6 +74,8 @@ def parse_permissions(block: str | None) -> set[tuple[str, str]]:
     if block is None:
         return set()
     stripped = block.strip()
+    if stripped in {"write-all", "read-all"}:
+        return {("*", stripped)}
     if stripped in {"", "{}", "contents: read"} and "\n" not in stripped:
         if stripped == "{}":
             return set()
@@ -84,19 +87,19 @@ def parse_permissions(block: str | None) -> set[tuple[str, str]]:
         line = raw.split("#", 1)[0].rstrip()
         if not line.strip():
             continue
-        match = re.match(r"^\s+([A-Za-z0-9_-]+):\s*(\S+)\s*$", line)
+        match = re.match(r"^[ \t]+([A-Za-z0-9_-]+):[ \t]*(\S+)[ \t]*$", line)
         if match:
             perms.add((match.group(1), match.group(2).strip("'\"")))
     return perms
 
 
 def extract_inline_or_block(parent: str, key: str) -> str | None:
-    inline = re.search(rf"^[ \t]*{re.escape(key)}:\s*(\S.*)$", parent, re.M)
+    inline = re.search(rf"^[ \t]*{re.escape(key)}:[ \t]*(\S.*)$", parent, re.M)
     if inline:
         value = inline.group(1).strip()
         if value not in {"", "|", ">"}:
             return value
-    block = re.search(rf"^[ \t]*{re.escape(key)}:\s*$", parent, re.M)
+    block = re.search(rf"^[ \t]*{re.escape(key)}:[ \t]*$", parent, re.M)
     if not block:
         return None
     lines = [block.group(0)]
@@ -126,6 +129,8 @@ def job_kind(path: Path, job_id: str, job: str) -> str:
         return "scorecard"
     if "codeql" in combined:
         return "codeql"
+    if ("release-please" in combined or "release please" in combined) and "dry" in combined:
+        return "release-please-dry"
     if "release-please" in combined or "release please" in combined:
         return "release-please"
     if job_id == "publish" or display.lower() == "publish":
@@ -151,7 +156,7 @@ def check_workflow(path: Path) -> list[str]:
         perms = parse_permissions(blocks["permissions"])
         if perms not in (set(), {("contents", "read")}):
             errors.append(f"{path}: top-level permissions are missing or over-broad: {sorted(perms)}")
-        if any(value in WRITE_PERMS for _, value in perms):
+        if any(value in WRITE_PERMS or value == "write-all" for _, value in perms):
             errors.append(f"{path}: top-level permissions must not grant write")
 
     on_block = blocks.get("on", "")

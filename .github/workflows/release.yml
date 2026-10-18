@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p dist
           npm pack --pack-destination dist
-          for pkg in packages/*; do
+          for pkg in ./packages/*/; do
             npm pack --pack-destination dist "$pkg"
           done
 

@@ -72,13 +72,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 24
+          node-version: 22
 
       - name: Validate renovate.json
         env:
           # renovate: datasource=npm depName=renovate
-          RENOVATE_VERSION: 44.167.1
-        run: npx --yes renovate@${RENOVATE_VERSION} renovate-config-validator --strict
+          RENOVATE_VERSION: 41.159.4
+        run: npx --yes --package "renovate@${RENOVATE_VERSION}" -- renovate-config-validator --strict
 
   codecov-config:
     name: codecov-config
@@ -92,9 +92,9 @@ jobs:
 
       - name: Validate codecov.yml
         run: |
-          response="$(curl -sS --data-binary @codecov.yml https://codecov.io/validate)"
+          response="$(curl -fsS --data-binary @codecov.yml https://codecov.io/validate)"
           echo "$response"
-          echo "$response" | grep -qi 'Valid'
+          echo "$response" | grep -q '^Valid!'
 
   labels:
     name: labels (dry run)
@@ -136,6 +136,9 @@ jobs:
     name: release-please (dry run)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -153,9 +156,9 @@ jobs:
           # renovate: datasource=npm depName=release-please
           RELEASE_PLEASE_VERSION: 17.11.2
           RELEASE_PLEASE_TOKEN: ${{ github.token }}
-          RELEASE_PLEASE_TARGET: ${{ github.head_ref || github.ref_name }}
+          RELEASE_PLEASE_TARGET: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || github.base_ref || github.ref_name }}
         run: |
-          npx --yes release-please@${RELEASE_PLEASE_VERSION} release-pr \
+          npx --yes "release-please@${RELEASE_PLEASE_VERSION}" release-pr \
             --dry-run \
             --repo-url=barzoj-co/llm-test-lab-js \
             --target-branch="${RELEASE_PLEASE_TARGET}" \
@@ -188,7 +191,7 @@ jobs:
       - name: Pack dry-run
         run: |
           npm pack --dry-run
-          for pkg in packages/*; do
+          for pkg in ./packages/*/; do
             echo "Packing $pkg"
             npm pack --dry-run "$pkg"
           done
