@@ -38,8 +38,14 @@ function redactText(text: string, secret?: string): string {
 export function redactArgs(args: string[]): string[] {
   const redacted = [...args];
   for (let index = 0; index < redacted.length; index += 1) {
-    if (SECRET_FLAGS.has(redacted[index] ?? "") && redacted[index + 1] !== undefined) {
+    const arg = redacted[index] ?? "";
+    if (SECRET_FLAGS.has(arg) && redacted[index + 1] !== undefined) {
       redacted[index + 1] = "***";
+      continue;
+    }
+    const eq = arg.indexOf("=");
+    if (eq > 0 && SECRET_FLAGS.has(arg.slice(0, eq))) {
+      redacted[index] = `${arg.slice(0, eq)}=***`;
     }
   }
   return redacted;
@@ -180,9 +186,12 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
         },
       };
     } catch (error) {
-      const detail = logs.length ? `\nproxy output:\n${redactText(logs.join("\n"), bearerToken)}` : "";
+      const detail = logs.length ? `\nproxy output:\n${logs.join("\n")}` : "";
       lastError = new Error(
-        `${redactText(error instanceof Error ? error.message : String(error), bearerToken)} (args: ${JSON.stringify(redactArgs(args))})${detail}`,
+        redactText(
+          `${error instanceof Error ? error.message : String(error)} (args: ${JSON.stringify(redactArgs(args))})${detail}`,
+          bearerToken,
+        ),
       );
       await stopChild(child);
     }
@@ -201,7 +210,11 @@ export async function waitForHealth(
   logs: string[] = [],
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  const client = new ControlClient({ controlUrl, ...(bearerToken ? { bearerToken } : {}) });
+  const client = new ControlClient({
+    controlUrl,
+    ...(bearerToken ? { bearerToken } : {}),
+    requestTimeoutMs: Math.min(1_000, timeoutMs),
+  });
   let lastError: unknown;
   while (Date.now() < deadline) {
     if (child && child.exitCode !== null) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseControlBody } from "../src/control.js";
+import { ControlClient, parseControlBody, type ControlFetch } from "../src/control.js";
 
 describe("parseControlBody", () => {
   it("accepts the Go proxy plain-text healthz body", () => {
@@ -8,5 +8,76 @@ describe("parseControlBody", () => {
 
   it("parses JSON session payloads", () => {
     expect(parseControlBody('{"id":"s1","calls":[]}')).toEqual({ id: "s1", calls: [] });
+  });
+});
+
+function requestUrl(input: string | URL | Request): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+describe("ControlClient", () => {
+  it("appends wait query params from URLSearchParams.toString", async () => {
+    const urls: string[] = [];
+    const fetchImpl: ControlFetch = async (input) => {
+      urls.push(requestUrl(input));
+      return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
+    };
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      fetch: fetchImpl,
+    });
+    await client.wait("s1", { timeoutMs: 5_000, idleMs: 100 });
+    expect(urls[0]).toContain("/sessions/s1/wait?");
+    expect(urls[0]).toContain("timeout_ms=5000");
+    expect(urls[0]).toContain("idle_ms=100");
+  });
+
+  it("aborts hung requests after requestTimeoutMs and lets wait exceed it", async () => {
+    const hungFetch: ControlFetch = async (input, init) => {
+      void input;
+      await new Promise((_, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          const error = new Error("The operation was aborted");
+          error.name = "AbortError";
+          reject(error);
+        });
+      });
+      return new Response("ok", { status: 200 });
+    };
+    const hungHealth = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      requestTimeoutMs: 40,
+      fetch: hungFetch,
+    });
+    await expect(hungHealth.health()).rejects.toMatchObject({ name: "AbortError" });
+
+    const delayedFetch: ControlFetch = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
+    };
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      requestTimeoutMs: 40,
+      fetch: delayedFetch,
+    });
+    await expect(client.wait("s1", { timeoutMs: 200 })).resolves.toMatchObject({ id: "s1" });
+  });
+
+  it("preserves a caller-supplied AbortSignal", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | null | undefined;
+    const fetchImpl: ControlFetch = async (input, init) => {
+      void input;
+      seen = init?.signal;
+      return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
+    };
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      fetch: fetchImpl,
+    });
+    await client.wait("s1", { signal: controller.signal });
+    expect(seen).toBe(controller.signal);
   });
 });

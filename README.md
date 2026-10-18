@@ -25,6 +25,17 @@ Those packages are version-pinned to the same version as this client and to the 
 ## Quickstart with Vitest
 
 ```ts
+// vitest.config.ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    setupFiles: ["./vitest.setup.ts"],
+  },
+});
+```
+
+```ts
 // vitest.setup.ts
 import { setupVitest } from "llm-test-lab/vitest";
 
@@ -137,4 +148,4 @@ The included CI workflow expects:
 
 This TypeScript client library, including the npm package metadata, is MIT licensed; see [LICENSE](LICENSE).
 
-The bundled `llm-test-lab` proxy binary (the optional `@llm-test-lab/<platform>` packages, or a binary you point at with `LLMTESTLAB_BIN`) is AGPL-3.0 licensed and runs as a separate process. The MIT client talks to that process over HTTP; it does not statically link it.
+The bundled `llm-test-lab` proxy binary (the optional `@llm-test-lab/<platform>` packages, or a binary you point at with `LLMTESTLAB_BIN`) is AGPL-3.0 licensed and runs as a separate process. Those packages ship [LICENSE.AGPL-3.0](licenses/AGPL-3.0.txt) next to the MIT wrapper license. Corresponding source for a packed binary is the Git tag matching the package version of https://github.com/barzoj-co/llm-test-lab. The MIT client talks to that process over HTTP; it does not statically link it.

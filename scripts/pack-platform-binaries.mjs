@@ -77,6 +77,8 @@ async function setPackageVersion(dir, version) {
   const path = join(ROOT, "packages", dir, "package.json");
   const pkg = JSON.parse(await readFile(path, "utf8"));
   pkg.version = version;
+  pkg.license = "MIT AND AGPL-3.0-only";
+  pkg.files = ["bin", "README.md", "LICENSE", "LICENSE.AGPL-3.0"];
   await writeFile(path, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
@@ -119,6 +121,10 @@ async function main() {
       await mkdir(destDir, { recursive: true });
       await rename(binary, join(destDir, spec.bin));
       await writeFile(join(ROOT, "packages", spec.dir, "LICENSE"), await readFile(join(ROOT, "LICENSE")));
+      await writeFile(
+        join(ROOT, "packages", spec.dir, "LICENSE.AGPL-3.0"),
+        await readFile(join(ROOT, "licenses", "AGPL-3.0.txt")),
+      );
       await setPackageVersion(spec.dir, version);
     }
   } finally {

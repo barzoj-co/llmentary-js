@@ -145,6 +145,12 @@ export class AssertionScope {
           .map((call) => call.id)
           .filter((id): id is string => Boolean(id)),
       );
+      if (name && toolCallIds.size === 0) {
+        return {
+          pass: false,
+          message: `expected a result for tool "${name}" to be sent back, but no call with an id was recorded`,
+        };
+      }
       const fedBack = records.some((record) => containsToolResult(record.request, toolCallIds));
       return {
         pass: fedBack,

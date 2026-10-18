@@ -2,7 +2,7 @@
   "name": "@llm-test-lab/darwin-arm64",
   "version": "0.0.0",
   "description": "macOS arm64 llm-test-lab proxy binary (optionalDependency of llm-test-lab).",
-  "license": "MIT",
+  "license": "MIT AND AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/barzoj-co/llm-test-lab-js.git",
@@ -11,10 +11,19 @@
   "engines": {
     "node": ">=18"
   },
-  "os": ["darwin"],
-  "cpu": ["arm64"],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
   "preferUnplugged": true,
-  "files": ["bin", "README.md", "LICENSE"],
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE",
+    "LICENSE.AGPL-3.0"
+  ],
   "publishConfig": {
     "access": "public",
     "provenance": true

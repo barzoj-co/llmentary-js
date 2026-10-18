@@ -14,7 +14,7 @@ import { createLab } from "llm-test-lab";
 
 const lab = createLab({
   proxyUrl: "http://127.0.0.1:4010",
-  controlUrl: "http://127.0.0.1:4010",
+  controlUrl: "http://127.0.0.1:4011",
   sessionId: "optional-fixed-id",
 });
 ```
@@ -126,13 +126,27 @@ if (!result.pass) {
 
 ### Vitest
 
+Point Vitest `test.setupFiles` at a file that calls `setupVitest()`. Do not set `test.globalSetup` to `llm-test-lab/vitest`: that config runs in a separate process, does not honor `beforeAll` / `expect.extend`, and would not pass proxy URLs to test workers.
+
 ```ts
-import { setupVitest, lab } from "llm-test-lab/vitest";
+// vitest.config.ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    setupFiles: ["./vitest.setup.ts"],
+  },
+});
+```
+
+```ts
+// vitest.setup.ts
+import { setupVitest } from "llm-test-lab/vitest";
 
 setupVitest();
 ```
 
-`setupVitest()` starts one proxy for the worker process, creates a fresh lab before each test, and deletes the session after each test. It also registers custom matchers:
+`setupVitest()` starts a proxy for the test file unless `LLMTESTLAB_PROXY_URL` is already set, stops that owned proxy in `afterAll`, creates a fresh lab before each test, and deletes the session after each test. The named `globalSetup()` export is a same-process helper that returns a teardown callback; it is not a Vitest `globalSetup` module. It also registers custom matchers:
 
 ```ts
 await expect(lab().expect()).toHaveToolCalled("lookup_weather");
@@ -158,7 +172,7 @@ Jest global setup persists proxy state in `.llm-test-lab/jest-state.json` so set
 ```ts
 import { ControlClient } from "llm-test-lab";
 
-const control = new ControlClient({ controlUrl: "http://127.0.0.1:4010" });
+const control = new ControlClient({ controlUrl: "http://127.0.0.1:4011" });
 await control.health();
 await control.wait("session-id", { timeoutMs: 5_000, idleMs: 100 });
 await control.getSession("session-id");

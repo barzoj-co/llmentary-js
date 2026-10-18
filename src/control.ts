@@ -1,21 +1,30 @@
 import type { JsonValue, SessionTrace, WaitOptions } from "./types.js";
 import { normalizeSessionTrace } from "./normalize.js";
 
+export type ControlFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
 export interface ControlClientOptions {
   controlUrl: string;
   bearerToken?: string;
-  fetch?: typeof fetch;
+  fetch?: ControlFetch;
+  /** Client-side abort timeout for control requests. `wait()` uses a longer window than `timeoutMs`. */
+  requestTimeoutMs?: number;
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const WAIT_ABORT_PADDING_MS = 5_000;
 
 export class ControlClient {
   readonly controlUrl: string;
   readonly bearerToken: string | undefined;
-  readonly fetchImpl: typeof fetch;
+  readonly fetchImpl: ControlFetch;
+  readonly requestTimeoutMs: number;
 
   constructor(options: ControlClientOptions) {
     this.controlUrl = trimTrailingSlash(options.controlUrl);
     this.bearerToken = options.bearerToken;
     this.fetchImpl = options.fetch ?? globalThis.fetch;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     if (!this.fetchImpl) {
       throw new Error("llm-test-lab requires a fetch implementation; use Node >=18 or pass fetch.");
     }
@@ -34,8 +43,13 @@ export class ControlClient {
     const params = new URLSearchParams();
     if (options.timeoutMs !== undefined) params.set("timeout_ms", String(options.timeoutMs));
     if (options.idleMs !== undefined) params.set("idle_ms", String(options.idleMs));
-    const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    const body = await this.request(`/sessions/${encodeURIComponent(sessionId)}/wait${suffix}`);
+    const query = params.toString();
+    const suffix = query ? `?${query}` : "";
+    const waitMs = options.timeoutMs ?? this.requestTimeoutMs;
+    const body = await this.request(`/sessions/${encodeURIComponent(sessionId)}/wait${suffix}`, {
+      signal:
+        options.signal ?? AbortSignal.timeout(Math.max(this.requestTimeoutMs, waitMs + WAIT_ABORT_PADDING_MS)),
+    });
     return normalizeSessionTrace(sessionId, body);
   }
 
@@ -50,7 +64,8 @@ export class ControlClient {
   private async request(path: string, init: RequestInit = {}): Promise<JsonValue> {
     const headers = new Headers(init.headers);
     if (this.bearerToken) headers.set("authorization", `Bearer ${this.bearerToken}`);
-    const response = await this.fetchImpl(`${this.controlUrl}${path}`, { ...init, headers });
+    const signal = init.signal ?? AbortSignal.timeout(this.requestTimeoutMs);
+    const response = await this.fetchImpl(`${this.controlUrl}${path}`, { ...init, headers, signal });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       throw new Error(

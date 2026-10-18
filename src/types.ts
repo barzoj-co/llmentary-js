@@ -7,6 +7,7 @@ export type JsonObject = { [key: string]: JsonValue };
 export interface WaitOptions {
   timeoutMs?: number;
   idleMs?: number;
+  signal?: AbortSignal;
 }
 
 export interface QueryOptions {

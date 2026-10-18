@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, expect } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
 import { createLab, type LlmTestLab } from "./index.js";
 import { firstNonEmpty } from "./env.js";
 import { toHaveRequestParam, toHaveToolCalled, toHaveToolCalledTimes } from "./matchers.js";
@@ -19,11 +19,21 @@ export async function globalSetup(options: ProxyLaunchOptions = {}): Promise<() 
 }
 
 export function setupVitest(options: { proxy?: ProxyLaunchOptions; lab?: LabConfig } = {}): void {
+  let ownedProxy: ProxyHandle | undefined;
   beforeAll(async () => {
     if (!firstNonEmpty(process.env.LLMTESTLAB_PROXY_URL)) {
-      proxy = await startProxy(options.proxy);
-      applyProxyEnv(proxy);
+      ownedProxy = await startProxy(options.proxy);
+      proxy = ownedProxy;
+      applyProxyEnv(ownedProxy);
     }
+  });
+
+  afterAll(async () => {
+    if (!ownedProxy) return;
+    await ownedProxy.stop();
+    if (proxy === ownedProxy) proxy = undefined;
+    ownedProxy = undefined;
+    clearProxyEnv();
   });
 
   beforeEach(() => {

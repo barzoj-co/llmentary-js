@@ -82,6 +82,32 @@ describe("AssertionScope", () => {
     await expect(scope.responseContains("raining")).resolves.toMatchObject({ pass: true });
   });
 
+  it("does not treat another tool's result as feedback for a named tool", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          apiType: "responses",
+          request: { model: "gpt-4.1-mini", input: "weather?" },
+          response: {
+            output: [{ type: "function_call", call_id: "call_other", name: "lookup_time", arguments: "{}" }],
+          },
+        },
+        {
+          apiType: "responses",
+          request: {
+            model: "gpt-4.1-mini",
+            input: [{ type: "function_call_output", call_id: "call_other", output: "noon" }],
+          },
+          response: { output_text: "It is noon." },
+        },
+      ],
+    });
+    const result = await scopeFor(trace).soft().toolResultFedBack("lookup_weather");
+    expect(result.pass).toBe(false);
+    expect(result.message).toMatch(/no call with an id was recorded/);
+  });
+
   it("returns soft failures and throws hard failures with trace summaries", async () => {
     const trace = normalizeSessionTrace("s1", { id: "s1", calls: [] });
     const soft = await scopeFor(trace).soft().toolCalled("missing");

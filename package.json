@@ -11,7 +11,8 @@
     "dist",
     "README.md",
     "docs",
-    "LICENSE"
+    "LICENSE",
+    "licenses"
   ],
   "sideEffects": false,
   "exports": {

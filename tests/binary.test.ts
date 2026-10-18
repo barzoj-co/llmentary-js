@@ -77,6 +77,12 @@ describe("proxy CLI helpers", () => {
       "-upstream",
       "openai=http://x",
     ]);
+    expect(redactArgs(["-listen", ":7777", "-control-token=secret", "--bearer-token=other"])).toEqual([
+      "-listen",
+      ":7777",
+      "-control-token=***",
+      "--bearer-token=***",
+    ]);
   });
 
   it("strips trailing /v1 so the Go binary does not join /v1/v1", () => {
