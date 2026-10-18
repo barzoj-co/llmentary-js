@@ -96,23 +96,19 @@ A `workflow_dispatch` of CI on a non-main ref skips `e2e-openai` by design;
 
 1. Review the fork diff.
 2. Push the same commits to a same-repo branch (or open a same-repo PR).
-3. CI on that branch runs `OpenAI E2E` with repo secrets.
+3. Approve the `openai-e2e` environment deployment on that run.
 4. Never use `pull_request_target`.
 
-### Optional maintainer approval (`environment: openai-e2e`)
+### Maintainer approval (`environment: openai-e2e`)
 
-To require maintainer approval for live e2e, add one line on the
-`e2e-openai` job, directly above `runs-on:`:
+The live `e2e-openai` job sets `environment: openai-e2e`. Maintainers approve
+that GitHub Environment deployment on each PR (and on `push` to `main`)
+before the job can use `OPENAI_API_KEY`. The `test` matrix (unit, proxy,
+coverage) and `pack` jobs do not reference this environment, so they run
+without approval.
 
-```yaml
-environment: openai-e2e
-```
-
-after Denis creates that environment with its protection rules and moves
-`OPENAI_API_KEY` into it. Do not add `environment:` before that: referencing
-an environment auto-creates it unprotected. If the environment is enabled
-later and an approval is rejected or times out, `e2e-gate` goes red. That is
-intended.
+If approval is rejected or times out, `e2e-openai` does not succeed and
+`e2e-gate` goes red. That is intended.
 
 ## Hygiene scripts
 
@@ -120,7 +116,7 @@ intended.
 scripts/check-pinned-actions.sh
 scripts/check-pinned-actions.sh --self-test
 scripts/check-workflow-policy.sh
-scripts/check-secret-scope.sh --e2e-job e2e-openai
+scripts/check-secret-scope.sh --e2e-job e2e-openai --e2e-environment openai-e2e
 scripts/check-secret-scope.sh --self-test
 scripts/check-pr-oidc.sh
 scripts/check-pr-oidc.sh --self-test

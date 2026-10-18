@@ -70,7 +70,7 @@ jobs:
       - name: Secret-scope policy
         run: |
           export PATH="$RUNNER_TEMP/policy-venv/bin:$PATH"
-          scripts/check-secret-scope.sh --e2e-job e2e-openai
+          scripts/check-secret-scope.sh --e2e-job e2e-openai --e2e-environment openai-e2e
           scripts/check-secret-scope.sh --self-test
 
       - name: PR OIDC policy

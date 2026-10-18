@@ -5,9 +5,9 @@ jobs:
     steps:
       - name: presence and use
         env:
-          HAS_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HAS_EXAMPLE_TOKEN: ${{ secrets.EXAMPLE_TOKEN != '' }}
+          EXAMPLE_TOKEN: ${{ secrets.EXAMPLE_TOKEN }}
         run: |
-          if [ "$HAS_OPENAI_API_KEY" != "true" ]; then
+          if [ "$HAS_EXAMPLE_TOKEN" != "true" ]; then
             exit 1
           fi

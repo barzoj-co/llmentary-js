@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-  echo "Usage: $0 [--self-test] [--e2e-job <id>] [path ...]" >&2
+  echo "Usage: $0 [--self-test] [--e2e-job <id>] [--e2e-environment <name>] [path ...]" >&2
   exit 2
 }
 
@@ -131,6 +131,7 @@ def lineno(obj, default: int = 1) -> int:
 
 def parse_args(argv: list[str]):
     e2e_job = "e2e"
+    e2e_environment = "openai-e2e"
     self_test = False
     paths: list[str] = []
     i = 0
@@ -147,12 +148,19 @@ def parse_args(argv: list[str]):
             e2e_job = argv[i]
         elif arg.startswith("--e2e-job="):
             e2e_job = arg.split("=", 1)[1]
+        elif arg == "--e2e-environment":
+            i += 1
+            if i >= len(argv):
+                raise SystemExit("missing value for --e2e-environment")
+            e2e_environment = argv[i]
+        elif arg.startswith("--e2e-environment="):
+            e2e_environment = arg.split("=", 1)[1]
         elif arg.startswith("-"):
             raise SystemExit(f"unknown option: {arg}")
         else:
             paths.append(arg)
         i += 1
-    return self_test, e2e_job, paths
+    return self_test, e2e_job, e2e_environment, paths
 
 
 def load_yaml(path: Path):
@@ -223,7 +231,31 @@ def env_values(env) -> list[tuple[object, str]]:
     return [(value, str(value)) for value in env.values()]
 
 
-def check_file(path: Path, e2e_job: str) -> list[str]:
+def walk_strings(obj, acc: list[tuple[str, int]] | None = None):
+    if acc is None:
+        acc = []
+    if isinstance(obj, str):
+        acc.append((obj, lineno(obj)))
+    elif isinstance(obj, dict):
+        for value in obj.values():
+            walk_strings(value, acc)
+    elif isinstance(obj, list):
+        for item in obj:
+            walk_strings(item, acc)
+    return acc
+
+
+def job_environment(job: dict) -> str | None:
+    env = job.get("environment")
+    if env is None:
+        return None
+    if isinstance(env, dict):
+        name = env.get("name")
+        return str(name) if name is not None else None
+    return str(env)
+
+
+def check_file(path: Path, e2e_job: str, e2e_environment: str = "openai-e2e") -> list[str]:
     errors: list[str] = []
     rel = path.as_posix()
     try:
@@ -322,6 +354,25 @@ def check_file(path: Path, e2e_job: str) -> list[str]:
                     "presence checks must use the boolean form"
                 )
 
+    for job_id, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        job_line = lineno(job)
+        openai_line = None
+        for text, line in walk_strings(job):
+            if "secrets.OPENAI_API_KEY" in text:
+                openai_line = line
+                break
+        if str(job_id) == e2e_job:
+            if job_environment(job) != e2e_environment:
+                errors.append(
+                    f"{rel}:{job_line}: live e2e job must set environment: {e2e_environment}"
+                )
+        elif openai_line is not None:
+            errors.append(
+                f"{rel}:{openai_line}: OPENAI_API_KEY is only allowed in job {e2e_job}"
+            )
+
     if path.name == "ci.yml":
         gate = jobs.get("e2e-gate") if isinstance(jobs, dict) else None
         malformed = False
@@ -337,6 +388,8 @@ def check_file(path: Path, e2e_job: str) -> list[str]:
                 malformed = True
         if malformed:
             errors.append(f"{rel}:{line}: missing or malformed e2e-gate job")
+        if not isinstance(jobs.get(e2e_job), dict):
+            errors.append(f"{rel}:1: live e2e job must set environment: {e2e_environment}")
 
     return errors
 
@@ -373,12 +426,12 @@ def expect_of(path: Path) -> str | None:
     return match.group(1).strip() if match else None
 
 
-def self_test(e2e_job: str) -> int:
+def self_test(e2e_job: str, e2e_environment: str) -> int:
     good = ROOT / "scripts" / "testdata" / "secret-scope" / "good"
     bad = ROOT / "scripts" / "testdata" / "secret-scope" / "bad"
     status = 0
     for path in sorted(good.rglob("*.y*ml")):
-        errors = check_file(path, e2e_job)
+        errors = check_file(path, e2e_job, e2e_environment)
         if errors:
             print(f"self-test: expected {path} to pass", file=sys.stderr)
             print("\n".join(errors), file=sys.stderr)
@@ -386,7 +439,7 @@ def self_test(e2e_job: str) -> int:
         else:
             print(f"self-test: good {path.relative_to(ROOT)}")
     for path in sorted(bad.rglob("*.y*ml")):
-        errors = check_file(path, e2e_job)
+        errors = check_file(path, e2e_job, e2e_environment)
         expect = expect_of(path)
         joined = "\n".join(errors)
         if not errors:
@@ -411,21 +464,21 @@ def self_test(e2e_job: str) -> int:
 
 def main() -> int:
     try:
-        do_self_test, e2e_job, paths = parse_args(ARGV)
+        do_self_test, e2e_job, e2e_environment, paths = parse_args(ARGV)
     except SystemExit as exc:
         if exc.code in (0, 1, 2):
             return int(exc.code or 0)
         print(str(exc), file=sys.stderr)
         return 2
     if do_self_test:
-        return self_test(e2e_job)
+        return self_test(e2e_job, e2e_environment)
     files = collect_files(paths)
     if not files:
         print("no workflow files found", file=sys.stderr)
         return 1
     errors: list[str] = []
     for path in files:
-        errors.extend(check_file(path, e2e_job))
+        errors.extend(check_file(path, e2e_job, e2e_environment))
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
