@@ -202,7 +202,20 @@ export function rawUpstreamCachedTokens(record: CallRecord): number | undefined 
 
 /** Proxy recorded cached_tokens must equal the nested value in the raw upstream body. */
 export function expectCachedTokensMatchRaw(record: CallRecord): void {
-  expect(recordedCachedTokens(record)).toBe(rawUpstreamCachedTokens(record));
+  const raw = rawUpstreamCachedTokens(record);
+  expect(typeof raw).toBe("number");
+  expect(Number.isFinite(raw)).toBe(true);
+  expect(recordedCachedTokens(record)).toBe(raw);
+}
+
+export async function expectCachedTokensFaithful(
+  lab: LlmTestLab,
+  index: number,
+  query: { apiType?: "chat_completions" | "responses" } = {},
+): Promise<void> {
+  const record = (await lab.query({ ...query, index }).wait()).calls[0];
+  expect(record).toBeDefined();
+  expectCachedTokensMatchRaw(record!);
 }
 
 export function noteResponsesCacheMiss(): void {

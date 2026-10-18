@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   forgetSpawnedProcess,
+  linuxStartMsFromProc,
   parsePsEtime,
   pidExists,
   processLookups,
@@ -141,15 +142,13 @@ describe("process identity", () => {
   });
 
   it("computes Linux start time from /proc/<pid>/stat field 22 plus btime", () => {
-    processLookups.readProcFileSync = ((path: string) => {
-      if (path === "/proc/stat") return "cpu 1\nbtime 1700000000\n";
-      if (path === "/proc/1/stat") {
-        return "1 (node) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 200 0 0";
-      }
-      throw new Error(`unexpected proc path ${path}`);
-    }) as unknown as typeof processLookups.readProcFileSync;
-    processLookups.spawnSync = () => ({ status: 0, stdout: "100\n" });
-    expect(readProcessStartMs(1)).toBe((1_700_000_000 + 200 / 100) * 1000);
+    expect(
+      linuxStartMsFromProc(
+        "1 (node) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 200 0 0",
+        "cpu 1\nbtime 1700000000\n",
+        100,
+      ),
+    ).toBe((1_700_000_000 + 200 / 100) * 1000);
   });
 });
 

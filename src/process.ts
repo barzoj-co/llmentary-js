@@ -165,18 +165,16 @@ export function readProcessStartMs(pid: number): number | undefined {
 
 function readLinuxStartMs(pid: number): number | undefined {
   try {
-    const stat = processLookups.readProcFileSync(`/proc/${pid}/stat`, "utf8");
-    const closeParen = stat.lastIndexOf(")");
+    const pidStat = String(processLookups.readProcFileSync(`/proc/${pid}/stat`, "utf8"));
+    const procStat = String(processLookups.readProcFileSync("/proc/stat", "utf8"));
+    const fromBoot = linuxStartMsFromProc(pidStat, procStat, clockTicksPerSecond());
+    if (fromBoot !== undefined) return fromBoot;
+    const closeParen = pidStat.lastIndexOf(")");
     if (closeParen < 0) return undefined;
-    const rest = stat.slice(closeParen + 2).trim().split(/\s+/);
-    // Field 22 is starttime in clock ticks after boot (`man 5 proc`).
+    const rest = pidStat.slice(closeParen + 2).trim().split(/\s+/);
     const startTicks = Number(rest[19]);
     if (!Number.isFinite(startTicks) || startTicks < 0) return undefined;
     const ticks = clockTicksPerSecond();
-    const bootSec = readLinuxBootTimeSec();
-    if (bootSec !== undefined) {
-      return (bootSec + startTicks / ticks) * 1000;
-    }
     const uptime = Number(processLookups.readProcFileSync("/proc/uptime", "utf8").trim().split(/\s+/)[0]);
     if (!Number.isFinite(uptime) || uptime < 0) return undefined;
     const elapsedSec = uptime - startTicks / ticks;
@@ -187,16 +185,19 @@ function readLinuxStartMs(pid: number): number | undefined {
   }
 }
 
-function readLinuxBootTimeSec(): number | undefined {
-  try {
-    const text = processLookups.readProcFileSync("/proc/stat", "utf8");
-    const match = /^btime\s+(\d+)\b/m.exec(String(text));
-    if (!match) return undefined;
-    const value = Number(match[1]);
-    return Number.isFinite(value) && value > 0 ? value : undefined;
-  } catch {
-    return undefined;
-  }
+/** Field 22 of `/proc/<pid>/stat` plus `btime` from `/proc/stat`. Independent of `process.platform`. */
+export function linuxStartMsFromProc(pidStat: string, procStat: string, clockTicks = 100): number | undefined {
+  const closeParen = pidStat.lastIndexOf(")");
+  if (closeParen < 0) return undefined;
+  const rest = pidStat.slice(closeParen + 2).trim().split(/\s+/);
+  const startTicks = Number(rest[19]);
+  if (!Number.isFinite(startTicks) || startTicks < 0) return undefined;
+  if (!Number.isFinite(clockTicks) || clockTicks <= 0) return undefined;
+  const match = /^btime\s+(\d+)\b/m.exec(procStat);
+  if (!match) return undefined;
+  const bootSec = Number(match[1]);
+  if (!Number.isFinite(bootSec) || bootSec <= 0) return undefined;
+  return (bootSec + startTicks / clockTicks) * 1000;
 }
 
 function readPsElapsedStartMs(pid: number): number | undefined {

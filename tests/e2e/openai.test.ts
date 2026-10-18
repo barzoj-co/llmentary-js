@@ -11,7 +11,7 @@ import {
   TOOL_MODEL,
   chatFunctionCall,
   consumeChatStream,
-  expectCachedTokensMatchRaw,
+  expectCachedTokensFaithful,
   expectHttpError,
   longPrompt,
   newLab,
@@ -361,7 +361,8 @@ describe("OpenAI E2E through llm-test-lab", () => {
     it("parses cached_tokens from a repeated long prompt", async () => {
       // Unique >=1024-token prompt. Index 0 must not satisfy cachedTokens.min=1.
       // The second call is retried up to 3 times; a hit is still required.
-      // Index 1 recorded cached_tokens must equal nested cached_tokens in the raw body.
+      // Recorded cached_tokens must equal nested cached_tokens in the raw body
+      // on index 0 and on the call that actually hit.
       const lab = newLab(proxy);
       const client = openaiClient(lab);
       const prompt = longPrompt();
@@ -396,10 +397,9 @@ describe("OpenAI E2E through llm-test-lab", () => {
           break;
         }
       }
-      const firstRepeat = (await lab.query({ index: 1 }).wait()).calls[0];
-      expect(firstRepeat).toBeDefined();
-      expectCachedTokensMatchRaw(firstRepeat!);
       await lab.query({ index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+      await expectCachedTokensFaithful(lab, 0);
+      if (hitIndex !== undefined) await expectCachedTokensFaithful(lab, hitIndex);
       await expect(lab.query({ index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } })).rejects.toThrow(
         /usage details/i,
       );
@@ -808,8 +808,9 @@ describe("OpenAI E2E through llm-test-lab", () => {
     });
 
     it("records cached_tokens from the raw Responses body", async () => {
-      // Stable assertion: recorded cached_tokens on call index 1 equals
-      // usage.input_tokens_details.cached_tokens in the raw upstream body.
+      // Stable assertion: recorded cached_tokens equals
+      // usage.input_tokens_details.cached_tokens in the raw upstream body
+      // on index 0 and on the call that actually hit.
       // A prefix-cache hit is optional. Both calls share prompt_cache_key; the
       // second call is retried up to 3 times. If none hit, warn/notice and do
       // not fail — OpenAI Responses often returns cached_tokens=0 here.
@@ -848,18 +849,17 @@ describe("OpenAI E2E through llm-test-lab", () => {
           break;
         }
       }
-      const firstRepeat = (await lab.query({ ...responsesQuery, index: 1 }).wait()).calls[0];
-      expect(firstRepeat).toBeDefined();
-      expectCachedTokensMatchRaw(firstRepeat!);
       await lab.query({ ...responsesQuery, index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
-      await expect(
-        lab.query({ ...responsesQuery, index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } }),
-      ).rejects.toThrow(/usage details/i);
+      await expectCachedTokensFaithful(lab, 0, responsesQuery);
       if (hitIndex !== undefined) {
+        await expectCachedTokensFaithful(lab, hitIndex, responsesQuery);
         await lab.query({ ...responsesQuery, index: hitIndex }).expect().usageDetails({ cachedTokens: { min: 1 } });
       } else {
         noteResponsesCacheMiss();
       }
+      await expect(
+        lab.query({ ...responsesQuery, index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } }),
+      ).rejects.toThrow(/usage details/i);
       await lab.cleanup();
     });
 

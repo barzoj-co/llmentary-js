@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync, execSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,9 +15,11 @@ try {
 
 function runPackConsumerChecks() {
   execSync("npm pack --pack-destination " + JSON.stringify(packDir), { cwd: root, stdio: "inherit" });
-  const tarball = execFileSync("sh", ["-c", "ls *.tgz"], { cwd: packDir, encoding: "utf8" }).trim().split("\n")[0];
-  if (!tarball) throw new Error("npm pack did not produce a tarball");
-  const tarballPath = join(packDir, tarball);
+  const tarballs = readdirSync(packDir).filter((name) => name.endsWith(".tgz"));
+  if (tarballs.length !== 1) {
+    throw new Error(`expected exactly one .tgz in ${packDir}, found ${JSON.stringify(tarballs)}`);
+  }
+  const tarballPath = join(packDir, tarballs[0]);
 
 function write(dir, name, contents) {
   writeFileSync(join(dir, name), contents);
