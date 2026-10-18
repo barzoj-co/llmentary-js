@@ -85,11 +85,17 @@ def parse_permissions(block: str | None) -> set[tuple[str, str]]:
     flow = re.fullmatch(r"\{(.+)\}", stripped, re.S)
     if flow and "\n" not in stripped:
         perms: set[tuple[str, str]] = set()
+        unparsed = False
         for part in flow.group(1).split(","):
-            match = re.match(r"^[ \t]*([A-Za-z0-9_-]+):[ \t]*(\S+)[ \t]*$", part.strip())
+            piece = part.strip()
+            if not piece:
+                continue
+            match = re.match(r"""^[ \t]*["']?([A-Za-z0-9_-]+)["']?:[ \t]*(\S+)[ \t]*$""", piece)
             if match:
                 perms.add((match.group(1), match.group(2).strip("'\"")))
-        return perms or {("*", "unparsed")}
+            else:
+                unparsed = True
+        return {("*", "unparsed")} if unparsed or not perms else perms
 
     perms = set()
     for raw in block.splitlines():
