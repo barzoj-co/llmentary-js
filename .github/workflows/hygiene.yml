@@ -94,9 +94,9 @@ jobs:
 
       - name: Validate codecov.yml
         run: |
-          response="$(curl -sS --data-binary @codecov.yml https://codecov.io/validate)"
+          response="$(curl -fsS --data-binary @codecov.yml https://codecov.io/validate)"
           printf '%s\n' "$response"
-          printf '%s\n' "$response" | grep -qi valid
+          printf '%s\n' "$response" | head -n1 | grep -q '^Valid!'
 
   labels:
     name: labels (dry run)
@@ -146,7 +146,7 @@ jobs:
         env:
           # renovate: datasource=npm depName=release-please
           RELEASE_PLEASE_VERSION: "17.11.2"
-          TARGET_BRANCH: ${{ github.head_ref || github.ref_name }}
+          TARGET_BRANCH: ${{ (github.event.pull_request.head.repo.full_name == github.repository && github.head_ref) || github.base_ref || github.ref_name }}
         run: |
           npx --yes "release-please@${RELEASE_PLEASE_VERSION}" release-pr --dry-run \
             --repo-url=barzoj-co/llm-test-lab-js \

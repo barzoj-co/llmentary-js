@@ -14,6 +14,10 @@ flags:
     paths:
       - src/
     carryforward: true
+  proxy:
+    paths:
+      - src/
+    carryforward: true
 ignore:
   - "tests/**"
   - "scripts/**"

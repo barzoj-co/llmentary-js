@@ -36,7 +36,7 @@ ALLOWED_JOB_PERMS = {
     "release-please-dry": {("contents", "read"), ("pull-requests", "read")},
     "release-build": {("contents", "read")},
     "publish": {("contents", "read"), ("id-token", "write")},
-    "label-sync": {("issues", "write")},
+    "label-sync": {("contents", "read"), ("issues", "write")},
     "label-dry": {("contents", "read"), ("issues", "read")},
     "default": {("contents", "read")},
 }
@@ -216,6 +216,10 @@ def job_permissions(job: dict) -> dict[str, str] | None:
         inline = re.match(r"^\s+permissions:\s*(\{\}|contents:\s*read)\s*$", cleaned)
         if inline:
             return {} if inline.group(1) == "{}" else {"contents": "read"}
+        other = re.match(r"^\s+permissions:\s*(\S.*)$", cleaned)
+        if other:
+            # Unrecognized shorthand (write-all, read-all, flow mapping): fail closed.
+            return {"__unparsed__": other.group(1).strip()}
     return None
 
 
@@ -279,12 +283,17 @@ for path in WORKFLOWS:
         perms = job_permissions(job)
         category = classify(job, path)
         if perms is not None:
-            pairs = as_pairs(perms)
-            allowed = ALLOWED_JOB_PERMS[category]
-            if not pairs <= allowed:
+            if "__unparsed__" in perms:
                 errors.append(
-                    f"{path.name}: job {job['id']!r} ({name}) permissions {perms} not allowed for {category}"
+                    f"{path.name}: job {job['id']!r} ({name}) unrecognized inline permissions {perms['__unparsed__']}"
                 )
+            else:
+                pairs = as_pairs(perms)
+                allowed = ALLOWED_JOB_PERMS[category]
+                if not pairs <= allowed:
+                    errors.append(
+                        f"{path.name}: job {job['id']!r} ({name}) permissions {perms} not allowed for {category}"
+                    )
         if perms and perms.get("id-token") == "write":
             if category not in {"publish", "coverage", "scorecard"}:
                 errors.append(f"{path.name}: job {job['id']!r} has id-token: write outside publish/coverage/Scorecard")
