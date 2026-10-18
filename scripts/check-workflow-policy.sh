@@ -14,7 +14,7 @@ PR_GROUP = "${{ github.workflow }}-${{ github.event.pull_request.number || githu
 PR_CANCEL = "${{ github.event_name == 'pull_request' }}"
 
 WRITE_PERMS = {"write"}
-ID_TOKEN_ALLOWED_KINDS = {"scorecard", "coverage", "publish"}
+ID_TOKEN_ALLOWED_KINDS = {"scorecard", "publish"}
 
 ALLOWED_JOB_PERMS = {
     "codeql": {("contents", "read"), ("actions", "read"), ("security-events", "write")},
@@ -24,7 +24,7 @@ ALLOWED_JOB_PERMS = {
         ("security-events", "write"),
         ("id-token", "write"),
     },
-    "coverage": {("contents", "read"), ("id-token", "write")},
+    "coverage": {("contents", "read")},
     "release-please": {
         ("contents", "write"),
         ("pull-requests", "write"),
@@ -208,9 +208,13 @@ def check_workflow(path: Path) -> list[str]:
                     f"{path}: job {job_id!r} permissions {sorted(job_perms)} are not listed in §1 for {kind}"
                 )
         if any(key == "id-token" and value == "write" for key, value in job_perms):
-            if kind not in ID_TOKEN_ALLOWED_KINDS:
+            if has_pull_request(on_block):
                 errors.append(
-                    f"{path}: job {job_id!r} has id-token: write outside publish/coverage/Scorecard"
+                    f"{path}: job {job_id!r} has id-token: write on a pull_request-triggered workflow"
+                )
+            elif kind not in ID_TOKEN_ALLOWED_KINDS:
+                errors.append(
+                    f"{path}: job {job_id!r} has id-token: write outside publish/Scorecard"
                 )
         has_matrix = bool(re.search(r"^\s+strategy:\s*$", job, re.M) and re.search(r"\bmatrix:\b", job))
         if has_matrix and "test:e2e:openai" in job:

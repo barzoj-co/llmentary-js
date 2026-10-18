@@ -1,0 +1,13 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: presence and use
+        env:
+          HAS_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ "$HAS_OPENAI_API_KEY" != "true" ]; then
+            exit 1
+          fi

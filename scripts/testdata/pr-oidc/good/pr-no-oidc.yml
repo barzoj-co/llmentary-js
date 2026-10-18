@@ -1,0 +1,13 @@
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        node: [18, 20]
+    steps:
+      - run: echo test

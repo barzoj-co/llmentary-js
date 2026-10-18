@@ -1,0 +1,16 @@
+title = "llm-test-lab-js"
+
+[extend]
+useDefault = true
+
+# Synthetic invalid OpenAI key used in e2e 401 tests (audit 2026-10-18 §4).
+# Regex-only: gitleaks treats allowlist `paths` as a whole-file skip, which
+# would hide a real key in the same file (self-test: keys under tests/e2e/).
+[[allowlists]]
+description = "Synthetic invalid OpenAI key used in e2e 401 tests (audit 2026-10-18 §4)"
+regexes = ['''sk-invalid[A-Za-z0-9_-]*''']
+
+# Documentation placeholder OpenAI keys (audit 2026-10-18 §4).
+[[allowlists]]
+description = "Documentation placeholder OpenAI keys (audit 2026-10-18 §4)"
+regexes = ['''sk-\.\.\.''']

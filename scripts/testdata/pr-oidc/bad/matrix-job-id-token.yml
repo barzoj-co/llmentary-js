@@ -1,0 +1,13 @@
+# expect: id-token: write
+on:
+  pull_request:
+jobs:
+  test:
+    strategy:
+      matrix:
+        node: [18, 20, 22]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - run: echo test

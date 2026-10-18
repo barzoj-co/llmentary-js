@@ -68,12 +68,65 @@ npm run test:e2e:openai
 Never print, log, or commit `OPENAI_API_KEY`, `LLMTESTLAB_REPO_TOKEN`, or any
 `Authorization` / `api-key` value.
 
+## CI secrets and the e2e gate
+
+Live OpenAI e2e runs in a dedicated `e2e-openai` job (`OpenAI E2E`). That job
+holds every `secrets.OPENAI_API_KEY` reference in `ci.yml`. Secrets reach only
+the steps that need them: the proxy checkout `token:` for
+`LLMTESTLAB_REPO_TOKEN`, and the `OpenAI E2E` step env for `OPENAI_API_KEY`.
+Presence checks use the boolean form (`secrets.X != ''`) so the raw value
+never enters those processes. `npm ci` and the rest of the `test` job run
+with no secret in env.
+
+`e2e-gate` always runs and is green only when `e2e-openai` succeeded. Fork
+PRs skip the live job (no secrets), so the gate fails. That is intended:
+GitHub would otherwise treat a skipped required check as passing.
+
+**Known limitation:** on `pull_request`, GitHub runs the workflow and scripts
+from the PR's own merge commit, so a PR that edits `ci.yml` or
+`scripts/e2e-gate.sh` can make the gate pass. The gate catches the normal
+fork case (e2e skipped, nobody tampered with CI). Tampering is caught by
+review of every `.github/**` and `scripts/**` diff. Never "fix" this with
+`pull_request_target`.
+
+A `workflow_dispatch` of CI on a non-main ref skips `e2e-openai` by design;
+`e2e-gate` is red there.
+
+### Maintainer: run live e2e for a fork PR
+
+1. Review the fork diff.
+2. Push the same commits to a same-repo branch (or open a same-repo PR).
+3. CI on that branch runs `OpenAI E2E` with repo secrets.
+4. Never use `pull_request_target`.
+
+### Optional maintainer approval (`environment: openai-e2e`)
+
+To require maintainer approval for live e2e, add one line on the
+`e2e-openai` job, directly above `runs-on:`:
+
+```yaml
+environment: openai-e2e
+```
+
+after Denis creates that environment with its protection rules and moves
+`OPENAI_API_KEY` into it. Do not add `environment:` before that: referencing
+an environment auto-creates it unprotected. If the environment is enabled
+later and an approval is rejected or times out, `e2e-gate` goes red. That is
+intended.
+
 ## Hygiene scripts
 
 ```sh
 scripts/check-pinned-actions.sh
 scripts/check-pinned-actions.sh --self-test
 scripts/check-workflow-policy.sh
+scripts/check-secret-scope.sh --e2e-job e2e-openai
+scripts/check-secret-scope.sh --self-test
+scripts/check-pr-oidc.sh
+scripts/check-pr-oidc.sh --self-test
+scripts/e2e-gate.sh --self-test
+scripts/check-ref-on-main.sh --self-test
+scripts/check-gitleaks-config.sh --self-test
 scripts/check-readme.sh
 ```
 

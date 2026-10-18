@@ -1,0 +1,14 @@
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 5 * * 1"
+  branch_protection_rule:
+  workflow_dispatch:
+jobs:
+  analysis:
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - run: echo scorecard

@@ -56,8 +56,34 @@ jobs:
       - name: Self-test pinned-actions fixtures
         run: scripts/check-pinned-actions.sh --self-test
 
+      - name: Install policy Python deps
+        env:
+          # renovate: datasource=pypi depName=pyyaml
+          PYYAML_VERSION: 6.0.3
+        run: |
+          python3 -m venv "$RUNNER_TEMP/policy-venv"
+          "$RUNNER_TEMP/policy-venv/bin/pip" install "PyYAML==${PYYAML_VERSION}"
+
       - name: Workflow policy
         run: scripts/check-workflow-policy.sh
+
+      - name: Secret-scope policy
+        run: |
+          export PATH="$RUNNER_TEMP/policy-venv/bin:$PATH"
+          scripts/check-secret-scope.sh --e2e-job e2e-openai
+          scripts/check-secret-scope.sh --self-test
+
+      - name: PR OIDC policy
+        run: |
+          export PATH="$RUNNER_TEMP/policy-venv/bin:$PATH"
+          scripts/check-pr-oidc.sh
+          scripts/check-pr-oidc.sh --self-test
+
+      - name: e2e-gate self-test
+        run: scripts/e2e-gate.sh --self-test
+
+      - name: Ref-on-main self-test
+        run: scripts/check-ref-on-main.sh --self-test
 
   renovate-config:
     name: renovate-config

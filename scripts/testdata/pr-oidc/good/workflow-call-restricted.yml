@@ -1,0 +1,9 @@
+on:
+  workflow_call:
+jobs:
+  called:
+    if: github.repository == 'barzoj-co/llm-test-lab-js'
+    permissions:
+      id-token: write
+    steps:
+      - run: echo oidc
