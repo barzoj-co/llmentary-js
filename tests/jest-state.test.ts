@@ -1,7 +1,10 @@
+import { spawn } from "node:child_process";
 import { chmod, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, describe, expect, it } from "vitest";
+import { pidExists } from "../src/process.js";
 import {
   allocateRun,
   applyState,
@@ -58,6 +61,7 @@ describe("Jest state hardening", () => {
     const written = await writeState(handle, runId);
     const mode = (await stat(written)).mode & 0o777;
     expect(mode).toBe(0o600);
+    expect((await stat(dirname(written))).mode & 0o777).toBe(0o700);
 
     const raw = await readFile(written, "utf8");
     expect(raw).not.toContain("super-secret-control-token");
@@ -112,6 +116,47 @@ describe("Jest state hardening", () => {
       exePath: "/usr/bin/llmtestlab",
     });
     expect(killed).toBe(false);
+  });
+
+  it("cleans up state without killing a live process that has a different identity", async () => {
+    stashEnv();
+    const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+      env: { ...process.env },
+    });
+    try {
+      expect(live.pid).toBeDefined();
+      const pid = live.pid!;
+      await delay(50);
+      const ownerPid = 91_031;
+      const { runId, statePath } = await allocateRun(ownerPid);
+      allocatedOwnerPids.push(ownerPid);
+      await writeState(
+        fakeHandle({
+          proxyUrl: "http://127.0.0.1:7010",
+          controlUrl: "http://127.0.0.1:7011",
+          pid,
+          instanceId: "not-the-live-process",
+          exePath: process.execPath,
+        }),
+        runId,
+      );
+      expect((await stat(statePath)).mode & 0o777).toBe(0o600);
+      const killed = await stopOwnedProxy(await readState());
+      expect(killed).toBe(false);
+      expect(pidExists(pid)).toBe(true);
+      await deleteState();
+      await expect(stat(statePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(pidExists(pid)).toBe(true);
+    } finally {
+      if (live.pid && pidExists(live.pid)) {
+        try {
+          live.kill("SIGKILL");
+        } catch {
+          // Already gone.
+        }
+      }
+    }
   });
 
   it("does not recursively delete a custom state file parent directory", async () => {

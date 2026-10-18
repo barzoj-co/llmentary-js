@@ -1,11 +1,28 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync as nodeSpawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, readFileSync as nodeReadFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, readlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 const PROCESS_QUERY_TIMEOUT_MS = 3_000;
+
+export interface ProcessQueryResult {
+  error?: Error;
+  status: number | null;
+  stdout?: string;
+  stderr?: string;
+}
+
+/** Test seam: stub `spawnSync` / `/proc` reads without mocking the whole module. */
+export const processLookups = {
+  spawnSync: nodeSpawnSync as (
+    command: string,
+    args?: readonly string[],
+    options?: { encoding?: BufferEncoding; timeout?: number; windowsHide?: boolean },
+  ) => ProcessQueryResult,
+  readProcFileSync: nodeReadFileSync,
+};
 
 export interface ProcessIdentity {
   pid: number;
@@ -74,6 +91,7 @@ export function rememberSpawnedProcess(identity: ProcessIdentity): void {
   if (!identity.pid || !identity.instanceId) return;
   const path = sidecarPath(identity.pid);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  chmodSync(dirname(path), 0o700);
   const startedAtMs = readProcessStartMs(identity.pid) ?? identity.startedAtMs ?? Date.now();
   writeFileSync(
     path,
@@ -96,7 +114,7 @@ async function readProcessEnviron(pid: number): Promise<string> {
     return data.toString("utf8").split("\0").join("\n");
   } catch {
     if (process.platform === "win32") return readWindowsCommandLine(pid);
-    const result = spawnSync("ps", ["eww", "-p", String(pid), "-o", "command="], {
+    const result = processLookups.spawnSync("ps", ["eww", "-p", String(pid), "-o", "command="], {
       encoding: "utf8",
       timeout: PROCESS_QUERY_TIMEOUT_MS,
     });
@@ -114,7 +132,7 @@ function instanceIdFromEnviron(environ: string): string | undefined {
 
 function instanceIdFromSidecar(pid: number): string | undefined {
   try {
-    const parsed = JSON.parse(readFileSync(sidecarPath(pid), "utf8")) as { instanceId?: string; startedAtMs?: number };
+    const parsed = JSON.parse(nodeReadFileSync(sidecarPath(pid), "utf8")) as { instanceId?: string; startedAtMs?: number };
     if (!parsed.instanceId || parsed.startedAtMs === undefined) return undefined;
     const liveStart = readProcessStartMs(pid);
     if (liveStart === undefined) return undefined;
@@ -130,7 +148,7 @@ async function readProcessExe(pid: number): Promise<string | undefined> {
     return await readlink(`/proc/${pid}/exe`);
   } catch {
     if (process.platform === "win32") return readWindowsExecutablePath(pid);
-    const result = spawnSync("ps", ["-p", String(pid), "-o", "comm="], {
+    const result = processLookups.spawnSync("ps", ["-p", String(pid), "-o", "comm="], {
       encoding: "utf8",
       timeout: PROCESS_QUERY_TIMEOUT_MS,
     });
@@ -147,13 +165,13 @@ export function readProcessStartMs(pid: number): number | undefined {
 
 function readLinuxStartMs(pid: number): number | undefined {
   try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const stat = processLookups.readProcFileSync(`/proc/${pid}/stat`, "utf8");
     const closeParen = stat.lastIndexOf(")");
     if (closeParen < 0) return undefined;
     const rest = stat.slice(closeParen + 2).trim().split(/\s+/);
     const startTicks = Number(rest[19]);
     if (!Number.isFinite(startTicks) || startTicks < 0) return undefined;
-    const uptime = Number(readFileSync("/proc/uptime", "utf8").trim().split(/\s+/)[0]);
+    const uptime = Number(processLookups.readProcFileSync("/proc/uptime", "utf8").trim().split(/\s+/)[0]);
     if (!Number.isFinite(uptime) || uptime < 0) return undefined;
     const elapsedSec = uptime - startTicks / clockTicksPerSecond();
     if (!Number.isFinite(elapsedSec) || elapsedSec < 0) return undefined;
@@ -164,7 +182,7 @@ function readLinuxStartMs(pid: number): number | undefined {
 }
 
 function readPsElapsedStartMs(pid: number): number | undefined {
-  const result = spawnSync("ps", ["-p", String(pid), "-o", "etime="], {
+  const result = processLookups.spawnSync("ps", ["-p", String(pid), "-o", "etime="], {
     encoding: "utf8",
     timeout: PROCESS_QUERY_TIMEOUT_MS,
   });
@@ -193,7 +211,7 @@ export function parsePsEtime(value: string): number | undefined {
 }
 
 function clockTicksPerSecond(): number {
-  const result = spawnSync("getconf", ["CLK_TCK"], { encoding: "utf8", timeout: PROCESS_QUERY_TIMEOUT_MS });
+  const result = processLookups.spawnSync("getconf", ["CLK_TCK"], { encoding: "utf8", timeout: PROCESS_QUERY_TIMEOUT_MS });
   const value = Number(result.stdout?.trim());
   return Number.isFinite(value) && value > 0 ? value : 100;
 }
@@ -219,7 +237,7 @@ function queryWindowsProcess(pid: number, property: "CommandLine" | "ExecutableP
 }
 
 function spawnWindowsQuery(script: string): string | undefined {
-  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+  const result = processLookups.spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf8",
     timeout: PROCESS_QUERY_TIMEOUT_MS,
     windowsHide: true,

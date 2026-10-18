@@ -13,6 +13,8 @@ export interface WaitOptions {
 export interface QueryOptions {
   apiType?: ApiType;
   model?: string | RegExp;
+  /** 0-based index into the filtered call list. */
+  index?: number;
 }
 
 export interface LabConfig {

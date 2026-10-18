@@ -86,7 +86,7 @@ module.exports = {
 };
 ```
 
-Jest `globalSetup` writes owner-only (`0600`) per-run state under the OS temp directory and a run-id pointer under `.llm-test-lab/jest-runs/`. Control tokens are not persisted, concurrent Jest runs do not share or kill each other's proxy, and teardown verifies process identity before sending signals.
+Jest `globalSetup` writes owner-only (`0600`) per-run state in a unique `0700` temp directory and a run-id pointer under `.llm-test-lab/jest-runs/`. Control tokens are not persisted, concurrent Jest runs do not share or kill each other's proxy, and teardown verifies process identity before sending signals.
 
 ```js
 const OpenAI = require("openai");

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import OpenAI, { APIError } from "openai";
 import {
@@ -151,8 +152,10 @@ export function timeToolResponses(): OpenAI.Responses.Tool {
   };
 }
 
+/** Unique prefix + enough filler that prompt_tokens is >= 1024 for automatic prefix caching. */
 export function longPrompt(): string {
-  return `Repeat this prefix silently and reply with the single word pong.\n${"The quick brown fox jumps over the lazy dog. ".repeat(120)}`;
+  const unit = "The quick brown fox jumps over the lazy dog. ";
+  return `Cache-key ${randomUUID()}. Repeat this prefix silently and reply with the single word pong.\n${unit.repeat(250)}`;
 }
 
 export function chatFunctionCall(

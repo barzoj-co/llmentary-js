@@ -9,6 +9,8 @@ import {
   forgetSpawnedProcess,
   parsePsEtime,
   pidExists,
+  processLookups,
+  type ProcessQueryResult,
   processMatchesIdentity,
   readProcessStartMs,
   rememberSpawnedProcess,
@@ -16,8 +18,11 @@ import {
 } from "../src/process.js";
 
 const children: ReturnType<typeof spawn>[] = [];
+const originalLookups = { ...processLookups };
 
 afterEach(async () => {
+  processLookups.spawnSync = originalLookups.spawnSync;
+  processLookups.readProcFileSync = originalLookups.readProcFileSync;
   for (const child of children.splice(0)) {
     if (child.pid && pidExists(child.pid)) {
       try {
@@ -99,6 +104,39 @@ describe("process identity", () => {
     await delay(50);
     writeSidecar(pid, instanceId, Date.now() - 60_000);
     await expect(processMatchesIdentity(pid, { pid, instanceId })).resolves.toBe(false);
+    expect(pidExists(pid)).toBe(true);
+    forgetSpawnedProcess(pid);
+  });
+
+  it("rejects a sidecar when the live start time is missing", async () => {
+    const child = spawnWithoutInstanceId();
+    const pid = child.pid!;
+    const instanceId = randomUUID();
+    await delay(50);
+    rememberSpawnedProcess({ pid, instanceId, startedAtMs: Date.now() });
+    processLookups.readProcFileSync = () => {
+      throw new Error("proc unavailable");
+    };
+    processLookups.spawnSync = () => emptySpawnResult(1);
+    await expect(processMatchesIdentity(pid, { pid, instanceId })).resolves.toBe(false);
+    await expect(stopProcessIfMatches(pid, { pid, instanceId })).resolves.toBe(false);
+    expect(pidExists(pid)).toBe(true);
+    forgetSpawnedProcess(pid);
+  });
+
+  it("treats a timed-out spawnSync query as an identity mismatch", async () => {
+    const child = spawnWithoutInstanceId();
+    const pid = child.pid!;
+    const instanceId = randomUUID();
+    await delay(50);
+    rememberSpawnedProcess({ pid, instanceId, startedAtMs: Date.now() });
+    processLookups.readProcFileSync = () => {
+      throw new Error("proc unavailable");
+    };
+    processLookups.spawnSync = () => timedOutSpawnResult();
+    await expect(processMatchesIdentity(pid, { pid, instanceId })).resolves.toBe(false);
+    await expect(stopProcessIfMatches(pid, { pid, instanceId })).resolves.toBe(false);
+    expect(pidExists(pid)).toBe(true);
     forgetSpawnedProcess(pid);
   });
 });
@@ -139,4 +177,17 @@ function writeSidecar(pid: number, instanceId: string, startedAtMs: number): voi
   const path = join(tmpdir(), "llm-test-lab", "proc", `${pid}.json`);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(path, `${JSON.stringify({ instanceId, startedAtMs })}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function emptySpawnResult(status: number): ProcessQueryResult {
+  return { stdout: "", stderr: "", status };
+}
+
+function timedOutSpawnResult(): ProcessQueryResult {
+  return {
+    stdout: "",
+    stderr: "",
+    status: null,
+    error: Object.assign(new Error("spawnSync ETIMEDOUT"), { code: "ETIMEDOUT" }),
+  };
 }

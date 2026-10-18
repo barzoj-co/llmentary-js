@@ -197,6 +197,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
           ],
         }),
       );
+      await lab.expect().callCount(1);
       await lab.expect().toolCalled("lookup_weather");
       await lab.expect().toolCalled("lookup_time");
       await lab.expect().calledTimes("lookup_weather", 1);
@@ -331,7 +332,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
       }
       await lab.expect().incomplete();
       const health = await new ControlClient({ controlUrl: proxy.controlUrl }).health();
-      expect(health === "ok" || (typeof health === "object" && health !== null)).toBe(true);
+      expect(health).toBe("ok");
       const followUp = newLab(proxy);
       const followClient = openaiClient(followUp);
       await retryNetwork(() =>
@@ -348,6 +349,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
     });
 
     it("parses cached_tokens from a repeated long prompt", async () => {
+      // Automatic prefix caching: unique >=1024-token prompt. Only the SECOND call may have cached_tokens > 0.
       const lab = newLab(proxy);
       const client = openaiClient(lab);
       const prompt = longPrompt();
@@ -367,8 +369,13 @@ describe("OpenAI E2E through llm-test-lab", () => {
           messages: [{ role: "user", content: prompt }],
         }),
       );
-      await lab.expect().tokenBounds({ prompt: { min: 1 }, total: { min: 1 } });
-      await lab.expect().usageDetails({ cachedTokens: { min: 0 } });
+      await lab.expect().callCount(2);
+      await lab.query({ index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+      await lab.query({ index: 1 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+      await expect(lab.query({ index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } })).rejects.toThrow(
+        /usage details/i,
+      );
+      await lab.query({ index: 1 }).expect().usageDetails({ cachedTokens: { min: 1 } });
       await lab.cleanup();
     });
 
@@ -429,6 +436,14 @@ describe("OpenAI E2E through llm-test-lab", () => {
       await expect(lab.expect().callCount(0)).rejects.toThrow(/recorded call/i);
       await expect(lab.expect().outputText("___NO_SUCH_TEXT___")).rejects.toThrow(/output text/i);
       await expect(lab.expect().incomplete()).rejects.toThrow(/incomplete or errored/i);
+      await expect(lab.expect().outputMatchesDeltas()).rejects.toThrow(/concatenated stream deltas/i);
+      await expect(lab.expect().streamedToolArgsJson("lookup_weather")).rejects.toThrow(/streamed tool arguments/i);
+      await expect(lab.expect().outputJsonValid(CITY_SCHEMA)).rejects.toThrow(/output text JSON to match schema/i);
+      await expect(lab.expect().usageDetails({ cachedTokens: { min: 1_000_000 } })).rejects.toThrow(/usage details/i);
+      await expect(lab.expect().errorStatus(500)).rejects.toThrow(/error status/i);
+      await expect(lab.expect().errorType("no_such_error_type")).rejects.toThrow(/error type/i);
+      await expect(lab.expect().errorCode("no_such_error_code")).rejects.toThrow(/error code/i);
+      await expect(lab.query({ apiType: "responses" }).expect().rawRecorded()).rejects.toThrow(/raw_request or raw_response/i);
 
       const toolLab = newLab(proxy);
       const toolClient = openaiClient(toolLab);
@@ -596,6 +611,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
         }),
       );
       const scoped = lab.query({ apiType: "responses" }).expect();
+      await scoped.callCount(1);
       await scoped.toolCalled("lookup_weather");
       await scoped.toolCalled("lookup_time");
       await scoped.calledTimes("lookup_weather", 1);
@@ -729,7 +745,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
       }
       await lab.query({ apiType: "responses" }).expect().incomplete();
       const health = await new ControlClient({ controlUrl: proxy.controlUrl }).health();
-      expect(health === "ok" || (typeof health === "object" && health !== null)).toBe(true);
+      expect(health).toBe("ok");
       const followUp = newLab(proxy);
       await retryNetwork(() =>
         openaiClient(followUp).responses.create({
@@ -745,6 +761,7 @@ describe("OpenAI E2E through llm-test-lab", () => {
     });
 
     it("parses cached_tokens from a repeated long prompt", async () => {
+      // Automatic prefix caching: unique >=1024-token prompt. Only the SECOND call may have cached_tokens > 0.
       const lab = newLab(proxy);
       const client = openaiClient(lab);
       const prompt = longPrompt();
@@ -764,9 +781,13 @@ describe("OpenAI E2E through llm-test-lab", () => {
           input: prompt,
         }),
       );
-      const scoped = lab.query({ apiType: "responses" }).expect();
-      await scoped.tokenBounds({ prompt: { min: 1 }, total: { min: 1 } });
-      await scoped.usageDetails({ cachedTokens: { min: 0 } });
+      await lab.query({ apiType: "responses" }).expect().callCount(2);
+      await lab.query({ apiType: "responses", index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+      await lab.query({ apiType: "responses", index: 1 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+      await expect(
+        lab.query({ apiType: "responses", index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } }),
+      ).rejects.toThrow(/usage details/i);
+      await lab.query({ apiType: "responses", index: 1 }).expect().usageDetails({ cachedTokens: { min: 1 } });
       await lab.cleanup();
     });
 
@@ -825,6 +846,16 @@ describe("OpenAI E2E through llm-test-lab", () => {
       await expect(scoped.callCount(0)).rejects.toThrow(/recorded call/i);
       await expect(scoped.outputText("___NO_SUCH_TEXT___")).rejects.toThrow(/output text/i);
       await expect(scoped.incomplete()).rejects.toThrow(/incomplete or errored/i);
+      await expect(scoped.outputMatchesDeltas()).rejects.toThrow(/concatenated stream deltas/i);
+      await expect(scoped.streamedToolArgsJson("lookup_weather")).rejects.toThrow(/streamed tool arguments/i);
+      await expect(scoped.outputJsonValid(CITY_SCHEMA)).rejects.toThrow(/output text JSON to match schema/i);
+      await expect(scoped.usageDetails({ cachedTokens: { min: 1_000_000 } })).rejects.toThrow(/usage details/i);
+      await expect(scoped.errorStatus(500)).rejects.toThrow(/error status/i);
+      await expect(scoped.errorType("no_such_error_type")).rejects.toThrow(/error type/i);
+      await expect(scoped.errorCode("no_such_error_code")).rejects.toThrow(/error code/i);
+      await expect(lab.query({ apiType: "chat_completions" }).expect().rawRecorded()).rejects.toThrow(
+        /raw_request or raw_response/i,
+      );
 
       const toolLab = newLab(proxy);
       await retryNetwork(() =>
@@ -864,12 +895,13 @@ describe("OpenAI E2E through llm-test-lab", () => {
       await retryNetwork(() =>
         openaiClient(lab).responses.create({
           model: REASONING_MODEL,
-          max_output_tokens: 16,
-          input: "Reply with the single digit 4.",
+          max_output_tokens: 128,
+          reasoning: { effort: "low" },
+          input: "Add 17 and 25. Reply with only the integer result.",
         }),
       );
       await lab.expect().model(REASONING_MODEL);
-      await lab.expect().usageDetails({ reasoningTokens: { min: 0 } });
+      await lab.expect().usageDetails({ reasoningTokens: { min: 1 } });
       await lab.cleanup();
     });
   });

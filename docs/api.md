@@ -71,6 +71,7 @@ Equivalent env: `LLMTESTLAB_LISTEN`, `LLMTESTLAB_CONTROL_LISTEN`, `LLMTESTLAB_UP
 lab.expect();
 lab.query({ apiType: "chat_completions" }).expect();
 lab.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect();
+lab.query({ index: 1 }).expect();
 ```
 
 `apiType` values mirror the Go client scoping:
@@ -78,7 +79,7 @@ lab.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect();
 - `chat_completions`
 - `responses`
 
-Other strings are accepted for passthrough/future API types.
+Other strings are accepted for passthrough/future API types. `index` is 0-based into the filtered call list (use it to assert on the second cached-token call rather than `some()` over the session).
 
 ## Assertions
 
@@ -177,7 +178,7 @@ module.exports = {
 };
 ```
 
-Jest `globalSetup` runs in a separate process, so workers cannot inherit its environment. The client writes a unique per-run state file under `os.tmpdir()/llm-test-lab/jest/<runId>/state.json` with mode `0600` (owner-only) and a pointer at `.llm-test-lab/jest-runs/<jestMainPid>` that contains only the run id. Control tokens are never written to disk. Concurrent Jest runs in the same directory get different run ids and must not attach to or kill each other's proxy. Teardown sends SIGTERM/SIGKILL only after verifying process identity (`LLMTESTLAB_INSTANCE_ID` in the child environment, falling back to the executable path), so a recycled PID is left alone.
+Jest `globalSetup` runs in a separate process, so workers cannot inherit its environment. The client writes a unique per-run state file under `os.tmpdir()/llm-test-lab/jest/<runId>/state.json` with mode `0600` (owner-only) inside a `0700` directory, and a pointer at `.llm-test-lab/jest-runs/<jestMainPid>` that contains only the run id. Control tokens are never written to disk. Concurrent Jest runs in the same directory get different run ids and must not attach to or kill each other's proxy. Teardown sends SIGTERM/SIGKILL only after verifying process identity (`LLMTESTLAB_INSTANCE_ID` plus a start-time sidecar), so a recycled PID is left alone.
 
 ## Control API client
 

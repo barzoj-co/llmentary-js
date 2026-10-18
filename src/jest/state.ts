@@ -83,6 +83,7 @@ export async function allocateRun(ownerPid = jestOwnerPid()): Promise<{ runId: s
   process.env.LLMTESTLAB_JEST_STATE_FILE = path;
   const pointer = pointerPath(ownerPid);
   await mkdir(dirname(pointer), { recursive: true, mode: 0o700 });
+  await chmod(dirname(pointer), 0o700);
   await writeFile(pointer, `${runId}\n`, { encoding: "utf8", mode: 0o600 });
   await chmod(pointer, 0o600);
   return { runId, statePath: path };
@@ -94,6 +95,7 @@ export async function writeState(handle: ProxyHandle, runId?: string): Promise<s
   const path = firstNonEmpty(process.env.LLMTESTLAB_JEST_STATE_FILE) ?? stateFilePath(allocated);
   process.env.LLMTESTLAB_JEST_STATE_FILE = path;
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await chmod(dirname(path), 0o700);
   const state: JestProxyState = {
     runId: allocated,
     proxyUrl: handle.proxyUrl,

@@ -500,7 +500,7 @@ export class AssertionScope {
 }
 
 export function recordsForTrace(trace: SessionTrace, query: QueryOptions = {}): CallRecord[] {
-  return trace.calls.filter((record) => {
+  const records = trace.calls.filter((record) => {
     if (query.apiType && record.apiType !== query.apiType) return false;
     if (query.model) {
       const requested = stringAt(asObject(record.request), "model");
@@ -508,6 +508,9 @@ export function recordsForTrace(trace: SessionTrace, query: QueryOptions = {}): 
     }
     return true;
   });
+  if (query.index === undefined) return records;
+  const record = records[query.index];
+  return record ? [record] : [];
 }
 
 const MODEL_SNAPSHOT_SUFFIX = /^(.+)-\d{4}-\d{2}-\d{2}$/;

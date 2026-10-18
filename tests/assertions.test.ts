@@ -371,6 +371,28 @@ describe("AssertionScope", () => {
     });
     await expect(scopeFor(trace).streamedToolArgsJson("lookup_weather")).resolves.toMatchObject({ pass: true });
   });
+
+  it("scopes usage details to a single call by index", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_type: "chat_completions",
+          usage: { prompt_tokens: 1200, total_tokens: 1210, prompt_tokens_details: { cached_tokens: 0 } },
+        },
+        {
+          api_type: "chat_completions",
+          usage: { prompt_tokens: 1200, total_tokens: 1210, prompt_tokens_details: { cached_tokens: 1100 } },
+        },
+      ],
+    });
+    await expect(scopeFor(trace).soft().usageDetails({ cachedTokens: { min: 1 } })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace, { index: 0 }).soft().usageDetails({ cachedTokens: { min: 1 } })).resolves.toMatchObject({
+      pass: false,
+    });
+    await expect(scopeFor(trace, { index: 1 }).usageDetails({ cachedTokens: { min: 1 } })).resolves.toMatchObject({ pass: true });
+    expect(recordsForTrace(trace, { index: 1 })).toHaveLength(1);
+  });
 });
 
 function scopeFor(trace: SessionTrace, query?: QueryOptions): AssertionScope {
