@@ -183,15 +183,17 @@ export class AssertionScope {
 
   async tokenBounds(bounds: TokenBounds): Promise<AssertionResult> {
     return this.check("expected token usage bounds", (trace) => {
-      const usages = recordsForTrace(trace, this.query).map((record) => usageNumbers(record)).filter(Boolean);
-      const pass = usages.some((usage) => {
-        if (!usage) return false;
-        return (
+      const records = recordsForTrace(trace, this.query);
+      const usages = records.map((record) => usageNumbers(record));
+      const pass =
+        records.length > 0 &&
+        usages.every(
+          (usage) =>
+            usage !== undefined &&
           checkBounds(usage.prompt, bounds.prompt) &&
           checkBounds(usage.completion, bounds.completion) &&
-          checkBounds(usage.total, bounds.total)
+            checkBounds(usage.total, bounds.total),
         );
-      });
       return { pass, message: `expected token bounds ${stringify(bounds)}, saw ${stringify(usages)}` };
     });
   }
@@ -269,10 +271,9 @@ export class AssertionScope {
 
   private async numericRecordBound(field: "latencyMs" | "ttftMs" | "retries", bounds: Bounds): Promise<AssertionResult> {
     return this.check(`expected ${field} bounds`, (trace) => {
-      const values = recordsForTrace(trace, this.query)
-        .map((record) => record[field])
-        .filter((value): value is number => typeof value === "number");
-      const pass = values.some((value) => checkBounds(value, bounds));
+      const records = recordsForTrace(trace, this.query);
+      const values = records.map((record) => record[field] ?? (field === "retries" ? 0 : undefined));
+      const pass = records.length > 0 && values.every((value) => checkBounds(value, bounds));
       return { pass, message: `expected ${field} within ${stringify(bounds)}, saw ${values.join(", ") || "<none>"}` };
     });
   }

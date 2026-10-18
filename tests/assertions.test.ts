@@ -90,6 +90,29 @@ describe("AssertionScope", () => {
     expect(soft.error?.message).toContain("llm-test-lab trace summary");
     await expect(scopeFor(trace).toolCalled("missing")).rejects.toBeInstanceOf(LabAssertionError);
   });
+
+  it("requires every matching record to satisfy bounds", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        { api_type: "chat_completions", latency_ms: 50, usage: { total_tokens: 10 } },
+        { api_type: "chat_completions", latency_ms: 500, retries: 1, usage: { total_tokens: 1000 } },
+      ],
+    });
+
+    await expect(scopeFor(trace).soft().latency({ max: 100 })).resolves.toMatchObject({ pass: false });
+    await expect(scopeFor(trace).soft().tokenBounds({ total: { max: 100 } })).resolves.toMatchObject({ pass: false });
+    await expect(scopeFor(trace).soft().noRetries()).resolves.toMatchObject({ pass: false });
+  });
+
+  it("treats omitted retries as zero for noRetries", async () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [{ api_type: "chat_completions", latency_ms: 50 }],
+    });
+
+    await expect(scopeFor(trace).noRetries()).resolves.toMatchObject({ pass: true });
+  });
 });
 
 function scopeFor(trace: SessionTrace): AssertionScope {

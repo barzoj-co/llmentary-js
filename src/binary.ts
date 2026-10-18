@@ -55,7 +55,7 @@ export async function downloadBinary(options: BinaryDownloadOptions = {}): Promi
   const checksums = await downloadChecksumsIfPresent(release.assets, versionDir, token);
   if (checksums) await verifyChecksum(archivePath, checksums);
 
-  const binaryPath = join(versionDir, DEFAULT_BINARY_NAME);
+  const binaryPath = join(versionDir, targetBinaryName(options.platform ?? process.platform));
   await extractArchive(archivePath, versionDir, binaryPath);
   await chmod(binaryPath, 0o755);
   return binaryPath;
@@ -100,11 +100,21 @@ async function findOnPath(binaryName: string): Promise<string | undefined> {
 
 async function findCachedBinary(options: BinaryDownloadOptions): Promise<string | undefined> {
   const cacheDir = cacheRoot(options);
+  const binaryName = targetBinaryName(options.platform ?? process.platform);
   try {
+    if (options.version) {
+      const candidate = join(cacheDir, options.version, binaryName);
+      await access(candidate);
+      return candidate;
+    }
     const entries = await readdir(cacheDir, { withFileTypes: true });
-    const versions = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort().reverse();
+    const versions = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort(compareReleaseTags)
+      .reverse();
     for (const version of versions) {
-      const candidate = join(cacheDir, version, DEFAULT_BINARY_NAME);
+      const candidate = join(cacheDir, version, binaryName);
       try {
         await access(candidate);
         return candidate;
@@ -120,6 +130,10 @@ async function findCachedBinary(options: BinaryDownloadOptions): Promise<string 
 
 function cacheRoot(options: BinaryDownloadOptions): string {
   return options.cacheDir ?? process.env.LLMTESTLAB_CACHE_DIR ?? join(homedir(), ".cache", "llm-test-lab");
+}
+
+function targetBinaryName(platform: NodeJS.Platform): string {
+  return platform === "win32" ? `${DEFAULT_BINARY_NAME}.exe` : DEFAULT_BINARY_NAME;
 }
 
 interface GitHubRelease {
@@ -205,16 +219,13 @@ async function verifyChecksum(path: string, checksums: string): Promise<void> {
 async function extractArchive(archivePath: string, versionDir: string, binaryPath: string): Promise<void> {
   const before = await snapshotFiles(versionDir);
   if (archivePath.endsWith(".zip")) {
-    await run(process.execPath, [
-      "-e",
-      `require('node:zlib'); throw new Error('zip extraction is not implemented in this environment; extract ${archivePath} and set LLMTESTLAB_BIN')`,
-    ]);
+    await extractZip(archivePath, versionDir);
   } else {
     await run("tar", ["-xzf", archivePath, "-C", versionDir]);
   }
   const after = await snapshotFiles(versionDir);
   const extracted = [...after].filter((path) => !before.has(path));
-  const executable = extracted.find((path) => /(?:^|\/)llm(?:-?test-?lab|testlab)(?:\.exe)?$/i.test(path));
+  const executable = extracted.find((path) => /(?:^|[/\\])llm(?:-?test-?lab|testlab)(?:\.exe)?$/i.test(path));
   if (!executable) {
     throw new Error(`Downloaded ${archivePath}, but no llmtestlab binary was found in the archive.`);
   }
@@ -247,6 +258,39 @@ async function run(command: string, args: string[]): Promise<void> {
       else reject(new Error(`${command} ${args.join(" ")} exited with ${code}`));
     });
   });
+}
+
+async function extractZip(archivePath: string, versionDir: string): Promise<void> {
+  if (process.platform === "win32") {
+    await run("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "Expand-Archive",
+      "-LiteralPath",
+      archivePath,
+      "-DestinationPath",
+      versionDir,
+      "-Force",
+    ]);
+    return;
+  }
+  await run("unzip", ["-q", archivePath, "-d", versionDir]);
+}
+
+function compareReleaseTags(a: string, b: string): number {
+  const left = parseReleaseTag(a);
+  const right = parseReleaseTag(b);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const diff = (left[index] ?? 0) - (right[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return a.localeCompare(b);
+}
+
+function parseReleaseTag(tag: string): number[] {
+  const match = tag.match(/\d+(?:\.\d+)*/);
+  return match ? match[0].split(".").map((part) => Number(part)) : [0];
 }
 
 export async function fileExists(path: string): Promise<boolean> {

@@ -26,6 +26,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
   const port = options.port ?? (await getFreePort(host));
   const proxyUrl = `http://${host}:${port}`;
   const controlUrl = options.controlPort ? `http://${host}:${options.controlPort}` : proxyUrl;
+  const controlListen = options.controlPort ? `${host}:${options.controlPort}` : undefined;
   const bearerToken = options.bearerToken ?? process.env.LLMTESTLAB_BEARER_TOKEN;
   const upstreamBaseUrl = options.upstreamBaseUrl ?? process.env.LLMTESTLAB_UPSTREAM_BASE_URL;
   const env = {
@@ -41,6 +42,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     host,
     port,
     controlUrl,
+    ...(controlListen ? { controlListen } : {}),
     ...(upstreamBaseUrl ? { upstreamBaseUrl } : {}),
     ...(bearerToken ? { bearerToken } : {}),
     ...(options.args ? { extraArgs: options.args } : {}),
@@ -116,6 +118,7 @@ interface ArgSetOptions {
   host: string;
   port: number;
   controlUrl: string;
+  controlListen?: string;
   upstreamBaseUrl?: string;
   bearerToken?: string;
   extraArgs?: string[];
@@ -128,15 +131,17 @@ function buildArgSets(options: ArgSetOptions): string[][] {
   const args: string[] = ["--listen", listen];
   const serveArgs: string[] = ["serve", "--listen", listen];
   const proxyAddrArgs: string[] = ["serve", "--proxy-addr", listen];
+  const control = options.controlListen ? ["--control-listen", options.controlListen] : [];
+  const controlAddr = options.controlListen ? ["--control-addr", options.controlListen] : [];
   const upstream = options.upstreamBaseUrl ? ["--upstream-base-url", options.upstreamBaseUrl] : [];
   const upstreamAlt = options.upstreamBaseUrl ? ["--upstream-url", options.upstreamBaseUrl] : [];
   const token = options.bearerToken ? ["--bearer-token", options.bearerToken] : [];
   return [
-    [...serveArgs, ...upstream, ...token],
-    [...args, ...upstream, ...token],
-    [...proxyAddrArgs, ...upstream, ...token],
-    [...serveArgs, ...upstreamAlt, ...token],
-    [...args, ...upstreamAlt, ...token],
+    [...serveArgs, ...control, ...upstream, ...token],
+    [...args, ...control, ...upstream, ...token],
+    [...proxyAddrArgs, ...controlAddr, ...upstream, ...token],
+    [...serveArgs, ...control, ...upstreamAlt, ...token],
+    [...args, ...control, ...upstreamAlt, ...token],
     [],
   ];
 }
@@ -162,7 +167,10 @@ async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
     new Promise<boolean>((resolve) => child.once("exit", () => resolve(true))),
     delay(2_000).then(() => false),
   ]);
-  if (!exited) child.kill("SIGKILL");
+  if (!exited) {
+    child.kill("SIGKILL");
+    await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  }
 }
 
 function trimTrailingSlash(value: string): string {

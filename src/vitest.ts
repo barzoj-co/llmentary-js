@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect } from "vitest";
 import { createLab, type LlmTestLab } from "./index.js";
 import { toHaveRequestParam, toHaveToolCalled, toHaveToolCalledTimes } from "./matchers.js";
 import { startProxy, type ProxyHandle, type ProxyLaunchOptions } from "./index.js";
@@ -9,12 +9,11 @@ let currentLab: LlmTestLab | undefined;
 
 export async function globalSetup(options: ProxyLaunchOptions = {}): Promise<() => Promise<void>> {
   proxy = await startProxy(options);
-  process.env.LLMTESTLAB_PROXY_URL = proxy.proxyUrl;
-  process.env.LLMTESTLAB_CONTROL_URL = proxy.controlUrl;
-  if (proxy.bearerToken) process.env.LLMTESTLAB_BEARER_TOKEN = proxy.bearerToken;
+  applyProxyEnv(proxy);
   return async () => {
     await proxy?.stop();
     proxy = undefined;
+    clearProxyEnv();
   };
 }
 
@@ -22,9 +21,7 @@ export function setupVitest(options: { proxy?: ProxyLaunchOptions; lab?: LabConf
   beforeAll(async () => {
     if (!process.env.LLMTESTLAB_PROXY_URL) {
       proxy = await startProxy(options.proxy);
-      process.env.LLMTESTLAB_PROXY_URL = proxy.proxyUrl;
-      process.env.LLMTESTLAB_CONTROL_URL = proxy.controlUrl;
-      if (proxy.bearerToken) process.env.LLMTESTLAB_BEARER_TOKEN = proxy.bearerToken;
+      applyProxyEnv(proxy);
     }
   });
 
@@ -37,11 +34,6 @@ export function setupVitest(options: { proxy?: ProxyLaunchOptions; lab?: LabConf
     currentLab = undefined;
   });
 
-  afterAll(async () => {
-    await proxy?.stop();
-    proxy = undefined;
-  });
-
   expect.extend({ toHaveToolCalled, toHaveToolCalledTimes, toHaveRequestParam });
 }
 
@@ -52,6 +44,18 @@ export function lab(config?: LabConfig): LlmTestLab {
 }
 
 export { createLab };
+
+function applyProxyEnv(handle: ProxyHandle): void {
+  process.env.LLMTESTLAB_PROXY_URL = handle.proxyUrl;
+  process.env.LLMTESTLAB_CONTROL_URL = handle.controlUrl;
+  if (handle.bearerToken) process.env.LLMTESTLAB_BEARER_TOKEN = handle.bearerToken;
+}
+
+function clearProxyEnv(): void {
+  delete process.env.LLMTESTLAB_PROXY_URL;
+  delete process.env.LLMTESTLAB_CONTROL_URL;
+  delete process.env.LLMTESTLAB_BEARER_TOKEN;
+}
 
 declare module "vitest" {
   // T is part of Vitest's public Assertion declaration and must be repeated for module augmentation.
