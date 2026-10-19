@@ -42,15 +42,15 @@ describe("process identity", () => {
     const pid = child.pid!;
     await delay(50);
     await expect(
-      processMatchesIdentity(pid, { pid, instanceId: "not-this-instance", exePath: "/usr/bin/llmtestlab" }),
+      processMatchesIdentity(pid, { pid, instanceId: "not-this-instance", exePath: "/usr/bin/llmentary" }),
     ).resolves.toBe(false);
     await expect(stopProcessIfMatches(pid, { pid, instanceId: "not-this-instance" })).resolves.toBe(false);
     expect(pidExists(pid)).toBe(true);
   });
 
-  it("kills a process only when LLMTESTLAB_INSTANCE_ID still matches", async () => {
+  it("kills a process only when LLMENTARY_INSTANCE_ID still matches", async () => {
     const instanceId = randomUUID();
-    const child = spawnUnrelated({ LLMTESTLAB_INSTANCE_ID: instanceId });
+    const child = spawnUnrelated({ LLMENTARY_INSTANCE_ID: instanceId });
     const pid = child.pid!;
     await delay(50);
     await expect(processMatchesIdentity(pid, { pid, instanceId })).resolves.toBe(true);
@@ -62,7 +62,7 @@ describe("process identity", () => {
 
   it("refuses to kill a recycled pid that lost the original identity", async () => {
     const instanceId = randomUUID();
-    const first = spawnUnrelated({ LLMTESTLAB_INSTANCE_ID: instanceId });
+    const first = spawnUnrelated({ LLMENTARY_INSTANCE_ID: instanceId });
     const pid = first.pid!;
     first.kill("SIGKILL");
     const deadline = Date.now() + 2_000;
@@ -175,7 +175,7 @@ function spawnUnrelated(extraEnv: NodeJS.ProcessEnv = {}): ReturnType<typeof spa
 
 function spawnWithoutInstanceId(): ReturnType<typeof spawn> {
   const env = { ...process.env };
-  delete env.LLMTESTLAB_INSTANCE_ID;
+  delete env.LLMENTARY_INSTANCE_ID;
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
     env,
     stdio: "ignore",
@@ -185,7 +185,7 @@ function spawnWithoutInstanceId(): ReturnType<typeof spawn> {
 }
 
 function writeSidecar(pid: number, instanceId: string, startedAtMs: number): void {
-  const path = join(tmpdir(), "llm-test-lab", "proc", `${pid}.json`);
+  const path = join(tmpdir(), "llmentary", "proc", `${pid}.json`);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   writeFileSync(path, `${JSON.stringify({ instanceId, startedAtMs })}\n`, { encoding: "utf8", mode: 0o600 });
 }

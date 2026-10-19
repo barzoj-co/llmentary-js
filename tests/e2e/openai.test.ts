@@ -28,28 +28,28 @@ import {
 
 const startedAt = Date.now();
 
-describe("OpenAI E2E through llm-test-lab", () => {
+describe("OpenAI E2E through llmentary", () => {
   let proxy: ProxyHandle;
 
   beforeAll(async () => {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY is required for OpenAI E2E tests on push and non-fork PRs.");
     }
-    if (!process.env.LLMTESTLAB_BIN && !process.env.LLMTESTLAB_PROXY_URL) {
-      throw new Error("LLMTESTLAB_BIN is required so E2E traffic goes through the real Go proxy.");
+    if (!process.env.LLMENTARY_BIN && !process.env.LLMENTARY_PROXY_URL) {
+      throw new Error("LLMENTARY_BIN is required so E2E traffic goes through the real Go proxy.");
     }
     proxy = await startProxy({
       upstreamBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
       healthTimeoutMs: 20_000,
     });
-    process.env.LLMTESTLAB_PROXY_URL = proxy.proxyUrl;
-    process.env.LLMTESTLAB_CONTROL_URL = proxy.controlUrl;
+    process.env.LLMENTARY_PROXY_URL = proxy.proxyUrl;
+    process.env.LLMENTARY_CONTROL_URL = proxy.controlUrl;
   }, 30_000);
 
   afterAll(async () => {
     await proxy?.stop();
-    delete process.env.LLMTESTLAB_PROXY_URL;
-    delete process.env.LLMTESTLAB_CONTROL_URL;
+    delete process.env.LLMENTARY_PROXY_URL;
+    delete process.env.LLMENTARY_CONTROL_URL;
     console.log(`OpenAI E2E wall time: ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
   });
 

@@ -77,11 +77,11 @@ export function resolveUpstreamSpec(options: {
   env?: NodeJS.ProcessEnv;
 } = {}): string {
   const env = options.env ?? process.env;
-  const name = firstNonEmpty(options.upstreamName, env.LLMTESTLAB_UPSTREAM_NAME) ?? "openai";
-  const spec = firstNonEmpty(options.upstreams, env.LLMTESTLAB_UPSTREAMS);
+  const name = firstNonEmpty(options.upstreamName, env.LLMENTARY_UPSTREAM_NAME) ?? "openai";
+  const spec = firstNonEmpty(options.upstreams, env.LLMENTARY_UPSTREAMS);
   if (spec) return rewriteUpstreamSpec(spec);
   const url =
-    firstNonEmpty(options.upstreamBaseUrl, env.LLMTESTLAB_UPSTREAM_BASE_URL, env.OPENAI_BASE_URL) ??
+    firstNonEmpty(options.upstreamBaseUrl, env.LLMENTARY_UPSTREAM_BASE_URL, env.OPENAI_BASE_URL) ??
     "https://api.openai.com/v1";
   return formatUpstreamSpec(name, originForGoUpstream(url));
 }
@@ -99,16 +99,16 @@ function rewriteUpstreamSpec(spec: string): string {
 }
 
 export async function startProxy(options: ProxyLaunchOptions = {}): Promise<ProxyHandle> {
-  const attachedProxyUrl = firstNonEmpty(options.proxyUrl, process.env.LLMTESTLAB_PROXY_URL);
+  const attachedProxyUrl = firstNonEmpty(options.proxyUrl, process.env.LLMENTARY_PROXY_URL);
   if (attachedProxyUrl) {
     const proxyUrl = trimTrailingSlash(attachedProxyUrl);
     const controlUrl = trimTrailingSlash(
-      firstNonEmpty(options.controlUrl, process.env.LLMTESTLAB_CONTROL_URL) ?? proxyUrl,
+      firstNonEmpty(options.controlUrl, process.env.LLMENTARY_CONTROL_URL) ?? proxyUrl,
     );
     const bearerToken = firstNonEmpty(
       options.bearerToken,
-      process.env.LLMTESTLAB_BEARER_TOKEN,
-      process.env.LLMTESTLAB_CONTROL_TOKEN,
+      process.env.LLMENTARY_BEARER_TOKEN,
+      process.env.LLMENTARY_CONTROL_TOKEN,
     );
     await waitForHealth(controlUrl, bearerToken, options.healthTimeoutMs);
     return {
@@ -122,7 +122,7 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
   }
 
   const binaryPath = options.binaryPath ?? (await resolveBinary());
-  const host = firstNonEmpty(options.host, process.env.LLMTESTLAB_HOST) ?? "127.0.0.1";
+  const host = firstNonEmpty(options.host, process.env.LLMENTARY_HOST) ?? "127.0.0.1";
   const reserved = await getFreePorts(host, 2);
   const port = options.port ?? reserved[0]!;
   const controlPort = options.controlPort ?? reserved.find((candidate) => candidate !== port) ?? reserved[1]!;
@@ -134,10 +134,10 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
   const controlListen = `${host}:${controlPort}`;
   const bearerToken = firstNonEmpty(
     options.bearerToken,
-    process.env.LLMTESTLAB_BEARER_TOKEN,
-    process.env.LLMTESTLAB_CONTROL_TOKEN,
+    process.env.LLMENTARY_BEARER_TOKEN,
+    process.env.LLMENTARY_CONTROL_TOKEN,
   );
-  const upstreamName = firstNonEmpty(options.upstreamName, process.env.LLMTESTLAB_UPSTREAM_NAME) ?? "openai";
+  const upstreamName = firstNonEmpty(options.upstreamName, process.env.LLMENTARY_UPSTREAM_NAME) ?? "openai";
   const upstreamSpec = resolveUpstreamSpec({
     ...(options.upstreams !== undefined ? { upstreams: options.upstreams } : {}),
     upstreamName,
@@ -149,15 +149,15 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
   const env = {
     ...process.env,
     ...options.env,
-    LLMTESTLAB_LISTEN: `${host}:${port}`,
-    LLMTESTLAB_CONTROL_LISTEN: controlListen,
-    LLMTESTLAB_PROXY_URL: proxyUrl,
-    LLMTESTLAB_CONTROL_URL: controlUrl,
-    LLMTESTLAB_UPSTREAM_NAME: upstreamName,
-    LLMTESTLAB_INSTANCE_ID: instanceId,
-    ...(upstreamSpec ? { LLMTESTLAB_UPSTREAMS: upstreamSpec } : {}),
+    LLMENTARY_LISTEN: `${host}:${port}`,
+    LLMENTARY_CONTROL_LISTEN: controlListen,
+    LLMENTARY_PROXY_URL: proxyUrl,
+    LLMENTARY_CONTROL_URL: controlUrl,
+    LLMENTARY_UPSTREAM_NAME: upstreamName,
+    LLMENTARY_INSTANCE_ID: instanceId,
+    ...(upstreamSpec ? { LLMENTARY_UPSTREAMS: upstreamSpec } : {}),
     ...(bearerToken
-      ? { LLMTESTLAB_BEARER_TOKEN: bearerToken, LLMTESTLAB_CONTROL_TOKEN: bearerToken }
+      ? { LLMENTARY_BEARER_TOKEN: bearerToken, LLMENTARY_CONTROL_TOKEN: bearerToken }
       : {}),
   };
 
@@ -213,8 +213,8 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     }
   }
   throw new Error(
-    `Failed to start llm-test-lab proxy with known CLI argument forms. ${lastError?.message ?? ""}\n` +
-      "If the Go binary uses different flags, set LLMTESTLAB_PROXY_URL and LLMTESTLAB_CONTROL_URL to attach to a running proxy or pass args/start options explicitly.",
+    `Failed to start llmentary proxy with known CLI argument forms. ${lastError?.message ?? ""}\n` +
+      "If the Go binary uses different flags, set LLMENTARY_PROXY_URL and LLMENTARY_CONTROL_URL to attach to a running proxy or pass args/start options explicitly.",
   );
 }
 
@@ -236,7 +236,7 @@ export async function waitForHealth(
     if (child && child.exitCode !== null) {
       throw new Error(
         redactText(
-          `llm-test-lab proxy exited before becoming healthy (exit ${child.exitCode}). ${logs.join("\n")}`.trim(),
+          `llmentary proxy exited before becoming healthy (exit ${child.exitCode}). ${logs.join("\n")}`.trim(),
           bearerToken,
         ),
       );
@@ -249,7 +249,7 @@ export async function waitForHealth(
       await delay(100);
     }
   }
-  throw new Error(`Timed out waiting for llm-test-lab /healthz at ${controlUrl}: ${String(lastError)}`);
+  throw new Error(`Timed out waiting for llmentary /healthz at ${controlUrl}: ${String(lastError)}`);
 }
 
 async function getFreePorts(host: string, count: number): Promise<number[]> {
@@ -291,7 +291,7 @@ interface ArgSetOptions {
 
 async function buildArgSets(options: ArgSetOptions): Promise<string[][]> {
   if (options.extraArgs?.length) return [options.extraArgs];
-  if (process.env.LLMTESTLAB_PROXY_START_ARGS) return [splitArgs(process.env.LLMTESTLAB_PROXY_START_ARGS)];
+  if (process.env.LLMENTARY_PROXY_START_ARGS) return [splitArgs(process.env.LLMENTARY_PROXY_START_ARGS)];
   const listen = `${options.host}:${options.port}`;
   const canonical = [
     "-listen",

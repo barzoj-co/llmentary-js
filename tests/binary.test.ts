@@ -2,59 +2,85 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assetNameCandidates, nativePackageName, parseChecksumFile, resolveBinary } from "../src/binary.js";
+import {
+  DEFAULT_BINARY_NAME,
+  DEFAULT_REPO,
+  assetNameCandidates,
+  nativePackageName,
+  parseChecksumFile,
+  resolveBinary,
+} from "../src/binary.js";
 import { formatUpstreamSpec, originForGoUpstream, redactArgs, resolveUpstreamSpec } from "../src/proxy.js";
 
 describe("binary release asset matching", () => {
   it("matches GoReleaser-style Linux x64 tarballs", () => {
     const patterns = assetNameCandidates("linux", "x64");
-    expect(patterns.some((pattern) => pattern.test("llmtestlab_Linux_x86_64.tar.gz"))).toBe(true);
-    expect(patterns.some((pattern) => pattern.test("llm-test-lab_Linux_amd64.tar.gz"))).toBe(true);
+    expect(patterns.some((pattern) => pattern.test("llmentary_0.1.0_linux_amd64.tar.gz"))).toBe(true);
+    expect(patterns.some((pattern) => pattern.test("llmentary_linux_amd64.tar.gz"))).toBe(true);
   });
 
   it("matches macOS GoReleaser tarballs", () => {
-    expect(assetNameCandidates("darwin", "arm64").some((pattern) => pattern.test("llmtestlab_Darwin_arm64.tar.gz"))).toBe(true);
-    expect(assetNameCandidates("darwin", "x64").some((pattern) => pattern.test("llmtestlab_Darwin_x86_64.tar.gz"))).toBe(true);
+    expect(assetNameCandidates("darwin", "arm64").some((pattern) => pattern.test("llmentary_0.1.0_darwin_arm64.tar.gz"))).toBe(
+      true,
+    );
+    expect(assetNameCandidates("darwin", "x64").some((pattern) => pattern.test("llmentary_0.1.0_darwin_amd64.tar.gz"))).toBe(
+      true,
+    );
   });
 
   it("matches Windows zips", () => {
     const patterns = assetNameCandidates("win32", "x64");
-    expect(patterns.some((pattern) => pattern.test("llmtestlab_Windows_x86_64.zip"))).toBe(true);
+    expect(patterns.some((pattern) => pattern.test("llmentary_0.1.0_windows_amd64.zip"))).toBe(true);
+  });
+
+  it("rejects the pre-rename archive names", () => {
+    const linux = assetNameCandidates("linux", "x64");
+    const darwin = assetNameCandidates("darwin", "arm64");
+    const hyphenated = ["llm", "test", "lab"].join("-");
+    const compact = ["llm", "testlab"].join("");
+    expect(linux.some((pattern) => pattern.test(`${hyphenated}_0.1.0_linux_amd64.tar.gz`))).toBe(false);
+    expect(linux.some((pattern) => pattern.test(`${compact}_Linux_x86_64.tar.gz`))).toBe(false);
+    expect(darwin.some((pattern) => pattern.test(`${hyphenated}_0.1.0_darwin_arm64.tar.gz`))).toBe(false);
+  });
+
+  it("defaults to the llmentary proxy repo and binary name", () => {
+    expect(DEFAULT_REPO).toBe("barzoj-co/llmentary");
+    expect(DEFAULT_BINARY_NAME).toBe("llmentary");
   });
 
   it("maps platform packages", () => {
-    expect(nativePackageName("linux", "x64")).toBe("@llm-test-lab/linux-x64");
-    expect(nativePackageName("linux", "arm64")).toBe("@llm-test-lab/linux-arm64");
-    expect(nativePackageName("darwin", "x64")).toBe("@llm-test-lab/darwin-x64");
-    expect(nativePackageName("darwin", "arm64")).toBe("@llm-test-lab/darwin-arm64");
-    expect(nativePackageName("win32", "x64")).toBe("@llm-test-lab/win32-x64");
+    expect(nativePackageName("linux", "x64")).toBe("@llmentary/linux-x64");
+    expect(nativePackageName("linux", "arm64")).toBe("@llmentary/linux-arm64");
+    expect(nativePackageName("darwin", "x64")).toBe("@llmentary/darwin-x64");
+    expect(nativePackageName("darwin", "arm64")).toBe("@llmentary/darwin-arm64");
+    expect(nativePackageName("win32", "x64")).toBe("@llmentary/win32-x64");
   });
 
   it("parses GoReleaser checksum lines", () => {
-    const checksums = "abc123  llmtestlab_Linux_x86_64.tar.gz\n";
-    expect(parseChecksumFile(checksums, "llmtestlab_Linux_x86_64.tar.gz")).toBe("abc123");
+    const checksums = "abc123  llmentary_0.1.0_linux_amd64.tar.gz\n";
+    expect(parseChecksumFile(checksums, "llmentary_0.1.0_linux_amd64.tar.gz")).toBe("abc123");
   });
 });
 
-describe("resolveBinary LLMTESTLAB_BIN override", () => {
-  const previous = process.env.LLMTESTLAB_BIN;
+describe("resolveBinary LLMENTARY_BIN override", () => {
+  const previous = process.env.LLMENTARY_BIN;
 
   afterEach(() => {
-    if (previous === undefined) delete process.env.LLMTESTLAB_BIN;
-    else process.env.LLMTESTLAB_BIN = previous;
+    if (previous === undefined) delete process.env.LLMENTARY_BIN;
+    else process.env.LLMENTARY_BIN = previous;
   });
 
-  it("uses LLMTESTLAB_BIN when it points at a readable file", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "llm-test-lab-bin-"));
-    const bin = join(dir, "custom-llmtestlab");
+  it("uses LLMENTARY_BIN when it points at a readable file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "llmentary-bin-"));
+    const bin = join(dir, "custom-llmentary");
     await writeFile(bin, "#!/bin/sh\n");
-    process.env.LLMTESTLAB_BIN = bin;
+    process.env.LLMENTARY_BIN = bin;
     await expect(resolveBinary()).resolves.toBe(bin);
   });
 
-  it("throws when LLMTESTLAB_BIN is set but missing", async () => {
-    process.env.LLMTESTLAB_BIN = join(tmpdir(), "missing-llmtestlab-binary");
-    await expect(resolveBinary()).rejects.toThrow(/LLMTESTLAB_BIN/);
+  it("throws when LLMENTARY_BIN is set but missing", async () => {
+    process.env.LLMENTARY_BIN = join(tmpdir(), "missing-llmentary-binary");
+    await expect(resolveBinary()).rejects.toThrow(/LLMENTARY_BIN/);
   });
 });
 
@@ -97,7 +123,7 @@ describe("proxy CLI helpers", () => {
     expect(resolveUpstreamSpec({ upstreams: "openai=https://api.openai.com/v1" })).toBe("openai=https://api.openai.com");
     expect(
       resolveUpstreamSpec({
-        env: { LLMTESTLAB_UPSTREAM_BASE_URL: "", OPENAI_BASE_URL: "  " },
+        env: { LLMENTARY_UPSTREAM_BASE_URL: "", OPENAI_BASE_URL: "  " },
       }),
     ).toBe("openai=https://api.openai.com");
     expect(

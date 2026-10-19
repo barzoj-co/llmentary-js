@@ -1,8 +1,16 @@
 {
-  "name": "llm-test-lab",
+  "name": "llmentary",
   "version": "0.0.0",
-  "description": "Deterministic trace-based integration tests for LLM apps using llm-test-lab.",
+  "description": "TypeScript (Vitest/Jest) client for llmentary: deterministic trace-based integration tests for LLM apps",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/barzoj-co/llmentary-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/barzoj-co/llmentary-js/issues"
+  },
+  "homepage": "https://github.com/barzoj-co/llmentary-js#readme",
   "type": "module",
   "engines": {
     "node": ">=18"
@@ -92,7 +100,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.esm.json && tsc -p tsconfig.cjs.json && node scripts/write-cjs-package.cjs",
-    "clean": "rm -rf dist coverage .llm-test-lab",
+    "clean": "rm -rf dist coverage .llmentary",
     "lint": "eslint src tests --ignore-pattern 'tests/jest/*.cjs'",
     "test": "npm run test:unit && npm run test:proxy && npm run test:jest",
     "test:unit": "vitest run tests/assertions.test.ts tests/binary.test.ts tests/control.test.ts tests/normalize.test.ts tests/lab.test.ts tests/process.test.ts tests/jest-state.test.ts",
@@ -120,11 +128,11 @@
     }
   },
   "optionalDependencies": {
-    "@llm-test-lab/darwin-arm64": "0.0.0",
-    "@llm-test-lab/darwin-x64": "0.0.0",
-    "@llm-test-lab/linux-arm64": "0.0.0",
-    "@llm-test-lab/linux-x64": "0.0.0",
-    "@llm-test-lab/win32-x64": "0.0.0"
+    "@llmentary/darwin-arm64": "0.0.0",
+    "@llmentary/darwin-x64": "0.0.0",
+    "@llmentary/linux-arm64": "0.0.0",
+    "@llmentary/linux-x64": "0.0.0",
+    "@llmentary/win32-x64": "0.0.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

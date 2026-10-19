@@ -140,6 +140,6 @@ export interface BinaryResolutionOptions extends BinaryDownloadOptions {
   allowDownload?: boolean;
 }
 
-export interface LlmTestLabGlobals {
-  __LLM_TEST_LAB__?: ProxyHandle;
+export interface LabGlobals {
+  __LLMENTARY__?: ProxyHandle;
 }

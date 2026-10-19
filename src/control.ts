@@ -26,7 +26,7 @@ export class ControlClient {
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     if (!this.fetchImpl) {
-      throw new Error("llm-test-lab requires a fetch implementation; use Node >=18 or pass fetch.");
+      throw new Error("llmentary requires a fetch implementation; use Node >=18 or pass fetch.");
     }
   }
 
@@ -69,7 +69,7 @@ export class ControlClient {
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       throw new Error(
-        `llm-test-lab control API ${init.method ?? "GET"} ${path} failed: ${response.status} ${response.statusText}${text ? `\n${text}` : ""}`,
+        `llmentary control API ${init.method ?? "GET"} ${path} failed: ${response.status} ${response.statusText}${text ? `\n${text}` : ""}`,
       );
     }
     if (response.status === 204) return null;

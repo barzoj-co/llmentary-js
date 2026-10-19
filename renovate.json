@@ -47,7 +47,7 @@
       "enabled": false
     },
     {
-      "matchPackageNames": ["@llm-test-lab/**"],
+      "matchPackageNames": ["@llmentary/**"],
       "enabled": false
     },
     {
@@ -91,7 +91,7 @@
       "managerFilePatterns": ["/(^|/)PROXY_VERSION$/"],
       "matchStrings": ["(?<currentValue>.+)"],
       "datasourceTemplate": "github-releases",
-      "depNameTemplate": "barzoj-co/llm-test-lab"
+      "depNameTemplate": "barzoj-co/llmentary"
     }
   ]
 }

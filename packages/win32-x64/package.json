@@ -1,11 +1,11 @@
 {
-  "name": "@llm-test-lab/win32-x64",
+  "name": "@llmentary/win32-x64",
   "version": "0.0.0",
-  "description": "Windows x64 llm-test-lab proxy binary (optionalDependency of llm-test-lab).",
+  "description": "Windows x64 llmentary proxy binary (optionalDependency of llmentary).",
   "license": "MIT AND AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/barzoj-co/llm-test-lab-js.git",
+    "url": "git+https://github.com/barzoj-co/llmentary-js.git",
     "directory": "packages/win32-x64"
   },
   "engines": {

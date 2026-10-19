@@ -44,8 +44,8 @@ function runNode(dir, args) {
   write(
     dir,
     "index.js",
-    `import { createLab } from "llm-test-lab";
-import { lab } from "llm-test-lab/jest";
+    `import { createLab } from "llmentary";
+import { lab } from "llmentary/jest";
 if (typeof createLab !== "function") throw new Error("createLab missing");
 if (typeof lab !== "function") throw new Error("lab missing");
 const facade = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
@@ -63,8 +63,8 @@ if (!facade.baseURL.endsWith("/v1")) throw new Error("baseURL");
   write(
     dir,
     "index.cjs",
-    `const { createLab } = require("llm-test-lab");
-const { lab } = require("llm-test-lab/jest");
+    `const { createLab } = require("llmentary");
+const { lab } = require("llmentary/jest");
 if (typeof createLab !== "function") throw new Error("createLab missing");
 if (typeof lab !== "function") throw new Error("lab missing");
 const facade = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
@@ -88,9 +88,10 @@ function tsConsumer(name, pkg, tsconfig, sourceName, source) {
   });
 }
 
-const importSource = `import { createLab } from "llm-test-lab";
-import { lab } from "llm-test-lab/jest";
-export const facade = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+const importSource = `import { createLab, type Lab, type LabQuery } from "llmentary";
+import { lab } from "llmentary/jest";
+export const facade: Lab = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+export const query: LabQuery = facade.query({});
 export const current = lab();
 `;
 
@@ -145,6 +146,31 @@ tsConsumer(
   "index.ts",
   importSource,
 );
+
+{
+  const dir = join(packDir, "ts-nodenext");
+  const tsc = join(dir, "node_modules", ".bin", "tsc");
+  const oldNames = [
+    ["Llm", "Test", "Lab"].join(""),
+    ["Llm", "Test", "Lab", "Query"].join(""),
+    ["Llm", "Test", "Lab", "Globals"].join(""),
+  ];
+  for (const name of oldNames) {
+    write(dir, "old-export.ts", `import type { ${name} } from "llmentary";\nexport type Probe = ${name};\n`);
+    let failed = false;
+    try {
+      execFileSync(tsc, ["--pretty", "false", "--strict", "--module", "NodeNext", "--moduleResolution", "NodeNext", "--noEmit", "old-export.ts"], {
+        cwd: dir,
+        stdio: "pipe",
+      });
+    } catch {
+      failed = true;
+    }
+    if (!failed) {
+      throw new Error(`expected tsc to reject the removed public type ${name}`);
+    }
+  }
+}
 
 console.log("pack consumers: esm-js, cjs-js, ts-nodenext, ts-node16-cjs, ts-bundler ok");
 }

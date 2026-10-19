@@ -17,7 +17,7 @@ export interface JestProxyState {
 }
 
 export function jestOwnerPid(): number {
-  const explicit = Number(firstNonEmpty(process.env.LLMTESTLAB_JEST_OWNER_PID));
+  const explicit = Number(firstNonEmpty(process.env.LLMENTARY_JEST_OWNER_PID));
   if (Number.isFinite(explicit) && explicit > 0) return explicit;
   if (process.env.JEST_WORKER_ID) return process.ppid;
   const argv = process.argv.join(" ");
@@ -26,24 +26,24 @@ export function jestOwnerPid(): number {
 }
 
 export function pointerPath(ownerPid = jestOwnerPid()): string {
-  return join(process.cwd(), ".llm-test-lab", "jest-runs", String(ownerPid));
+  return join(process.cwd(), ".llmentary", "jest-runs", String(ownerPid));
 }
 
 export function stateFilePath(runId: string): string {
-  return join(tmpdir(), "llm-test-lab", "jest", runId, "state.json");
+  return join(tmpdir(), "llmentary", "jest", runId, "state.json");
 }
 
 export function statePath(): string {
-  return firstNonEmpty(process.env.LLMTESTLAB_JEST_STATE_FILE) ?? stateFilePath(currentRunId());
+  return firstNonEmpty(process.env.LLMENTARY_JEST_STATE_FILE) ?? stateFilePath(currentRunId());
 }
 
 export function currentRunId(): string {
-  const fromEnv = firstNonEmpty(process.env.LLMTESTLAB_JEST_RUN_ID);
+  const fromEnv = firstNonEmpty(process.env.LLMENTARY_JEST_RUN_ID);
   if (fromEnv) return fromEnv;
   const fromPointer = fallbackRunIdFromPointersSync();
   if (fromPointer) return fromPointer;
   throw new Error(
-    "llm-test-lab Jest run id is missing; globalSetup should create a pointer under .llm-test-lab/jest-runs/.",
+    "llmentary Jest run id is missing; globalSetup should create a pointer under .llmentary/jest-runs/.",
   );
 }
 
@@ -60,7 +60,7 @@ function fallbackRunIdFromPointersSync(): string | undefined {
 }
 
 export async function resolveRunId(): Promise<string> {
-  const fromEnv = firstNonEmpty(process.env.LLMTESTLAB_JEST_RUN_ID);
+  const fromEnv = firstNonEmpty(process.env.LLMENTARY_JEST_RUN_ID);
   if (fromEnv) return fromEnv;
   for (const pid of [process.pid, process.ppid]) {
     try {
@@ -71,16 +71,16 @@ export async function resolveRunId(): Promise<string> {
     }
   }
   throw new Error(
-    "llm-test-lab Jest run id is missing; globalSetup should create a pointer under .llm-test-lab/jest-runs/.",
+    "llmentary Jest run id is missing; globalSetup should create a pointer under .llmentary/jest-runs/.",
   );
 }
 
 export async function allocateRun(ownerPid = jestOwnerPid()): Promise<{ runId: string; statePath: string }> {
-  const runId = firstNonEmpty(process.env.LLMTESTLAB_JEST_RUN_ID) ?? randomUUID();
-  process.env.LLMTESTLAB_JEST_RUN_ID = runId;
-  process.env.LLMTESTLAB_JEST_OWNER_PID = String(ownerPid);
-  const path = firstNonEmpty(process.env.LLMTESTLAB_JEST_STATE_FILE) ?? stateFilePath(runId);
-  process.env.LLMTESTLAB_JEST_STATE_FILE = path;
+  const runId = firstNonEmpty(process.env.LLMENTARY_JEST_RUN_ID) ?? randomUUID();
+  process.env.LLMENTARY_JEST_RUN_ID = runId;
+  process.env.LLMENTARY_JEST_OWNER_PID = String(ownerPid);
+  const path = firstNonEmpty(process.env.LLMENTARY_JEST_STATE_FILE) ?? stateFilePath(runId);
+  process.env.LLMENTARY_JEST_STATE_FILE = path;
   const pointer = pointerPath(ownerPid);
   await mkdir(dirname(pointer), { recursive: true, mode: 0o700 });
   await chmod(dirname(pointer), 0o700);
@@ -91,14 +91,14 @@ export async function allocateRun(ownerPid = jestOwnerPid()): Promise<{ runId: s
 
 export async function writeState(handle: ProxyHandle, runId?: string): Promise<string> {
   const allocated = runId ?? (await resolveRunId());
-  process.env.LLMTESTLAB_JEST_RUN_ID = allocated;
+  process.env.LLMENTARY_JEST_RUN_ID = allocated;
   const generated = stateFilePath(allocated);
-  const path = firstNonEmpty(process.env.LLMTESTLAB_JEST_STATE_FILE) ?? generated;
-  process.env.LLMTESTLAB_JEST_STATE_FILE = path;
+  const path = firstNonEmpty(process.env.LLMENTARY_JEST_STATE_FILE) ?? generated;
+  process.env.LLMENTARY_JEST_STATE_FILE = path;
   const dir = dirname(path);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   // Only chmod directories we created for this run. A custom
-  // LLMTESTLAB_JEST_STATE_FILE may live under a shared parent such as /tmp.
+  // LLMENTARY_JEST_STATE_FILE may live under a shared parent such as /tmp.
   if (path === generated) {
     await chmod(dir, 0o700);
   }
@@ -120,8 +120,8 @@ export async function readState(): Promise<JestProxyState> {
 }
 
 export async function deleteState(): Promise<void> {
-  const path = firstNonEmpty(process.env.LLMTESTLAB_JEST_STATE_FILE);
-  const runId = firstNonEmpty(process.env.LLMTESTLAB_JEST_RUN_ID);
+  const path = firstNonEmpty(process.env.LLMENTARY_JEST_STATE_FILE);
+  const runId = firstNonEmpty(process.env.LLMENTARY_JEST_RUN_ID);
   const generated = runId ? stateFilePath(runId) : undefined;
   if (path) await rm(path, { force: true });
   if (generated && generated !== path) await rm(generated, { force: true });
@@ -132,9 +132,9 @@ export async function deleteState(): Promise<void> {
 }
 
 export function applyState(state: Pick<JestProxyState, "proxyUrl" | "controlUrl" | "runId">): void {
-  process.env.LLMTESTLAB_PROXY_URL = state.proxyUrl;
-  process.env.LLMTESTLAB_CONTROL_URL = state.controlUrl;
-  process.env.LLMTESTLAB_JEST_RUN_ID = state.runId;
+  process.env.LLMENTARY_PROXY_URL = state.proxyUrl;
+  process.env.LLMENTARY_CONTROL_URL = state.controlUrl;
+  process.env.LLMENTARY_JEST_RUN_ID = state.runId;
   // Control tokens stay in the parent environment; they are never written to disk.
 }
 

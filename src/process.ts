@@ -124,7 +124,7 @@ async function readProcessEnviron(pid: number): Promise<string> {
 
 function instanceIdFromEnviron(environ: string): string | undefined {
   for (const line of environ.split("\n")) {
-    const match = /LLMTESTLAB_INSTANCE_ID=([^\s]+)/.exec(line);
+    const match = /LLMENTARY_INSTANCE_ID=([^\s]+)/.exec(line);
     if (match?.[1]) return match[1];
   }
   return undefined;
@@ -267,5 +267,5 @@ function spawnWindowsQuery(script: string): string | undefined {
 }
 
 function sidecarPath(pid: number): string {
-  return join(tmpdir(), "llm-test-lab", "proc", `${pid}.json`);
+  return join(tmpdir(), "llmentary", "proc", `${pid}.json`);
 }

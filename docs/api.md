@@ -1,16 +1,16 @@
-# llm-test-lab TypeScript API
+# llmentary TypeScript API
 
 ## Core concepts
 
-- A **proxy** is the separate `llmtestlab` Go binary. It accepts OpenAI-compatible traffic, forwards to an upstream, and records calls in memory.
-- A **session** is selected with `X-Test-Session` or W3C `baggage` key `llmtestlab.session.id`.
+- A **proxy** is the separate `llmentary` Go binary. It accepts OpenAI-compatible traffic, forwards to an upstream, and records calls in memory.
+- A **session** is selected with `X-Test-Session` or W3C `baggage` key `llmentary.session.id`.
 - The **control API** is read through `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, and `/healthz`.
 - A **lab** is a per-test facade containing the session id, proxy base URL, headers, fetch helper, query scopes, cleanup, and assertions.
 
 ## Creating a lab
 
 ```ts
-import { createLab } from "llm-test-lab";
+import { createLab } from "llmentary";
 
 const lab = createLab({
   proxyUrl: "http://127.0.0.1:4010",
@@ -19,7 +19,7 @@ const lab = createLab({
 });
 ```
 
-`createLab()` defaults to `LLMTESTLAB_PROXY_URL`, `LLMTESTLAB_CONTROL_URL`, and `LLMTESTLAB_BEARER_TOKEN` when present. Otherwise `proxyUrl` defaults to `http://127.0.0.1:4010`.
+`createLab()` returns a `Lab`. `lab.query(...)` returns a `LabQuery`. Defaults come from `LLMENTARY_PROXY_URL`, `LLMENTARY_CONTROL_URL`, and `LLMENTARY_BEARER_TOKEN` when present. Otherwise `proxyUrl` defaults to `http://127.0.0.1:4010`.
 
 Important properties:
 
@@ -35,7 +35,7 @@ Important properties:
 ## Proxy lifecycle
 
 ```ts
-import { startProxy } from "llm-test-lab";
+import { startProxy } from "llmentary";
 
 const proxy = await startProxy({
   upstreamBaseUrl: "https://api.openai.com/v1",
@@ -48,22 +48,22 @@ try {
 }
 ```
 
-`startProxy()` attaches when `LLMTESTLAB_PROXY_URL` is set (`LLMTESTLAB_CONTROL_URL` for the separate control port). Control auth is `LLMTESTLAB_CONTROL_TOKEN` or `LLMTESTLAB_BEARER_TOKEN`. Empty env values are treated as unset. If no upstream is given, it defaults to `openai=https://api.openai.com` (or `OPENAI_BASE_URL` with a trailing `/v1` stripped). The Go binary prefixes the client request path (`/v1/chat/completions`, `/v1/responses`), so passing `https://api.openai.com/v1` would otherwise become `/v1/v1/...`.
+`startProxy()` attaches when `LLMENTARY_PROXY_URL` is set (`LLMENTARY_CONTROL_URL` for the separate control port). Control auth is `LLMENTARY_CONTROL_TOKEN` or `LLMENTARY_BEARER_TOKEN`. Empty env values are treated as unset. If no upstream is given, it defaults to `openai=https://api.openai.com` (or `OPENAI_BASE_URL` with a trailing `/v1` stripped). The Go binary prefixes the client request path (`/v1/chat/completions`, `/v1/responses`), so passing `https://api.openai.com/v1` would otherwise become `/v1/v1/...`.
 
 When it starts a process, the binary is resolved from:
 
-1. `LLMTESTLAB_BIN`
-2. optional dependency `@llm-test-lab/<os>-<cpu>`
+1. `LLMENTARY_BIN`
+2. optional dependency `@llmentary/<os>-<cpu>`
 3. `PATH`
 4. cache
 
 There is no install-time or runtime GitHub download. The Go proxy CLI is:
 
 ```
-llmtestlab -listen 127.0.0.1:7777 -control 127.0.0.1:7778 -upstream openai=https://api.openai.com
+llmentary -listen 127.0.0.1:7777 -control 127.0.0.1:7778 -upstream openai=https://api.openai.com
 ```
 
-Equivalent env: `LLMTESTLAB_LISTEN`, `LLMTESTLAB_CONTROL_LISTEN`, `LLMTESTLAB_UPSTREAMS`, optional `LLMTESTLAB_CONTROL_TOKEN`. `/healthz` is on the control listener, not the proxy listener. OpenAI-compatible clients use `${proxyUrl}/v1`. Override with `args` or `LLMTESTLAB_PROXY_START_ARGS` if needed.
+Equivalent env: `LLMENTARY_LISTEN`, `LLMENTARY_CONTROL_LISTEN`, `LLMENTARY_UPSTREAMS`, optional `LLMENTARY_CONTROL_TOKEN`. `/healthz` is on the control listener, not the proxy listener. OpenAI-compatible clients use `${proxyUrl}/v1`. Override with `args` or `LLMENTARY_PROXY_START_ARGS` if needed.
 
 ## Queries
 
@@ -141,7 +141,7 @@ if (!result.pass) {
 
 ### Vitest
 
-Point Vitest `test.setupFiles` at a file that calls `setupVitest()`. Do not set `test.globalSetup` to `llm-test-lab/vitest`: that config runs in a separate process, does not honor `beforeAll` / `expect.extend`, and would not pass proxy URLs to test workers.
+Point Vitest `test.setupFiles` at a file that calls `setupVitest()`. Do not set `test.globalSetup` to `llmentary/vitest`: that config runs in a separate process, does not honor `beforeAll` / `expect.extend`, and would not pass proxy URLs to test workers.
 
 ```ts
 // vitest.config.ts
@@ -156,12 +156,12 @@ export default defineConfig({
 
 ```ts
 // vitest.setup.ts
-import { setupVitest } from "llm-test-lab/vitest";
+import { setupVitest } from "llmentary/vitest";
 
 setupVitest();
 ```
 
-`setupVitest()` starts a proxy for the test file unless `LLMTESTLAB_PROXY_URL` is already set, stops that owned proxy in `afterAll`, creates a fresh lab before each test, and deletes the session after each test. The named `globalSetup()` export is a same-process helper that returns a teardown callback; it is not a Vitest `globalSetup` module. It also registers custom matchers:
+`setupVitest()` starts a proxy for the test file unless `LLMENTARY_PROXY_URL` is already set, stops that owned proxy in `afterAll`, creates a fresh lab before each test, and deletes the session after each test. The named `globalSetup()` export is a same-process helper that returns a teardown callback; it is not a Vitest `globalSetup` module. It also registers custom matchers:
 
 ```ts
 await expect(lab().expect()).toHaveToolCalled("lookup_weather");
@@ -174,18 +174,18 @@ await expect(lab().expect()).toHaveRequestParam("temperature", 0);
 ```js
 module.exports = {
   testEnvironment: "node",
-  globalSetup: "llm-test-lab/jest/globalSetup",
-  globalTeardown: "llm-test-lab/jest/globalTeardown",
-  setupFilesAfterEnv: ["llm-test-lab/jest/setup"],
+  globalSetup: "llmentary/jest/globalSetup",
+  globalTeardown: "llmentary/jest/globalTeardown",
+  setupFilesAfterEnv: ["llmentary/jest/setup"],
 };
 ```
 
-Jest `globalSetup` runs in a separate process, so workers cannot inherit its environment. The client writes a unique per-run state file under `os.tmpdir()/llm-test-lab/jest/<runId>/state.json` with mode `0600` (owner-only) inside a `0700` directory, and a pointer at `.llm-test-lab/jest-runs/<jestMainPid>` that contains only the run id. Control tokens are never written to disk. Concurrent Jest runs in the same directory get different run ids and must not attach to or kill each other's proxy. Teardown sends SIGTERM/SIGKILL only after verifying process identity (`LLMTESTLAB_INSTANCE_ID` plus a start-time sidecar), so a recycled PID is left alone.
+Jest `globalSetup` runs in a separate process, so workers cannot inherit its environment. The client writes a unique per-run state file under `os.tmpdir()/llmentary/jest/<runId>/state.json` with mode `0600` (owner-only) inside a `0700` directory, and a pointer at `.llmentary/jest-runs/<jestMainPid>` that contains only the run id. Control tokens are never written to disk. Concurrent Jest runs in the same directory get different run ids and must not attach to or kill each other's proxy. Teardown sends SIGTERM/SIGKILL only after verifying process identity (`LLMENTARY_INSTANCE_ID` plus a start-time sidecar), so a recycled PID is left alone.
 
 ## Control API client
 
 ```ts
-import { ControlClient } from "llm-test-lab";
+import { ControlClient } from "llmentary";
 
 const control = new ControlClient({ controlUrl: "http://127.0.0.1:4011" });
 await control.health();

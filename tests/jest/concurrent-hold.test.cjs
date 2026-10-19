@@ -6,10 +6,10 @@ const { ControlClient } = require("../../dist/cjs/index.js");
 const { readState, statePath } = require("../../dist/cjs/jest/state.js");
 
 test("holds the owned proxy until the parent writes the stop file", async () => {
-  const handshakePath = process.env.LLMTESTLAB_CONCURRENT_HANDSHAKE;
-  const stopPath = process.env.LLMTESTLAB_CONCURRENT_STOP;
+  const handshakePath = process.env.LLMENTARY_CONCURRENT_HANDSHAKE;
+  const stopPath = process.env.LLMENTARY_CONCURRENT_STOP;
   if (!handshakePath || !stopPath) {
-    throw new Error("LLMTESTLAB_CONCURRENT_HANDSHAKE and LLMTESTLAB_CONCURRENT_STOP are required.");
+    throw new Error("LLMENTARY_CONCURRENT_HANDSHAKE and LLMENTARY_CONCURRENT_STOP are required.");
   }
   const state = await readState();
   const path = statePath();

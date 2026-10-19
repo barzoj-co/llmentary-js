@@ -1,11 +1,11 @@
 {
-  "name": "@llm-test-lab/linux-arm64",
+  "name": "@llmentary/linux-arm64",
   "version": "0.0.0",
-  "description": "Linux arm64 llm-test-lab proxy binary (optionalDependency of llm-test-lab).",
+  "description": "Linux arm64 llmentary proxy binary (optionalDependency of llmentary).",
   "license": "MIT AND AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/barzoj-co/llm-test-lab-js.git",
+    "url": "git+https://github.com/barzoj-co/llmentary-js.git",
     "directory": "packages/linux-arm64"
   },
   "engines": {

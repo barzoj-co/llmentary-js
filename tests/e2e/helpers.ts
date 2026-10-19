@@ -8,7 +8,7 @@ import {
   type CallRecord,
   type JsonObject,
   type JsonValue,
-  type LlmTestLab,
+  type Lab,
   type ProxyHandle,
 } from "../../src/index.js";
 import { asObject, numberAt, objectAt, stringAt } from "../../src/normalize.js";
@@ -36,7 +36,7 @@ export const NAME_SCHEMA: JsonObject = {
   required: ["name"],
 };
 
-export function newLab(proxy: ProxyHandle): LlmTestLab {
+export function newLab(proxy: ProxyHandle): Lab {
   return createLab({
     proxyUrl: proxy.proxyUrl,
     controlUrl: proxy.controlUrl,
@@ -44,7 +44,7 @@ export function newLab(proxy: ProxyHandle): LlmTestLab {
   });
 }
 
-export function openaiClient(lab: LlmTestLab): OpenAI {
+export function openaiClient(lab: Lab): OpenAI {
   return new OpenAI(lab.openAI());
 }
 
@@ -209,7 +209,7 @@ export function expectCachedTokensMatchRaw(record: CallRecord): void {
 }
 
 export async function expectCachedTokensFaithful(
-  lab: LlmTestLab,
+  lab: Lab,
   index: number,
   query: { apiType?: "chat_completions" | "responses" } = {},
 ): Promise<void> {

@@ -7,8 +7,8 @@ import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import type { BinaryDownloadOptions, BinaryResolutionOptions } from "./types.js";
 
-const DEFAULT_REPO = "barzoj-co/llm-test-lab";
-const DEFAULT_BINARY_NAME = "llmtestlab";
+export const DEFAULT_REPO = "barzoj-co/llmentary";
+export const DEFAULT_BINARY_NAME = "llmentary";
 
 export interface NativePackageSpec {
   name: string;
@@ -17,17 +17,17 @@ export interface NativePackageSpec {
 }
 
 export const NATIVE_PACKAGES: NativePackageSpec[] = [
-  { name: "@llm-test-lab/linux-x64", os: "linux", cpu: "x64" },
-  { name: "@llm-test-lab/linux-arm64", os: "linux", cpu: "arm64" },
-  { name: "@llm-test-lab/darwin-x64", os: "darwin", cpu: "x64" },
-  { name: "@llm-test-lab/darwin-arm64", os: "darwin", cpu: "arm64" },
-  { name: "@llm-test-lab/win32-x64", os: "win32", cpu: "x64" },
+  { name: "@llmentary/linux-x64", os: "linux", cpu: "x64" },
+  { name: "@llmentary/linux-arm64", os: "linux", cpu: "arm64" },
+  { name: "@llmentary/darwin-x64", os: "darwin", cpu: "x64" },
+  { name: "@llmentary/darwin-arm64", os: "darwin", cpu: "arm64" },
+  { name: "@llmentary/win32-x64", os: "win32", cpu: "x64" },
 ];
 
 export async function resolveBinary(options: BinaryResolutionOptions = {}): Promise<string> {
-  const envBin = process.env.LLMTESTLAB_BIN;
+  const envBin = process.env.LLMENTARY_BIN;
   if (envBin) {
-    await assertExecutable(envBin, "LLMTESTLAB_BIN");
+    await assertExecutable(envBin, "LLMENTARY_BIN");
     return envBin;
   }
 
@@ -37,14 +37,12 @@ export async function resolveBinary(options: BinaryResolutionOptions = {}): Prom
   const binaryName = options.binaryName ?? DEFAULT_BINARY_NAME;
   const pathMatch = await findOnPath(binaryName);
   if (pathMatch) return pathMatch;
-  const alternatePathMatch = await findOnPath("llm-test-lab");
-  if (alternatePathMatch) return alternatePathMatch;
 
   const cached = await findCachedBinary(options);
   if (cached) return cached;
 
   throw new Error(
-    "Could not find the llm-test-lab proxy binary. Set LLMTESTLAB_BIN, install the optional platform package (@llm-test-lab/<os>-<cpu>), or put llmtestlab on PATH. This client never downloads binaries at install or runtime.",
+    "Could not find the llmentary proxy binary. Set LLMENTARY_BIN, install the optional platform package (@llmentary/<os>-<cpu>), or put llmentary on PATH. This client never downloads binaries at install or runtime.",
   );
 }
 
@@ -57,12 +55,12 @@ export function nativePackageName(
 
 export async function downloadBinary(options: BinaryDownloadOptions = {}): Promise<string> {
   const repo = options.repo ?? DEFAULT_REPO;
-  const token = options.githubToken ?? process.env.GITHUB_TOKEN ?? process.env.LLMTESTLAB_GITHUB_TOKEN;
+  const token = options.githubToken ?? process.env.GITHUB_TOKEN ?? process.env.LLMENTARY_GITHUB_TOKEN;
   const release = await getRelease(repo, options.version, token);
   const asset = chooseAsset(release.assets, options.platform ?? process.platform, options.arch ?? process.arch);
   if (!asset) {
     throw new Error(
-      `No llm-test-lab release asset matched ${options.platform ?? process.platform}/${options.arch ?? process.arch}. Set LLMTESTLAB_BIN to a local binary.`,
+      `No llmentary release asset matched ${options.platform ?? process.platform}/${options.arch ?? process.arch}. Set LLMENTARY_BIN to a local binary.`,
     );
   }
 
@@ -85,14 +83,16 @@ export async function downloadBinary(options: BinaryDownloadOptions = {}): Promi
 }
 
 export function assetNameCandidates(platform: NodeJS.Platform, arch: NodeJS.Architecture): RegExp[] {
-  const os = platform === "darwin" ? "Darwin" : platform === "win32" ? "Windows" : platform === "linux" ? "Linux" : platform;
+  // GoReleaser archives are llmentary_<ver>_<os>_<arch>.{tar.gz|zip} with GOOS/GOARCH
+  // names (linux/darwin/windows + amd64/arm64). The previous matcher used
+  // title-case OS names and no version segment, so it missed these archives.
+  const os = platform === "darwin" ? "darwin" : platform === "win32" ? "windows" : platform === "linux" ? "linux" : platform;
   const machine =
-    arch === "x64" ? "(x86_64|amd64|x64)" : arch === "arm64" ? "(arm64|aarch64)" : arch === "ia32" ? "(i386|386)" : arch;
+    arch === "x64" ? "(amd64|x86_64|x64)" : arch === "arm64" ? "(arm64|aarch64)" : arch === "ia32" ? "(i386|386)" : arch;
   const ext = platform === "win32" ? "\\.zip" : "\\.tar\\.gz";
   return [
-    new RegExp(`llmtestlab[_-]${os}[_-]${machine}${ext}$`, "i"),
-    new RegExp(`llm-test-lab[_-]${os}[_-]${machine}${ext}$`, "i"),
-    new RegExp(`${os}[_-]${machine}${ext}$`, "i"),
+    new RegExp(`^llmentary_[^/]+_${os}_${machine}${ext}$`, "i"),
+    new RegExp(`^llmentary_${os}_${machine}${ext}$`, "i"),
   ];
 }
 
@@ -185,7 +185,7 @@ async function findCachedBinary(options: BinaryDownloadOptions): Promise<string 
 }
 
 function cacheRoot(options: BinaryDownloadOptions): string {
-  return options.cacheDir ?? process.env.LLMTESTLAB_CACHE_DIR ?? join(homedir(), ".cache", "llm-test-lab");
+  return options.cacheDir ?? process.env.LLMENTARY_CACHE_DIR ?? join(homedir(), ".cache", "llmentary");
 }
 
 function targetBinaryName(platform: NodeJS.Platform): string {
@@ -208,11 +208,11 @@ async function getRelease(repo: string, version: string | undefined, token: stri
   const response = await fetch(url, { headers: githubHeaders(token) });
   if (response.status === 401 || response.status === 403 || response.status === 404) {
     throw new Error(
-      `Could not download llm-test-lab from GitHub Releases (${response.status}). The ${repo} repository is private; set LLMTESTLAB_BIN to a locally built binary or provide LLMTESTLAB_GITHUB_TOKEN/GITHUB_TOKEN with release access.`,
+      `Could not download llmentary from GitHub Releases (${response.status}). The ${repo} repository is private; set LLMENTARY_BIN to a locally built binary or provide LLMENTARY_GITHUB_TOKEN/GITHUB_TOKEN with release access.`,
     );
   }
   if (!response.ok) {
-    throw new Error(`Could not read llm-test-lab release metadata: ${response.status} ${response.statusText}`);
+    throw new Error(`Could not read llmentary release metadata: ${response.status} ${response.statusText}`);
   }
   return (await response.json()) as GitHubRelease;
 }
@@ -229,7 +229,7 @@ function chooseAsset(
 function githubHeaders(token: string | undefined): HeadersInit {
   return {
     accept: "application/vnd.github+json",
-    "user-agent": "llm-test-lab-js",
+    "user-agent": "llmentary-js",
     ...(token ? { authorization: `Bearer ${token}` } : {}),
   };
 }
@@ -278,9 +278,9 @@ export async function extractArchive(archivePath: string, versionDir: string, bi
   }
   const after = await snapshotFiles(versionDir);
   const extracted = [...after].filter((path) => !before.has(path));
-  const executable = extracted.find((path) => /(?:^|[/\\])llm(?:-?test-?lab|testlab)(?:\.exe)?$/i.test(path));
+  const executable = extracted.find((path) => /(?:^|[/\\])llmentary(?:\.exe)?$/i.test(path));
   if (!executable) {
-    throw new Error(`Downloaded ${archivePath}, but no llmtestlab binary was found in the archive.`);
+    throw new Error(`Downloaded ${archivePath}, but no llmentary binary was found in the archive.`);
   }
   if (executable !== binaryPath) await rename(executable, binaryPath);
 }

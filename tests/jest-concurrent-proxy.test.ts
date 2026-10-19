@@ -30,9 +30,9 @@ afterAll(async () => {
 
 describe("concurrent Jest processes with the real proxy", () => {
   it("isolates two simultaneous Jest runs in the same cwd", async () => {
-    if (!process.env.LLMTESTLAB_BIN) {
+    if (!process.env.LLMENTARY_BIN) {
       throw new Error(
-        "LLMTESTLAB_BIN is required. CI must build the Go proxy from barzoj-co/llm-test-lab and point LLMTESTLAB_BIN at it.",
+        "LLMENTARY_BIN is required. CI must build the Go proxy from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
       );
     }
     const dir = await mkdtemp(join(tmpdir(), "ltl-jest-concurrent-"));
@@ -93,8 +93,8 @@ function spawnJest(handshake: string, stop: string): ChildProcess {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      LLMTESTLAB_CONCURRENT_HANDSHAKE: handshake,
-      LLMTESTLAB_CONCURRENT_STOP: stop,
+      LLMENTARY_CONCURRENT_HANDSHAKE: handshake,
+      LLMENTARY_CONCURRENT_STOP: stop,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
