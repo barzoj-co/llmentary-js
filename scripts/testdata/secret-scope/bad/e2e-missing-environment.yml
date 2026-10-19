@@ -1,0 +1,9 @@
+# expect: live e2e job must set environment: openai-e2e
+on: push
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: echo live e2e

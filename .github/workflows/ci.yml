@@ -20,7 +20,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -34,9 +33,9 @@ jobs:
       - name: Require LLMTESTLAB_REPO_TOKEN
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         env:
-          LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
         run: |
-          if [ -z "$LLMTESTLAB_REPO_TOKEN" ]; then
+          if [ "$HAS_REPO_TOKEN" != "true" ]; then
             echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llm-test-lab repository so CI can build the Go proxy binary."
             exit 1
           fi
@@ -126,13 +125,17 @@ jobs:
         if: ${{ matrix.node == 22 }}
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         with:
-          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+          use_oidc: false
+          disable_search: true
           files: ./coverage/lcov.info
           flags: unit
           fail_ci_if_error: ${{ vars.CODECOV_REQUIRED == 'true' }}
 
   e2e-openai:
     name: OpenAI E2E
+    # Maintainers approve this GitHub Environment deployment on each run that
+    # needs OPENAI_API_KEY. The Node/pack jobs do not use it.
+    environment: openai-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main') }}
@@ -144,9 +147,9 @@ jobs:
 
       - name: Require LLMTESTLAB_REPO_TOKEN
         env:
-          LLMTESTLAB_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
         run: |
-          if [ -z "$LLMTESTLAB_REPO_TOKEN" ]; then
+          if [ "$HAS_REPO_TOKEN" != "true" ]; then
             echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llm-test-lab repository so CI can build the Go proxy binary."
             exit 1
           fi
@@ -186,9 +189,9 @@ jobs:
 
       - name: Require OPENAI_API_KEY
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HAS_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
         run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
+          if [ "$HAS_OPENAI_API_KEY" != "true" ]; then
             echo "::error::Missing required secret OPENAI_API_KEY for real OpenAI E2E tests."
             exit 1
           fi
@@ -198,6 +201,25 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: https://api.openai.com/v1
+
+  e2e-gate:
+    name: e2e-gate
+    if: ${{ always() }}
+    needs: [e2e-openai]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Require live e2e success
+        env:
+          E2E_RESULT: ${{ needs.e2e-openai.result }}
+          EVENT_NAME: ${{ github.event_name }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork == true }}
+        run: bash scripts/e2e-gate.sh
 
   pack:
     name: Pack consumers

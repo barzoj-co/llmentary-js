@@ -1,0 +1,13 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: presence and use
+        env:
+          HAS_EXAMPLE_TOKEN: ${{ secrets.EXAMPLE_TOKEN != '' }}
+          EXAMPLE_TOKEN: ${{ secrets.EXAMPLE_TOKEN }}
+        run: |
+          if [ "$HAS_EXAMPLE_TOKEN" != "true" ]; then
+            exit 1
+          fi

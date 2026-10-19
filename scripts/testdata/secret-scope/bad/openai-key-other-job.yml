@@ -1,0 +1,14 @@
+# expect: OPENAI_API_KEY is only allowed in job e2e
+on: push
+jobs:
+  e2e:
+    environment: openai-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo live e2e
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: echo must not receive the live key
