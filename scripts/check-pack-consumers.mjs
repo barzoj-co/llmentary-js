@@ -36,6 +36,27 @@ function runNode(dir, args) {
   execFileSync(process.execPath, args, { cwd: dir, stdio: "inherit" });
 }
 
+function runTsc(dir, tsc, args) {
+  try {
+    const stdout = execFileSync(tsc, args, {
+      cwd: dir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { ok: true, output: stdout };
+  } catch (error) {
+    const output = `${error.stdout ?? ""}${error.stderr ?? ""}`;
+    return { ok: false, output };
+  }
+}
+
+function hasMissingExportDiagnostic(output, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const codes = /error TS2305:|error TS2724:/;
+  const member = new RegExp(`has no exported member(?: named)? ['"]${escaped}['"]`);
+  return codes.test(output) && member.test(output);
+}
+
 {
   const dir = join(packDir, "esm-js");
   mkdirSync(dir);
@@ -155,19 +176,34 @@ tsConsumer(
     ["Llm", "Test", "Lab", "Query"].join(""),
     ["Llm", "Test", "Lab", "Globals"].join(""),
   ];
+  write(
+    dir,
+    "old-export.tsconfig.json",
+    JSON.stringify(
+      {
+        compilerOptions: {
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          strict: true,
+          noEmit: true,
+          skipLibCheck: true,
+        },
+        include: ["old-export.ts"],
+      },
+      null,
+      2,
+    ),
+  );
   for (const name of oldNames) {
     write(dir, "old-export.ts", `import type { ${name} } from "llmentary";\nexport type Probe = ${name};\n`);
-    let failed = false;
-    try {
-      execFileSync(tsc, ["--pretty", "false", "--strict", "--module", "NodeNext", "--moduleResolution", "NodeNext", "--noEmit", "old-export.ts"], {
-        cwd: dir,
-        stdio: "pipe",
-      });
-    } catch {
-      failed = true;
-    }
-    if (!failed) {
+    const result = runTsc(dir, tsc, ["-p", "old-export.tsconfig.json", "--pretty", "false", "--noEmit"]);
+    if (result.ok) {
       throw new Error(`expected tsc to reject the removed public type ${name}`);
+    }
+    if (!hasMissingExportDiagnostic(result.output, name)) {
+      throw new Error(
+        `expected a missing-export diagnostic for ${name}, got unrelated tsc errors:\n${result.output}`,
+      );
     }
   }
 }
