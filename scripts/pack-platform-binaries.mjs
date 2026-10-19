@@ -7,14 +7,14 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const REPO = process.env.LLMTESTLAB_REPO ?? "barzoj-co/llm-test-lab";
+const REPO = process.env.LLMENTARY_REPO ?? "barzoj-co/llmentary";
 
 export const PACKAGES = [
-  { dir: "linux-x64", os: "linux", cpu: "x64", bin: "llmtestlab" },
-  { dir: "linux-arm64", os: "linux", cpu: "arm64", bin: "llmtestlab" },
-  { dir: "darwin-x64", os: "darwin", cpu: "x64", bin: "llmtestlab" },
-  { dir: "darwin-arm64", os: "darwin", cpu: "arm64", bin: "llmtestlab" },
-  { dir: "win32-x64", os: "win32", cpu: "x64", bin: "llmtestlab.exe" },
+  { dir: "linux-x64", os: "linux", cpu: "x64", bin: "llmentary" },
+  { dir: "linux-arm64", os: "linux", cpu: "arm64", bin: "llmentary" },
+  { dir: "darwin-x64", os: "darwin", cpu: "x64", bin: "llmentary" },
+  { dir: "darwin-arm64", os: "darwin", cpu: "arm64", bin: "llmentary" },
+  { dir: "win32-x64", os: "win32", cpu: "x64", bin: "llmentary.exe" },
 ];
 
 export function versionFromTag(tag) {
@@ -30,11 +30,11 @@ export async function readProxyVersion(root = ROOT) {
 }
 
 export function resolveTag({ env = process.env, proxyVersion = "" } = {}) {
-  return env.LLMTESTLAB_TAG || env.GITHUB_REF_NAME || proxyVersion || "";
+  return env.LLMENTARY_TAG || env.GITHUB_REF_NAME || proxyVersion || "";
 }
 
 /**
- * Option B: when keepRootVersion is true (LLMTESTLAB_ROOT_VERSION set), leave
+ * Option B: when keepRootVersion is true (LLMENTARY_ROOT_VERSION set), leave
  * the root package version alone and pin optionalDependencies + platform
  * packages to the proxy tag. When false, keep the old lockstep behaviour.
  */
@@ -61,13 +61,14 @@ export async function writePackageVersions(root, tag, { keepRootVersion = false 
   return { version, rootPkg: nextRoot };
 }
 
-function assetPatterns(os, cpu) {
-  const goreleaserOs = os === "darwin" ? "Darwin" : os === "win32" ? "Windows" : "Linux";
-  const machine = cpu === "x64" ? "(x86_64|amd64|x64)" : "(arm64|aarch64)";
+export function assetPatterns(os, cpu) {
+  // Match goreleaser archives llmentary_<ver>_<os>_<arch> from barzoj-co/llmentary.
+  const goreleaserOs = os === "darwin" ? "darwin" : os === "win32" ? "windows" : "linux";
+  const machine = cpu === "x64" ? "(amd64|x86_64|x64)" : "(arm64|aarch64)";
   const ext = os === "win32" ? "\\.zip" : "\\.tar\\.gz";
   return [
-    new RegExp(`llmtestlab[_-]${goreleaserOs}[_-]${machine}${ext}$`, "i"),
-    new RegExp(`llm-test-lab[_-]${goreleaserOs}[_-]${machine}${ext}$`, "i"),
+    new RegExp(`^llmentary_[^/]+_${goreleaserOs}_${machine}${ext}$`, "i"),
+    new RegExp(`^llmentary_${goreleaserOs}_${machine}${ext}$`, "i"),
   ];
 }
 
@@ -108,9 +109,9 @@ async function findBinary(dir) {
   const match = entries.find(
     (entry) =>
       entry.isFile() &&
-      /(?:^|[/\\])llm(?:-?test-?lab|testlab)(?:\.exe)?$/i.test(join(entry.parentPath ?? entry.path, entry.name)),
+      /(?:^|[/\\])llmentary(?:\.exe)?$/i.test(join(entry.parentPath ?? entry.path, entry.name)),
   );
-  if (!match) throw new Error(`No llmtestlab binary in ${dir}`);
+  if (!match) throw new Error(`No llmentary binary in ${dir}`);
   return join(match.parentPath ?? match.path, match.name);
 }
 
@@ -126,10 +127,10 @@ async function main() {
   const proxyVersion = await readProxyVersion(ROOT);
   const tag = resolveTag({ env: process.env, proxyVersion });
   if (!tag) {
-    throw new Error("LLMTESTLAB_TAG, GITHUB_REF_NAME, or PROXY_VERSION is required (for example v0.1.0).");
+    throw new Error("LLMENTARY_TAG, GITHUB_REF_NAME, or PROXY_VERSION is required (for example v0.1.0).");
   }
-  const keepRootVersion = Boolean(process.env.LLMTESTLAB_ROOT_VERSION);
-  const work = await mkdtemp(join(tmpdir(), "llm-test-lab-rel-"));
+  const keepRootVersion = Boolean(process.env.LLMENTARY_ROOT_VERSION);
+  const work = await mkdtemp(join(tmpdir(), "llmentary-rel-"));
   try {
     await run("gh", ["release", "download", tag, "--repo", REPO, "--dir", work]);
     const files = await readdir(work);

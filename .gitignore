@@ -1,7 +1,7 @@
 node_modules/
 dist/
 coverage/
-.llm-test-lab/
+.llmentary/
 .cache/
 .bin/
 *.log

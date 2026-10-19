@@ -11,11 +11,11 @@ if [[ ! -f "$README" ]]; then
 fi
 
 required=(
-  '[![CI](https://github.com/barzoj-co/llm-test-lab-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llm-test-lab-js/actions/workflows/ci.yml)'
-  '[![codecov](https://codecov.io/gh/barzoj-co/llm-test-lab-js/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llm-test-lab-js)'
-  '[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/barzoj-co/llm-test-lab-js/badge)](https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llm-test-lab-js)'
-  '[![License: MIT](https://img.shields.io/github/license/barzoj-co/llm-test-lab-js)](LICENSE)'
-  '[![npm](https://img.shields.io/npm/v/llm-test-lab)](https://www.npmjs.com/package/llm-test-lab)'
+  '[![CI](https://github.com/barzoj-co/llmentary-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llmentary-js/actions/workflows/ci.yml)'
+  '[![codecov](https://codecov.io/gh/barzoj-co/llmentary-js/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llmentary-js)'
+  '[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/barzoj-co/llmentary-js/badge)](https://scorecard.dev/viewer/?uri=github.com/barzoj-co/llmentary-js)'
+  '[![License: MIT](https://img.shields.io/github/license/barzoj-co/llmentary-js)](LICENSE)'
+  '[![npm](https://img.shields.io/npm/v/llmentary)](https://www.npmjs.com/package/llmentary)'
 )
 
 status=0
@@ -31,20 +31,20 @@ python3 - "$README" <<'PY'
 from pathlib import Path
 import sys
 
-canonical = """<!-- ltl-repos:start -->
-## llm-test-lab repositories
+canonical = """<!-- llmentary-repos:start -->
+## llmentary repositories
 
 | Repository | What | License |
 |---|---|---|
-| [llm-test-lab](https://github.com/barzoj-co/llm-test-lab) | Recording proxy binary (Go) | AGPL-3.0 |
-| [llm-test-lab-go](https://github.com/barzoj-co/llm-test-lab-go) | Go client for `go test` | MIT |
-| [llm-test-lab-python](https://github.com/barzoj-co/llm-test-lab-python) | Python client and pytest plugin | MIT |
-| [llm-test-lab-js](https://github.com/barzoj-co/llm-test-lab-js) | TypeScript/JavaScript client for Vitest and Jest | MIT |
-<!-- ltl-repos:end -->"""
+| [llmentary](https://github.com/barzoj-co/llmentary) | Recording proxy binary (Go) | AGPL-3.0 |
+| [llmentary-go](https://github.com/barzoj-co/llmentary-go) | Go client for `go test` | MIT |
+| [llmentary-python](https://github.com/barzoj-co/llmentary-python) | Python client and pytest plugin | MIT |
+| [llmentary-js](https://github.com/barzoj-co/llmentary-js) | TypeScript/JavaScript client for Vitest and Jest | MIT |
+<!-- llmentary-repos:end -->"""
 
 text = Path(sys.argv[1]).read_text()
 if canonical not in text:
-    print("README.md is missing or altered the canonical ltl-repos block", file=sys.stderr)
+    print("README.md is missing or altered the canonical llmentary-repos block", file=sys.stderr)
     raise SystemExit(1)
 PY
 

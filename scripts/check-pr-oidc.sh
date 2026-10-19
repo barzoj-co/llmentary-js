@@ -29,7 +29,7 @@ import yaml
 
 ROOT = Path(sys.argv[1])
 ARGV = sys.argv[2:]
-ALLOWED_IF = "github.repository == 'barzoj-co/llm-test-lab-js'"
+ALLOWED_IF = "github.repository == 'barzoj-co/llmentary-js'"
 PR_TRIGGERS = {"pull_request", "pull_request_target"}
 FILE_LINE_RE = re.compile(r"[^:\s]+:\d+:")
 

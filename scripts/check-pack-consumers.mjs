@@ -36,6 +36,27 @@ function runNode(dir, args) {
   execFileSync(process.execPath, args, { cwd: dir, stdio: "inherit" });
 }
 
+function runTsc(dir, tsc, args) {
+  try {
+    const stdout = execFileSync(tsc, args, {
+      cwd: dir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { ok: true, output: stdout };
+  } catch (error) {
+    const output = `${error.stdout ?? ""}${error.stderr ?? ""}`;
+    return { ok: false, output };
+  }
+}
+
+function hasMissingExportDiagnostic(output, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const codes = /error TS2305:|error TS2724:/;
+  const member = new RegExp(`has no exported member(?: named)? ['"]${escaped}['"]`);
+  return codes.test(output) && member.test(output);
+}
+
 {
   const dir = join(packDir, "esm-js");
   mkdirSync(dir);
@@ -44,8 +65,8 @@ function runNode(dir, args) {
   write(
     dir,
     "index.js",
-    `import { createLab } from "llm-test-lab";
-import { lab } from "llm-test-lab/jest";
+    `import { createLab } from "llmentary";
+import { lab } from "llmentary/jest";
 if (typeof createLab !== "function") throw new Error("createLab missing");
 if (typeof lab !== "function") throw new Error("lab missing");
 const facade = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
@@ -63,8 +84,8 @@ if (!facade.baseURL.endsWith("/v1")) throw new Error("baseURL");
   write(
     dir,
     "index.cjs",
-    `const { createLab } = require("llm-test-lab");
-const { lab } = require("llm-test-lab/jest");
+    `const { createLab } = require("llmentary");
+const { lab } = require("llmentary/jest");
 if (typeof createLab !== "function") throw new Error("createLab missing");
 if (typeof lab !== "function") throw new Error("lab missing");
 const facade = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
@@ -88,9 +109,10 @@ function tsConsumer(name, pkg, tsconfig, sourceName, source) {
   });
 }
 
-const importSource = `import { createLab } from "llm-test-lab";
-import { lab } from "llm-test-lab/jest";
-export const facade = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+const importSource = `import { createLab, type Lab, type LabQuery } from "llmentary";
+import { lab } from "llmentary/jest";
+export const facade: Lab = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+export const query: LabQuery = facade.query({});
 export const current = lab();
 `;
 
@@ -145,6 +167,46 @@ tsConsumer(
   "index.ts",
   importSource,
 );
+
+{
+  const dir = join(packDir, "ts-nodenext");
+  const tsc = join(dir, "node_modules", ".bin", "tsc");
+  const oldNames = [
+    ["Llm", "Test", "Lab"].join(""),
+    ["Llm", "Test", "Lab", "Query"].join(""),
+    ["Llm", "Test", "Lab", "Globals"].join(""),
+  ];
+  write(
+    dir,
+    "old-export.tsconfig.json",
+    JSON.stringify(
+      {
+        compilerOptions: {
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          strict: true,
+          noEmit: true,
+          skipLibCheck: true,
+        },
+        include: ["old-export.ts"],
+      },
+      null,
+      2,
+    ),
+  );
+  for (const name of oldNames) {
+    write(dir, "old-export.ts", `import type { ${name} } from "llmentary";\nexport type Probe = ${name};\n`);
+    const result = runTsc(dir, tsc, ["-p", "old-export.tsconfig.json", "--pretty", "false", "--noEmit"]);
+    if (result.ok) {
+      throw new Error(`expected tsc to reject the removed public type ${name}`);
+    }
+    if (!hasMissingExportDiagnostic(result.output, name)) {
+      throw new Error(
+        `expected a missing-export diagnostic for ${name}, got unrelated tsc errors:\n${result.output}`,
+      );
+    }
+  }
+}
 
 console.log("pack consumers: esm-js, cjs-js, ts-nodenext, ts-node16-cjs, ts-bundler ok");
 }

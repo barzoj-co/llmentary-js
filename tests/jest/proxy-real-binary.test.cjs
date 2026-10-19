@@ -6,22 +6,22 @@ describe("real Go proxy with Jest", () => {
   let proxy;
 
   beforeAll(async () => {
-    if (!process.env.LLMTESTLAB_BIN) {
+    if (!process.env.LLMENTARY_BIN) {
       throw new Error(
-        "LLMTESTLAB_BIN is required. CI must build the Go proxy from barzoj-co/llm-test-lab and point LLMTESTLAB_BIN at it.",
+        "LLMENTARY_BIN is required. CI must build the Go proxy from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
       );
     }
     upstream = await startFakeUpstream();
     proxy = await startProxy({ upstreamBaseUrl: upstream.url });
-    process.env.LLMTESTLAB_PROXY_URL = proxy.proxyUrl;
-    process.env.LLMTESTLAB_CONTROL_URL = proxy.controlUrl;
+    process.env.LLMENTARY_PROXY_URL = proxy.proxyUrl;
+    process.env.LLMENTARY_CONTROL_URL = proxy.controlUrl;
   }, 30_000);
 
   afterAll(async () => {
     await proxy?.stop();
     await upstream?.stop();
-    delete process.env.LLMTESTLAB_PROXY_URL;
-    delete process.env.LLMTESTLAB_CONTROL_URL;
+    delete process.env.LLMENTARY_PROXY_URL;
+    delete process.env.LLMENTARY_CONTROL_URL;
   });
 
   test("records a Chat Completions tool call", async () => {

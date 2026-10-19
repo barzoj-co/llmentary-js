@@ -4,7 +4,7 @@ describe("CJS export", () => {
   test("creates session headers", () => {
     expect(sessionHeaders("session-1")).toEqual({
       "x-test-session": "session-1",
-      baggage: "llmtestlab.session.id=session-1",
+      baggage: "llmentary.session.id=session-1",
     });
   });
 

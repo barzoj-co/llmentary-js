@@ -186,7 +186,7 @@ jobs:
         run: |
           npx --yes "release-please@${RELEASE_PLEASE_VERSION}" release-pr \
             --dry-run \
-            --repo-url=barzoj-co/llm-test-lab-js \
+            --repo-url=barzoj-co/llmentary-js \
             --target-branch="${RELEASE_PLEASE_TARGET}" \
             --config-file=release-please-config.json \
             --manifest-file=.release-please-manifest.json \

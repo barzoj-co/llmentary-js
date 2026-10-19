@@ -17,7 +17,7 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["dist/**", "coverage/**", "node_modules/**", ".llm-test-lab/**", "packages/**", "scripts/**"],
+    ignores: ["dist/**", "coverage/**", "node_modules/**", ".llmentary/**", "packages/**", "scripts/**"],
   },
   {
     files: ["**/*.js", "**/*.cjs"],

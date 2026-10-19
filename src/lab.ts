@@ -5,9 +5,9 @@ import { firstNonEmpty } from "./env.js";
 import type { LabConfig, QueryOptions, SessionTrace, WaitOptions } from "./types.js";
 
 const SESSION_HEADER = "x-test-session";
-const BAGGAGE_KEY = "llmtestlab.session.id";
+const BAGGAGE_KEY = "llmentary.session.id";
 
-export class LlmTestLab {
+export class Lab {
   readonly sessionId: string;
   readonly proxyUrl: string;
   readonly controlUrl: string;
@@ -20,20 +20,20 @@ export class LlmTestLab {
   constructor(config: LabConfig = {}) {
     this.sessionId = config.sessionId ?? randomUUID();
     this.proxyUrl = trimTrailingSlash(
-      firstNonEmpty(config.proxyUrl, process.env.LLMTESTLAB_PROXY_URL) ?? "http://127.0.0.1:4010",
+      firstNonEmpty(config.proxyUrl, process.env.LLMENTARY_PROXY_URL) ?? "http://127.0.0.1:4010",
     );
     this.controlUrl = trimTrailingSlash(
-      firstNonEmpty(config.controlUrl, process.env.LLMTESTLAB_CONTROL_URL) ?? this.proxyUrl,
+      firstNonEmpty(config.controlUrl, process.env.LLMENTARY_CONTROL_URL) ?? this.proxyUrl,
     );
     this.bearerToken = firstNonEmpty(
       config.bearerToken,
-      process.env.LLMTESTLAB_BEARER_TOKEN,
-      process.env.LLMTESTLAB_CONTROL_TOKEN,
+      process.env.LLMENTARY_BEARER_TOKEN,
+      process.env.LLMENTARY_CONTROL_TOKEN,
     );
     this.baseURL = `${this.proxyUrl}/v1`;
     this.defaultWait = config.defaultWait ?? {
-      timeoutMs: Number(firstNonEmpty(process.env.LLMTESTLAB_WAIT_TIMEOUT_MS) ?? 5_000),
-      idleMs: Number(firstNonEmpty(process.env.LLMTESTLAB_WAIT_IDLE_MS) ?? 100),
+      timeoutMs: Number(firstNonEmpty(process.env.LLMENTARY_WAIT_TIMEOUT_MS) ?? 5_000),
+      idleMs: Number(firstNonEmpty(process.env.LLMENTARY_WAIT_IDLE_MS) ?? 100),
     };
     this.headers = {
       [SESSION_HEADER]: this.sessionId,
@@ -46,8 +46,8 @@ export class LlmTestLab {
     });
   }
 
-  query(query: QueryOptions): LlmTestLabQuery {
-    return new LlmTestLabQuery(this, query);
+  query(query: QueryOptions): LabQuery {
+    return new LabQuery(this, query);
   }
 
   expect(): AssertionScope {
@@ -92,7 +92,7 @@ export class LlmTestLab {
     defaultHeaders: Record<string, string>;
   } {
     return {
-      apiKey: options.apiKey ?? process.env.OPENAI_API_KEY ?? "llm-test-lab",
+      apiKey: options.apiKey ?? process.env.OPENAI_API_KEY ?? "llmentary",
       baseURL: options.baseURL ?? this.baseURL,
       defaultHeaders: {
         ...this.headers,
@@ -109,9 +109,9 @@ export class LlmTestLab {
   }
 }
 
-export class LlmTestLabQuery {
+export class LabQuery {
   constructor(
-    readonly lab: LlmTestLab,
+    readonly lab: Lab,
     readonly queryOptions: QueryOptions,
   ) {}
 
@@ -137,8 +137,8 @@ export class LlmTestLabQuery {
   }
 }
 
-export function createLab(config: LabConfig = {}): LlmTestLab {
-  return new LlmTestLab(config);
+export function createLab(config: LabConfig = {}): Lab {
+  return new Lab(config);
 }
 
 export function sessionHeaders(sessionId: string): Record<string, string> {

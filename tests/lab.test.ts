@@ -3,10 +3,10 @@ import { createLab } from "../src/lab.js";
 
 describe("createLab env fallbacks", () => {
   const keys = [
-    "LLMTESTLAB_PROXY_URL",
-    "LLMTESTLAB_CONTROL_URL",
-    "LLMTESTLAB_BEARER_TOKEN",
-    "LLMTESTLAB_CONTROL_TOKEN",
+    "LLMENTARY_PROXY_URL",
+    "LLMENTARY_CONTROL_URL",
+    "LLMENTARY_BEARER_TOKEN",
+    "LLMENTARY_CONTROL_TOKEN",
   ] as const;
   const previous: Record<string, string | undefined> = {};
 
@@ -24,10 +24,12 @@ describe("createLab env fallbacks", () => {
     else process.env[key] = value;
   }
 
-  it("falls through an empty bearer token to LLMTESTLAB_CONTROL_TOKEN", () => {
-    stash("LLMTESTLAB_BEARER_TOKEN", "  ");
-    stash("LLMTESTLAB_CONTROL_TOKEN", "control-secret");
+  it("falls through an empty bearer token to LLMENTARY_CONTROL_TOKEN", () => {
+    stash("LLMENTARY_BEARER_TOKEN", "  ");
+    stash("LLMENTARY_CONTROL_TOKEN", "control-secret");
     const lab = createLab({ proxyUrl: "http://127.0.0.1:4010" });
     expect(lab.bearerToken).toBe("control-secret");
+    expect(lab.constructor.name).toBe("Lab");
+    expect(lab.query({}).constructor.name).toBe("LabQuery");
   });
 });

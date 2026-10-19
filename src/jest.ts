@@ -1,9 +1,9 @@
-import { createLab, type LlmTestLab } from "./lab.js";
+import { createLab, type Lab } from "./lab.js";
 import type { LabConfig } from "./types.js";
 
-let currentLab: LlmTestLab | undefined;
+let currentLab: Lab | undefined;
 
-export function lab(config?: LabConfig): LlmTestLab {
+export function lab(config?: LabConfig): Lab {
   if (config) return createLab(config);
   if (!currentLab) currentLab = createLab();
   return currentLab;

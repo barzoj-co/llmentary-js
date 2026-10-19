@@ -113,7 +113,7 @@ describe("AssertionScope", () => {
     const soft = await scopeFor(trace).soft().toolCalled("missing");
 
     expect(soft.pass).toBe(false);
-    expect(soft.error?.message).toContain("llm-test-lab trace summary");
+    expect(soft.error?.message).toContain("llmentary trace summary");
     await expect(scopeFor(trace).toolCalled("missing")).rejects.toBeInstanceOf(LabAssertionError);
   });
 

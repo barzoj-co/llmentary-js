@@ -943,7 +943,7 @@ function hasRawPayload(record: CallRecord): boolean {
 
 export function formatTraceSummary(trace: SessionTrace): string {
   if (trace.summary) return trace.summary;
-  const lines = [`llm-test-lab trace summary for session ${trace.id}: ${trace.calls.length} call(s)`];
+  const lines = [`llmentary trace summary for session ${trace.id}: ${trace.calls.length} call(s)`];
   trace.calls.forEach((record, index) => {
     const tools = toolCallsForRecords([record]).map((tool) => tool.name);
     lines.push(

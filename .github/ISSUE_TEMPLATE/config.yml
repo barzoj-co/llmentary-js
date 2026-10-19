@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/barzoj-co/llm-test-lab-js/security/advisories/new
+    url: https://github.com/barzoj-co/llmentary-js/security/advisories/new
     about: Private security advisory. Do not file a public issue.
   - name: Proxy bugs
-    url: https://github.com/barzoj-co/llm-test-lab/issues
-    about: Bugs in the recording proxy binary belong in barzoj-co/llm-test-lab.
+    url: https://github.com/barzoj-co/llmentary/issues
+    about: Bugs in the recording proxy binary belong in barzoj-co/llmentary.
   - name: Questions and ideas
-    url: https://github.com/barzoj-co/llm-test-lab/discussions
-    about: Questions and ideas for the llm-test-lab project.
+    url: https://github.com/barzoj-co/llmentary/discussions
+    about: Questions and ideas for the llmentary project.

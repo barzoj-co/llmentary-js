@@ -4,15 +4,15 @@
 
 Please report vulnerabilities privately through GitHub Security Advisories:
 
-https://github.com/barzoj-co/llm-test-lab-js/security/advisories/new
+https://github.com/barzoj-co/llmentary-js/security/advisories/new
 
 Do **not** open a public issue for a security report.
 
-Issues in the recording proxy binary itself belong in [`barzoj-co/llm-test-lab`](https://github.com/barzoj-co/llm-test-lab), not in this client repository.
+Issues in the recording proxy binary itself belong in [`barzoj-co/llmentary`](https://github.com/barzoj-co/llmentary), not in this client repository.
 
 ## Supported versions
 
-The latest `0.x` minor of `llm-test-lab` is supported.
+The latest `0.x` minor of `llmentary` is supported.
 
 ## Scope
 

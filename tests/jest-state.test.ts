@@ -18,11 +18,11 @@ import {
 import type { ProxyHandle } from "../src/types.js";
 
 const KEYS = [
-  "LLMTESTLAB_JEST_RUN_ID",
-  "LLMTESTLAB_JEST_OWNER_PID",
-  "LLMTESTLAB_JEST_STATE_FILE",
-  "LLMTESTLAB_PROXY_URL",
-  "LLMTESTLAB_CONTROL_URL",
+  "LLMENTARY_JEST_RUN_ID",
+  "LLMENTARY_JEST_OWNER_PID",
+  "LLMENTARY_JEST_STATE_FILE",
+  "LLMENTARY_PROXY_URL",
+  "LLMENTARY_CONTROL_URL",
 ] as const;
 
 const previous: Partial<Record<(typeof KEYS)[number], string | undefined>> = {};
@@ -47,8 +47,8 @@ describe("Jest state hardening", () => {
     const ownerPid = 91_001;
     const { runId, statePath } = await allocateRun(ownerPid);
     allocatedOwnerPids.push(ownerPid);
-    expect(statePath).toBe(join(tmpdir(), "llm-test-lab", "jest", runId, "state.json"));
-    expect(statePath).not.toContain(".llm-test-lab/jest-state.json");
+    expect(statePath).toBe(join(tmpdir(), "llmentary", "jest", runId, "state.json"));
+    expect(statePath).not.toContain(".llmentary/jest-state.json");
 
     const handle = fakeHandle({
       proxyUrl: "http://127.0.0.1:4010",
@@ -56,7 +56,7 @@ describe("Jest state hardening", () => {
       bearerToken: "super-secret-control-token",
       pid: 4242,
       instanceId: "instance-a",
-      exePath: "/tmp/llmtestlab",
+      exePath: "/tmp/llmentary",
     });
     const written = await writeState(handle, runId);
     const fileStat = await stat(written);
@@ -78,8 +78,8 @@ describe("Jest state hardening", () => {
     expect(state).not.toHaveProperty("bearerToken");
 
     applyState(state);
-    expect(process.env.LLMTESTLAB_PROXY_URL).toBe(state.proxyUrl);
-    expect(process.env.LLMTESTLAB_BEARER_TOKEN).toBeUndefined();
+    expect(process.env.LLMENTARY_PROXY_URL).toBe(state.proxyUrl);
+    expect(process.env.LLMENTARY_BEARER_TOKEN).toBeUndefined();
   });
 
   it("keeps concurrent Jest runs in the same directory isolated", async () => {
@@ -88,9 +88,9 @@ describe("Jest state hardening", () => {
     allocatedOwnerPids.push(91_011);
     await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:5010", controlUrl: "http://127.0.0.1:5011", pid: 11 }), first.runId);
 
-    delete process.env.LLMTESTLAB_JEST_RUN_ID;
-    delete process.env.LLMTESTLAB_JEST_STATE_FILE;
-    delete process.env.LLMTESTLAB_JEST_OWNER_PID;
+    delete process.env.LLMENTARY_JEST_RUN_ID;
+    delete process.env.LLMENTARY_JEST_STATE_FILE;
+    delete process.env.LLMENTARY_JEST_OWNER_PID;
     const second = await allocateRun(91_012);
     allocatedOwnerPids.push(91_012);
     await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:6010", controlUrl: "http://127.0.0.1:6011", pid: 12 }), second.runId);
@@ -118,7 +118,7 @@ describe("Jest state hardening", () => {
       controlUrl: "http://127.0.0.1:2",
       pid: process.pid,
       instanceId: "not-the-current-process",
-      exePath: "/usr/bin/llmtestlab",
+      exePath: "/usr/bin/llmentary",
     });
     expect(killed).toBe(false);
   });
@@ -173,8 +173,8 @@ describe("Jest state hardening", () => {
     const custom = join(dir, "state.json");
     const sibling = join(dir, "keep-me.txt");
     await write(sibling, "keep\n");
-    process.env.LLMTESTLAB_JEST_STATE_FILE = custom;
-    process.env.LLMTESTLAB_JEST_RUN_ID = "custom-run";
+    process.env.LLMENTARY_JEST_STATE_FILE = custom;
+    process.env.LLMENTARY_JEST_RUN_ID = "custom-run";
     await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }), "custom-run");
     await deleteState();
     expect(await read(sibling, "utf8")).toBe("keep\n");
@@ -186,8 +186,8 @@ describe("Jest state hardening", () => {
     const dir = await mkdtemp(join(tmpdir(), "ltl-jest-custom-mode-"));
     const custom = join(dir, "state.json");
     await chmod(dir, 0o755);
-    process.env.LLMTESTLAB_JEST_STATE_FILE = custom;
-    process.env.LLMTESTLAB_JEST_RUN_ID = "custom-mode-run";
+    process.env.LLMENTARY_JEST_STATE_FILE = custom;
+    process.env.LLMENTARY_JEST_RUN_ID = "custom-mode-run";
     await writeState(fakeHandle({ proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }), "custom-mode-run");
     if (process.platform !== "win32") {
       expect((await stat(dir)).mode & 0o777).toBe(0o755);

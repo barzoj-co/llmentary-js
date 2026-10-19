@@ -1,13 +1,13 @@
 # Contributing
 
-Thanks for working on `llm-test-lab`. This repository is the TypeScript/JavaScript
+Thanks for working on `llmentary`. This repository is the TypeScript/JavaScript
 client for Vitest and Jest. Please read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 and [SECURITY.md](SECURITY.md) before opening issues or pull requests.
 
 ## Requirements
 
 - Node.js 18 or newer. CI runs Node 18, 20, and 22.
-- Go 1.26, or a `llmtestlab` binary on `LLMTESTLAB_BIN`, for real-binary tests.
+- Go 1.26, or a `llmentary` binary on `LLMENTARY_BIN`, for real-binary tests.
 - npm (use `npm ci` after clone).
 
 ## Setup
@@ -45,8 +45,8 @@ Jest CJS export tests:
 npm run test:jest:unit
 ```
 
-Real-proxy tests (require `LLMTESTLAB_BIN` or a Go 1.26 checkout of
-`barzoj-co/llm-test-lab`):
+Real-proxy tests (require `LLMENTARY_BIN` or a Go 1.26 checkout of
+`barzoj-co/llmentary`):
 
 ```sh
 npm run test:proxy

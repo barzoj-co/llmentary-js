@@ -61,7 +61,7 @@ representative at an online or offline event.
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement via GitHub private
 reporting at
-https://github.com/barzoj-co/llm-test-lab-js/security/advisories/new.
+https://github.com/barzoj-co/llmentary-js/security/advisories/new.
 This same channel is used for conduct reports. It becomes available once the
 repository is public. Do not open a public issue for a conduct report.
 
