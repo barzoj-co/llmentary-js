@@ -1,6 +1,9 @@
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BINARY_NAME,
@@ -13,24 +16,38 @@ import {
 import { formatUpstreamSpec, looksLikeLlmentaryProxy, originForGoUpstream, redactArgs, resolveUpstreamSpec } from "../src/proxy.js";
 
 describe("binary release asset matching", () => {
+  it("pins PROXY_VERSION to v0.2.0", () => {
+    const pin = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "PROXY_VERSION"), "utf8").trim();
+    expect(pin).toBe("v0.2.0");
+  });
+
+  it("install-proxy.sh --self-test accepts the current pin and archive names", () => {
+    const result = spawnSync("bash", ["scripts/install-proxy.sh", "--self-test"], {
+      encoding: "utf8",
+      cwd: join(dirname(fileURLToPath(import.meta.url)), ".."),
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("v0.2.0");
+  });
+
   it("matches GoReleaser-style Linux x64 tarballs", () => {
     const patterns = assetNameCandidates("linux", "x64");
-    expect(patterns.some((pattern) => pattern.test("llmentary_0.1.0_linux_amd64.tar.gz"))).toBe(true);
+    expect(patterns.some((pattern) => pattern.test("llmentary_0.2.0_linux_amd64.tar.gz"))).toBe(true);
     expect(patterns.some((pattern) => pattern.test("llmentary_linux_amd64.tar.gz"))).toBe(true);
   });
 
   it("matches macOS GoReleaser tarballs", () => {
-    expect(assetNameCandidates("darwin", "arm64").some((pattern) => pattern.test("llmentary_0.1.0_darwin_arm64.tar.gz"))).toBe(
+    expect(assetNameCandidates("darwin", "arm64").some((pattern) => pattern.test("llmentary_0.2.0_darwin_arm64.tar.gz"))).toBe(
       true,
     );
-    expect(assetNameCandidates("darwin", "x64").some((pattern) => pattern.test("llmentary_0.1.0_darwin_amd64.tar.gz"))).toBe(
+    expect(assetNameCandidates("darwin", "x64").some((pattern) => pattern.test("llmentary_0.2.0_darwin_amd64.tar.gz"))).toBe(
       true,
     );
   });
 
   it("matches Windows zips", () => {
     const patterns = assetNameCandidates("win32", "x64");
-    expect(patterns.some((pattern) => pattern.test("llmentary_0.1.0_windows_amd64.zip"))).toBe(true);
+    expect(patterns.some((pattern) => pattern.test("llmentary_0.2.0_windows_amd64.zip"))).toBe(true);
   });
 
   it("rejects the pre-rename archive names", () => {
@@ -39,9 +56,9 @@ describe("binary release asset matching", () => {
     const old = ["l", "ab"].join("");
     const hyphenated = ["llm", "test", old].join("-");
     const compact = ["llm", "test"].join("") + old;
-    expect(linux.some((pattern) => pattern.test(`${hyphenated}_0.1.0_linux_amd64.tar.gz`))).toBe(false);
+    expect(linux.some((pattern) => pattern.test(`${hyphenated}_0.2.0_linux_amd64.tar.gz`))).toBe(false);
     expect(linux.some((pattern) => pattern.test(`${compact}_Linux_x86_64.tar.gz`))).toBe(false);
-    expect(darwin.some((pattern) => pattern.test(`${hyphenated}_0.1.0_darwin_arm64.tar.gz`))).toBe(false);
+    expect(darwin.some((pattern) => pattern.test(`${hyphenated}_0.2.0_darwin_arm64.tar.gz`))).toBe(false);
   });
 
   it("defaults to the llmentary proxy repo and binary name", () => {
@@ -58,8 +75,8 @@ describe("binary release asset matching", () => {
   });
 
   it("parses GoReleaser checksum lines", () => {
-    const checksums = "abc123  llmentary_0.1.0_linux_amd64.tar.gz\n";
-    expect(parseChecksumFile(checksums, "llmentary_0.1.0_linux_amd64.tar.gz")).toBe("abc123");
+    const checksums = "abc123  llmentary_0.2.0_linux_amd64.tar.gz\n";
+    expect(parseChecksumFile(checksums, "llmentary_0.2.0_linux_amd64.tar.gz")).toBe("abc123");
   });
 });
 

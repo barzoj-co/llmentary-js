@@ -36,38 +36,19 @@ jobs:
           HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
         run: |
           if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llmentary repository so CI can build the Go proxy binary."
+            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llmentary repository so CI can install the released proxy binary."
             exit 1
           fi
 
-      # TODO: remove once llmentary is public
-      - name: Checkout llmentary proxy
+      # TODO: remove LLMTESTLAB_REPO_TOKEN once llmentary is public
+      - name: Install released proxy
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          repository: barzoj-co/llmentary
-          # TODO: remove once llmentary is public
-          token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
-          path: .cache/llmentary
-          persist-credentials: false
+        env:
+          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          LLMENTARY_INSTALL_DIR: ${{ github.workspace }}/.bin
+        run: bash scripts/install-proxy.sh
 
-      - name: Setup Go
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version: "1.26"
-          cache-dependency-path: .cache/llmentary/go.sum
-
-      - name: Build proxy binary
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/.bin"
-          go build -o "$GITHUB_WORKSPACE/.bin/llmentary" ./cmd/llmentary
-          test -x "$GITHUB_WORKSPACE/.bin/llmentary"
-          echo "LLMENTARY_BIN=$GITHUB_WORKSPACE/.bin/llmentary" >> "$GITHUB_ENV"
-        working-directory: .cache/llmentary
-
-      - name: Require built proxy binary
+      - name: Require installed proxy binary
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           if [ ! -x "$LLMENTARY_BIN" ]; then
@@ -150,33 +131,16 @@ jobs:
           HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
         run: |
           if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llmentary repository so CI can build the Go proxy binary."
+            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llmentary repository so CI can install the released proxy binary."
             exit 1
           fi
 
-      # TODO: remove once llmentary is public
-      - name: Checkout llmentary proxy
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        with:
-          repository: barzoj-co/llmentary
-          # TODO: remove once llmentary is public
-          token: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
-          path: .cache/llmentary
-          persist-credentials: false
-
-      - name: Setup Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version: "1.26"
-          cache-dependency-path: .cache/llmentary/go.sum
-
-      - name: Build proxy binary
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/.bin"
-          go build -o "$GITHUB_WORKSPACE/.bin/llmentary" ./cmd/llmentary
-          test -x "$GITHUB_WORKSPACE/.bin/llmentary"
-          echo "LLMENTARY_BIN=$GITHUB_WORKSPACE/.bin/llmentary" >> "$GITHUB_ENV"
-        working-directory: .cache/llmentary
+      # TODO: remove LLMTESTLAB_REPO_TOKEN once llmentary is public
+      - name: Install released proxy
+        env:
+          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          LLMENTARY_INSTALL_DIR: ${{ github.workspace }}/.bin
+        run: bash scripts/install-proxy.sh
 
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0

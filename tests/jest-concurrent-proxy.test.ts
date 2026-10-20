@@ -32,7 +32,7 @@ describe("concurrent Jest processes with the real proxy", () => {
   it("isolates two simultaneous Jest runs in the same cwd", async () => {
     if (!process.env.LLMENTARY_BIN) {
       throw new Error(
-        "LLMENTARY_BIN is required. CI must build the Go proxy from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
+        "LLMENTARY_BIN is required. CI must install the released PROXY_VERSION binary from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
       );
     }
     const dir = await mkdtemp(join(tmpdir(), "ltl-jest-concurrent-"));

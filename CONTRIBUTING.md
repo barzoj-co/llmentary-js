@@ -7,7 +7,7 @@ and [SECURITY.md](SECURITY.md) before opening issues or pull requests.
 ## Requirements
 
 - Node.js 18 or newer. CI runs Node 18, 20, and 22.
-- Go 1.26, or a `llmentary` binary on `LLMENTARY_BIN`, for real-binary tests.
+- A `llmentary` binary on `LLMENTARY_BIN` for real-binary tests (CI installs the `PROXY_VERSION` GitHub Release). A local Go 1.26 checkout of `barzoj-co/llmentary` is optional.
 - npm (use `npm ci` after clone).
 
 ## Setup
@@ -45,8 +45,8 @@ Jest CJS export tests:
 npm run test:jest:unit
 ```
 
-Real-proxy tests (require `LLMENTARY_BIN` or a Go 1.26 checkout of
-`barzoj-co/llmentary`):
+Real-proxy tests (require `LLMENTARY_BIN`, which CI sets by installing
+`PROXY_VERSION` from GitHub Releases):
 
 ```sh
 npm run test:proxy
@@ -80,11 +80,12 @@ Trusted publishing, provenance, and the `NPM_PUBLISH_ENABLED` gate are in
 The included CI workflow expects:
 
 - `LLMTESTLAB_REPO_TOKEN`: a GitHub token that can read the private
-  `barzoj-co/llmentary` repo so CI can run `go build ./cmd/llmentary`.
-  Remove this secret/workflow usage once that repo is public. Keep the secret
-  name as-is; it is an existing org secret.
+  `barzoj-co/llmentary` repo so CI can download the `PROXY_VERSION` GitHub
+  Release (`scripts/install-proxy.sh`). Remove this secret/workflow usage
+  once that repo is public. Keep the secret name as-is; it is an existing
+  org secret.
 - `OPENAI_API_KEY`: required for real OpenAI E2E tests on same-repo PRs and
-  pushes. Fork PRs skip private-binary checkout and this E2E step because
+  pushes. Fork PRs skip the released-binary install and this E2E step because
   secrets are unavailable.
 
 Prefix-cache hits are required for Chat Completions (up to 3 attempts) and
@@ -93,7 +94,7 @@ the nested value in the raw upstream body. See [docs/api.md](docs/api.md).
 
 Live OpenAI e2e runs in a dedicated `e2e-openai` job (`OpenAI E2E`). That job
 holds every `secrets.OPENAI_API_KEY` reference in `ci.yml`. Secrets reach only
-the steps that need them: the proxy checkout `token:` for
+the steps that need them: `GH_TOKEN` on `Install released proxy` for
 `LLMTESTLAB_REPO_TOKEN`, and the `OpenAI E2E` step env for `OPENAI_API_KEY`.
 Presence checks use the boolean form (`secrets.X != ''`) so the raw value
 never enters those processes. `npm ci` and the rest of the `test` job run

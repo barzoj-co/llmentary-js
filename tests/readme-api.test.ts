@@ -25,6 +25,7 @@ describe("README public API snippets", () => {
     expect(readme).toContain("offersTool");
     expect(readme).toContain("withoutTools");
     expect(readme).toContain("since");
+    expect(readme).toContain("v0.2.0");
   });
 
   it("does not document removed factory or handle names", () => {

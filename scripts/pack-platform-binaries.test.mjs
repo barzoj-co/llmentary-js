@@ -27,9 +27,9 @@ test("assetPatterns accept goreleaser llmentary_<ver>_<os>_<arch> names and reje
   const old = ["l", "ab"].join("");
   const hyphenated = ["llm", "test", old].join("-");
   const compact = ["llm", "test"].join("") + old;
-  assert.equal(linux.some((pattern) => pattern.test("llmentary_0.1.0_linux_amd64.tar.gz")), true);
-  assert.equal(darwin.some((pattern) => pattern.test("llmentary_0.1.0_darwin_arm64.tar.gz")), true);
-  assert.equal(linux.some((pattern) => pattern.test(`${hyphenated}_0.1.0_linux_amd64.tar.gz`)), false);
+  assert.equal(linux.some((pattern) => pattern.test("llmentary_0.2.0_linux_amd64.tar.gz")), true);
+  assert.equal(darwin.some((pattern) => pattern.test("llmentary_0.2.0_darwin_arm64.tar.gz")), true);
+  assert.equal(linux.some((pattern) => pattern.test(`${hyphenated}_0.2.0_linux_amd64.tar.gz`)), false);
   assert.equal(linux.some((pattern) => pattern.test(`${compact}_Linux_x86_64.tar.gz`)), false);
 });
 

@@ -123,7 +123,7 @@ describe("proxy owns upstream join (no client /v1 strip)", () => {
 function requireProxyBin(): void {
   if (!process.env.LLMENTARY_BIN) {
     throw new Error(
-      "LLMENTARY_BIN is required. CI must build the Go proxy from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
+      "LLMENTARY_BIN is required. CI must install the released PROXY_VERSION binary from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
     );
   }
 }
