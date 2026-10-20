@@ -1,6 +1,6 @@
 {
   "name": "llmentary",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "TypeScript (Vitest/Jest) client for llmentary: deterministic trace-based integration tests for LLM apps",
   "license": "MIT",
   "repository": {
@@ -91,11 +91,21 @@
   "types": "./dist/cjs/index.d.ts",
   "typesVersions": {
     "*": {
-      "vitest": ["./dist/cjs/vitest.d.ts"],
-      "jest": ["./dist/cjs/jest.d.ts"],
-      "jest/globalSetup": ["./dist/cjs/jest/globalSetup.d.ts"],
-      "jest/globalTeardown": ["./dist/cjs/jest/globalTeardown.d.ts"],
-      "jest/setup": ["./dist/cjs/jest/setup.d.ts"]
+      "vitest": [
+        "./dist/cjs/vitest.d.ts"
+      ],
+      "jest": [
+        "./dist/cjs/jest.d.ts"
+      ],
+      "jest/globalSetup": [
+        "./dist/cjs/jest/globalSetup.d.ts"
+      ],
+      "jest/globalTeardown": [
+        "./dist/cjs/jest/globalTeardown.d.ts"
+      ],
+      "jest/setup": [
+        "./dist/cjs/jest/setup.d.ts"
+      ]
     }
   },
   "scripts": {
