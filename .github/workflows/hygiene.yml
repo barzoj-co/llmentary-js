@@ -214,16 +214,38 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Pack dry-run
+      - name: Install npm CLI for trusted publishing
+        env:
+          # renovate: datasource=npm depName=npm
+          NPM_VERSION: 11.21.1
         run: |
-          npm pack --dry-run
+          npm install -g "npm@${NPM_VERSION}"
+          npm --version
+
+      - name: Pack tarballs
+        run: |
+          mkdir -p dist
+          npm pack --pack-destination dist
           for pkg in ./packages/*/; do
             echo "Packing $pkg"
-            npm pack --dry-run "$pkg"
+            npm pack --pack-destination dist "$pkg"
           done
 
       - name: Publish dry-run (root, no token)
-        run: npm publish --dry-run --access public
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          found=0
+          for tarball in dist/*.tgz; do
+            found=1
+            # Same command form as release.yml; --force lets --dry-run succeed
+            # when the version already exists (npm 11 still checks the registry).
+            npm publish "./$tarball" --dry-run --force --access public
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::no tarballs in dist/"
+            exit 1
+          fi
 
       - name: Assert root tarball license files
         run: node scripts/check-pack-licenses.mjs

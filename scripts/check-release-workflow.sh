@@ -36,6 +36,36 @@ if not re.search(r"(?m)^[ \t]*npm publish\b", release):
     errors.append("release.yml must publish with npm publish")
 if re.search(r"(?m)^[ \t]*npm publish\b(?:[^\n]|\\\n)*--provenance", release):
     errors.append("release.yml must not pass --provenance (npm rejects provenance from private repos; OIDC generates it automatically once public)")
+# npm 11.21.1 treats `dist/foo.tgz` as GitHub shorthand (user/repo) and runs
+# `git ls-remote ssh://git@github.com/dist/foo.tgz.git`. Require an explicit
+# local path: ./$tarball, ./dist/..., or $(realpath ...).
+hygiene = Path(sys.argv[1]).parent / "hygiene.yml"
+hygiene_text = hygiene.read_text() if hygiene.is_file() else ""
+for label, text in (("release.yml", release), ("hygiene.yml", hygiene_text)):
+    if not text:
+        continue
+    if re.search(r'(?m)^[ \t]*npm publish\b(?:[^\n]|\\\n)*["\']?dist/', text):
+        errors.append(
+            f"{label} must not pass bare dist/ tarball paths to npm publish "
+            "(npm treats them as GitHub shorthand); use ./$tarball or $(realpath ...)"
+        )
+    if re.search(r'(?m)^[ \t]*npm publish\s+"?\$(?:root_)?tarball\b', text):
+        errors.append(
+            f"{label} must pass explicit local paths to npm publish "
+            "(./$tarball or $(realpath ...)), not a bare $tarball"
+        )
+
+def publishes_explicit(text, var):
+    dotted = rf'(?m)^[ \t]*npm publish\s+"\./\${var}"'
+    realpath = rf'(?m)^[ \t]*npm publish\s+"\$\(realpath\s+"\${var}"\)"'
+    return re.search(dotted, text) or re.search(realpath, text)
+
+if not publishes_explicit(release, "tarball"):
+    errors.append("release.yml must publish platform tarballs as ./$tarball or $(realpath \"$tarball\")")
+if not publishes_explicit(release, "root_tarball"):
+    errors.append("release.yml must publish the root tarball as ./$root_tarball or $(realpath \"$root_tarball\")")
+if hygiene_text and not re.search(r'(?m)^[ \t]*npm publish\s+"\./\$tarball".*--dry-run', hygiene_text):
+    errors.append("hygiene.yml publish (dry run) must exercise npm publish ./$tarball --dry-run")
 if re.search(r"(?m)^\s+registry-url:", release):
     errors.append("release.yml must not set setup-node registry-url (it writes a placeholder NODE_AUTH_TOKEN that breaks OIDC)")
 if "NODE_AUTH_TOKEN" in release or "NPM_TOKEN" in release:

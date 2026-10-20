@@ -2,7 +2,7 @@
 import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -19,7 +19,8 @@ function runPackConsumerChecks() {
   if (tarballs.length !== 1) {
     throw new Error(`expected exactly one .tgz in ${packDir}, found ${JSON.stringify(tarballs)}`);
   }
-  const tarballPath = join(packDir, tarballs[0]);
+  // Absolute path so npm never treats the tarball as a GitHub shorthand (user/repo).
+  const tarballPath = resolve(packDir, tarballs[0]);
 
 function write(dir, name, contents) {
   writeFileSync(join(dir, name), contents);
