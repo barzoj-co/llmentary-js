@@ -49,7 +49,7 @@ for label, text in (("release.yml", release), ("hygiene.yml", hygiene_text)):
             f"{label} must not pass bare dist/ tarball paths to npm publish "
             "(npm treats them as GitHub shorthand); use ./$tarball or $(realpath ...)"
         )
-    if re.search(r'(?m)^[ \t]*npm publish\s+"\$(?:root_)?tarball"', text):
+    if re.search(r'(?m)^[ \t]*npm publish\s+"?\$(?:root_)?tarball\b', text):
         errors.append(
             f"{label} must pass explicit local paths to npm publish "
             "(./$tarball or $(realpath ...)), not a bare $tarball"

@@ -238,8 +238,9 @@ jobs:
           found=0
           for tarball in dist/*.tgz; do
             found=1
-            # Same command form as release.yml; npm 11 treats bare dist/*.tgz as GitHub shorthand.
-            npm publish "./$tarball" --dry-run --access public
+            # Same command form as release.yml; --force lets --dry-run succeed
+            # when the version already exists (npm 11 still checks the registry).
+            npm publish "./$tarball" --dry-run --force --access public
           done
           if [ "$found" -eq 0 ]; then
             echo "::error::no tarballs in dist/"
