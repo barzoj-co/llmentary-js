@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Assert release.yml / release-please.yml trusted-publishing shape (LTL-HYG-JS §6 / AC 12).
+# Assert release.yml / release-please.yml trusted-publishing shape (LTL-REL-JS / LTL-HYG-JS §6).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,8 +32,12 @@ if "id-token: write" not in release:
     errors.append("release.yml publish job must set id-token: write")
 if "vars.NPM_PUBLISH_ENABLED == 'true'" not in release and 'vars.NPM_PUBLISH_ENABLED == "true"' not in release:
     errors.append("release.yml publish job must be gated on vars.NPM_PUBLISH_ENABLED == 'true'")
-if "--provenance" not in release:
-    errors.append("release.yml must publish with --provenance")
+if not re.search(r"(?m)^[ \t]*npm publish\b", release):
+    errors.append("release.yml must publish with npm publish")
+if re.search(r"(?m)^[ \t]*npm publish\b(?:[^\n]|\\\n)*--provenance", release):
+    errors.append("release.yml must not pass --provenance (npm rejects provenance from private repos; OIDC generates it automatically once public)")
+if re.search(r"(?m)^\s+registry-url:", release):
+    errors.append("release.yml must not set setup-node registry-url (it writes a placeholder NODE_AUTH_TOKEN that breaks OIDC)")
 if "NODE_AUTH_TOKEN" in release or "NPM_TOKEN" in release:
     errors.append("release.yml must not set NODE_AUTH_TOKEN or NPM_TOKEN")
 

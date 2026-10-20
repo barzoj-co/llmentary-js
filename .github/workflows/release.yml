@@ -112,7 +112,6 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
 
       - name: Install npm CLI for trusted publishing
         env:
@@ -140,7 +139,7 @@ jobs:
               echo "skip existing ${name}@${version}"
               continue
             fi
-            npm publish "$tarball" --provenance --access public
+            npm publish "$tarball" --access public
           done
           if [ -z "$root_tarball" ]; then
             echo "::error::root llmentary tarball not found"
@@ -150,5 +149,5 @@ jobs:
           if npm view "llmentary@${root_version}" version >/dev/null 2>&1; then
             echo "skip existing llmentary@${root_version}"
           else
-            npm publish "$root_tarball" --provenance --access public
+            npm publish "$root_tarball" --access public
           fi

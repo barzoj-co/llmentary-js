@@ -143,7 +143,7 @@ Tags matching `v*` run `.github/workflows/release.yml` (also dispatched by relea
 5. Pins platform package versions and root `optionalDependencies` to `PROXY_VERSION`, leaving the client version unchanged
 6. Packs tarballs; publishes only when `vars.NPM_PUBLISH_ENABLED` is `true`
 
-It is prepared for npm trusted publishing (OIDC, `environment: npm`, provenance). It does **not** publish until the maintainer sets that variable. See [docs/releasing.md](docs/releasing.md).
+It is prepared for npm trusted publishing (OIDC, `environment: npm`). Provenance is generated automatically by npm trusted publishing once the repo is public. It does **not** publish until the maintainer sets that variable. See [docs/releasing.md](docs/releasing.md).
 
 ## Assertions
 

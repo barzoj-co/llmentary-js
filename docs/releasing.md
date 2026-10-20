@@ -34,7 +34,8 @@ next client release packs platform packages at that proxy tag.
 
 Publish order: each `@llmentary/<platform>` tarball (skip if that proxy
 version already exists on the registry), then the root `llmentary` tarball,
-all with `--provenance --access public`.
+all with `--access public`. Provenance is generated automatically by npm
+trusted publishing once the repo is public.
 
 ## One-time manual setup
 
