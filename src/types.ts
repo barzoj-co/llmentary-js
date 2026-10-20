@@ -5,7 +5,13 @@ export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 
 export interface WaitOptions {
+  /** Wait budget. Number is seconds; string is a Go duration (`30s`, `500ms`). */
+  timeout?: number | string;
+  /** Quiet window after the last call. Number is seconds; string is a Go duration. */
+  quiet?: number | string;
+  /** @deprecated Use `timeout` (seconds or Go duration). */
   timeoutMs?: number;
+  /** @deprecated Use `quiet` (seconds or Go duration). */
   idleMs?: number;
   signal?: AbortSignal;
 }

@@ -1,5 +1,31 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ControlClient, combineAbortSignals, parseControlBody, type ControlFetch } from "../src/control.js";
+import { resetWaitEnvDeprecationWarnings } from "../src/wait.js";
+
+const WAIT_ENV = [
+  "LLMENTARY_WAIT_TIMEOUT",
+  "LLMENTARY_WAIT_QUIET",
+  "LLMENTARY_WAIT_TIMEOUT_MS",
+  "LLMENTARY_WAIT_IDLE_MS",
+] as const;
+const previousWaitEnv: Record<string, string | undefined> = {};
+
+afterEach(() => {
+  for (const key of WAIT_ENV) {
+    if (!(key in previousWaitEnv)) continue;
+    if (previousWaitEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = previousWaitEnv[key];
+    delete previousWaitEnv[key];
+  }
+  resetWaitEnvDeprecationWarnings();
+});
+
+function clearWaitEnv(): void {
+  for (const key of WAIT_ENV) {
+    if (!(key in previousWaitEnv)) previousWaitEnv[key] = process.env[key];
+    delete process.env[key];
+  }
+}
 
 describe("parseControlBody", () => {
   it("accepts the Go proxy plain-text healthz body", () => {
@@ -18,20 +44,74 @@ function requestUrl(input: string | URL | Request): string {
 }
 
 describe("ControlClient", () => {
-  it("appends wait query params from URLSearchParams.toString", async () => {
+  it("sends timeout and quiet as Go duration query params", async () => {
     const urls: string[] = [];
     const fetchImpl: ControlFetch = async (input) => {
       urls.push(requestUrl(input));
       return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
     };
+    clearWaitEnv();
     const client = new ControlClient({
       controlUrl: "http://127.0.0.1:9",
       fetch: fetchImpl,
     });
+    await client.wait("s1");
+    expect(queryString(urls[0])).toBe("timeout=30s&quiet=500ms");
+    await client.wait("s1", { timeout: 90, quiet: 0.2 });
+    expect(queryString(urls[1])).toBe("timeout=90s&quiet=200ms");
     await client.wait("s1", { timeoutMs: 5_000, idleMs: 100 });
-    expect(urls[0]).toContain("/sessions/s1/wait?");
-    expect(urls[0]).toContain("timeout_ms=5000");
-    expect(urls[0]).toContain("idle_ms=100");
+    expect(queryString(urls[2])).toBe("timeout=5s&quiet=100ms");
+  });
+
+  it("turns a wait 504 into a timeout error with session counts", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/wait")) {
+        return new Response(
+          JSON.stringify({
+            id: "s1",
+            calls: [{ id: "c1" }, { id: "c2", ended_at: "2026-10-20T00:00:00Z" }],
+          }),
+          { status: 504, statusText: "Gateway Timeout" },
+        );
+      }
+      return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
+    };
+    clearWaitEnv();
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      fetch: fetchImpl,
+    });
+    await expect(client.wait("s1")).rejects.toThrow(
+      "wait timed out after 30s on session s1 (2 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+    );
+  });
+
+  it("falls back to getSession when a wait 504 body has no calls array", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/wait")) {
+        return new Response(JSON.stringify({ error: "wait timeout" }), {
+          status: 504,
+          statusText: "Gateway Timeout",
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          id: "s1",
+          calls: [{ id: "c1" }, { id: "c2" }, { id: "c3", ended_at: "2026-10-20T00:00:00Z" }],
+        }),
+        { status: 200 },
+      );
+    };
+    clearWaitEnv();
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      fetch: fetchImpl,
+    });
+    await expect(client.wait("s1")).rejects.toThrow(
+      "wait timed out after 30s on session s1 (3 calls so far, still active: 2). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+    );
   });
 
   it("aborts hung requests after requestTimeoutMs and lets wait exceed it", async () => {
@@ -128,6 +208,12 @@ describe("ControlClient", () => {
     expect(combined.aborted).toBe(true);
   });
 });
+
+function queryString(url: string | undefined): string {
+  const href = url ?? "";
+  const index = href.indexOf("?");
+  return index >= 0 ? href.slice(index + 1) : "";
+}
 
 async function waitForAbort(signal: AbortSignal): Promise<void> {
   if (signal.aborted) return;

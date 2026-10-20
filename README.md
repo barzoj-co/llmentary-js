@@ -83,6 +83,24 @@ Supported deterministic assertions include tool calls, call counts, argument sub
 
 See [docs/api.md](docs/api.md) for the full API, including Jest setup.
 
+## Waiting for calls
+
+`wait` (and every assertion) blocks until the session is quiet, then returns the recorded trace. The proxy reads only `timeout` and `quiet` as Go durations. All clients send those names.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `timeout` | `30s` | Give up if the session is still active |
+| `quiet` | `500ms` | Return once no new call activity is seen for this long |
+
+| Environment variable | Accepts | Default |
+|---|---|---|
+| `LLMENTARY_WAIT_TIMEOUT` | Go duration (`45s`) or bare seconds (`45`, `0.2`) | `30s` |
+| `LLMENTARY_WAIT_QUIET` | Go duration (`200ms`) or bare seconds (`0.2`) | `500ms` |
+
+A wait timeout is an error:
+
+`wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`
+
 <!-- llmentary-repos:start -->
 ## llmentary repositories
 

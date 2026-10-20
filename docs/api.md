@@ -196,6 +196,8 @@ import { ControlClient } from "llmentary";
 
 const control = new ControlClient({ controlUrl: "http://127.0.0.1:4011" });
 await control.health();
+await control.wait("session-id", { timeout: 30, quiet: 0.5 });
+// timeoutMs / idleMs still work (deprecated aliases of timeout / quiet)
 await control.wait("session-id", { timeoutMs: 5_000, idleMs: 100 });
 await control.getSession("session-id");
 await control.getOtlp("session-id");
@@ -203,3 +205,5 @@ await control.deleteSession("session-id");
 ```
 
 The raw JSON returned by the proxy is preserved on `SessionTrace.raw` and `CallRecord.raw`. The client maps the Go control schema (`api_family`, base64 `raw_request`/`raw_response`, `normalized.model` / `tool_calls` / `output_text` / `usage` / `error.mid_stream`) plus common snake_case/camelCase envelopes for assertion convenience without mutating the raw shape.
+
+`wait` always sends `timeout` and `quiet` as Go duration strings (`30s`, `500ms`). Numbers on `timeout` / `quiet` are seconds. The deprecated `timeoutMs` / `idleMs` option names still work (milliseconds). Defaults and env names match the other clients: `30s` / `500ms`, `LLMENTARY_WAIT_TIMEOUT`, `LLMENTARY_WAIT_QUIET` (Go duration or bare seconds). The previous JS env names `LLMENTARY_WAIT_TIMEOUT_MS` / `LLMENTARY_WAIT_IDLE_MS` remain as deprecated aliases (milliseconds) and emit a one-time `DeprecationWarning`. A proxy 504 becomes `wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`. The client HTTP abort is `timeout + quiet + 5s` so it cannot fire before the proxy answers.

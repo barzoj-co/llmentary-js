@@ -3,6 +3,7 @@ import { AssertionScope, recordsForTrace } from "./assertions.js";
 import { ControlClient } from "./control.js";
 import { firstNonEmpty } from "./env.js";
 import type { QueryOptions, SessionOptions, SessionTrace, WaitOptions } from "./types.js";
+import { mergeWaitOptions, resolveWait, resolvedWaitToOptions } from "./wait.js";
 
 const SESSION_HEADER = "x-test-session";
 const BAGGAGE_KEY = "llmentary.session.id";
@@ -31,10 +32,7 @@ export class Session {
       process.env.LLMENTARY_CONTROL_TOKEN,
     );
     this.baseURL = `${this.proxyUrl}/v1`;
-    this.defaultWait = config.defaultWait ?? {
-      timeoutMs: Number(firstNonEmpty(process.env.LLMENTARY_WAIT_TIMEOUT_MS) ?? 5_000),
-      idleMs: Number(firstNonEmpty(process.env.LLMENTARY_WAIT_IDLE_MS) ?? 100),
-    };
+    this.defaultWait = resolvedWaitToOptions(resolveWait(config.defaultWait));
     this.headers = {
       [SESSION_HEADER]: this.sessionId,
       baggage: `${BAGGAGE_KEY}=${this.sessionId}`,
@@ -63,7 +61,7 @@ export class Session {
   }
 
   async wait(options?: WaitOptions): Promise<SessionTrace> {
-    return this.control.wait(this.sessionId, { ...this.defaultWait, ...options });
+    return this.control.wait(this.sessionId, mergeWaitOptions(this.defaultWait, options));
   }
 
   async session(): Promise<SessionTrace> {
