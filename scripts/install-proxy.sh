@@ -52,6 +52,17 @@ read_proxy_tag() {
   tr -d '[:space:]' <"$ROOT/PROXY_VERSION"
 }
 
+file_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    echo "need sha256sum or shasum -a 256" >&2
+    return 1
+  fi
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
 fi
@@ -72,6 +83,9 @@ if [[ "${1:-}" == "--self-test" ]]; then
   [[ "$(proxy_archive_name darwin arm64 "$version")" == "llmentary_0.2.0_darwin_arm64.tar.gz" ]]
   [[ "$(proxy_archive_name windows amd64 "$version")" == "llmentary_0.2.0_windows_amd64.zip" ]]
   [[ "$(proxy_archive_name windows arm64 "$version")" == "llmentary_0.2.0_windows_arm64.zip" ]]
+  empty="$(mktemp)"
+  [[ "$(file_sha256 "$empty")" == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]]
+  rm -f "$empty"
   echo "install-proxy self-test: ok (pin $tag)"
   exit 0
 fi
@@ -168,7 +182,7 @@ if [[ -z "$EXPECTED" ]]; then
   echo "checksums.txt does not list $ASSET" >&2
   exit 1
 fi
-ACTUAL="$(sha256sum "$WORK/$ASSET" | awk '{print $1}')"
+ACTUAL="$(file_sha256 "$WORK/$ASSET")"
 if [[ "$ACTUAL" != "$EXPECTED" ]]; then
   echo "sha256 mismatch for $ASSET: expected $EXPECTED, got $ACTUAL" >&2
   exit 1
