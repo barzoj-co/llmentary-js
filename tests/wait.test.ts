@@ -124,6 +124,10 @@ describe("resolveWait env", () => {
     expect(resolveWait()).toMatchObject({ timeout: "90s", quiet: "200ms" });
   });
 
+  it("passes minCalls through resolveWait", () => {
+    expect(resolveWait({ minCalls: 2 })).toMatchObject({ minCalls: 2, timeout: "30s", quiet: "500ms" });
+  });
+
   it("throws an error naming the invalid env variable", () => {
     stash("LLMENTARY_WAIT_TIMEOUT", "fast");
     expect(() => resolveWait()).toThrow(/invalid LLMENTARY_WAIT_TIMEOUT value "fast"/);

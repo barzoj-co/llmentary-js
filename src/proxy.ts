@@ -53,7 +53,10 @@ export function redactArgs(args: string[]): string[] {
   return redacted;
 }
 
-/** Go joins `-upstream` with the client path (`/v1/...`), so OpenAI-style `/v1` bases become `/v1/v1`. */
+/**
+ * @deprecated The proxy owns the overlap-join rule. Do not strip `/v1` here.
+ * Kept so existing callers keep compiling; new code should pass upstream URLs through unchanged.
+ */
 export function originForGoUpstream(url: string): string {
   const trimmed = url.trim();
   try {
@@ -75,27 +78,39 @@ export function resolveUpstreamSpec(options: {
   upstreamName?: string;
   upstreamBaseUrl?: string;
   env?: NodeJS.ProcessEnv;
-} = {}): string {
+} = {}): string | undefined {
   const env = options.env ?? process.env;
+  warnIfOpenAIBaseURLLooksLikeProxy(env);
   const name = firstNonEmpty(options.upstreamName, env.LLMENTARY_UPSTREAM_NAME) ?? "openai";
   const spec = firstNonEmpty(options.upstreams, env.LLMENTARY_UPSTREAMS);
   if (spec) return rewriteUpstreamSpec(spec);
-  const url =
-    firstNonEmpty(options.upstreamBaseUrl, env.LLMENTARY_UPSTREAM_BASE_URL, env.OPENAI_BASE_URL) ??
-    "https://api.openai.com/v1";
-  return formatUpstreamSpec(name, originForGoUpstream(url));
+  const url = firstNonEmpty(options.upstreamBaseUrl, env.LLMENTARY_UPSTREAM_BASE_URL);
+  if (!url) return undefined;
+  return formatUpstreamSpec(name, url);
 }
 
 function rewriteUpstreamSpec(spec: string): string {
-  const separator = spec.indexOf("=");
-  if (separator > 0) {
-    const maybeName = spec.slice(0, separator);
-    const maybeUrl = spec.slice(separator + 1);
-    if (/^[A-Za-z0-9._-]+$/.test(maybeName) && /:\/\//.test(maybeUrl)) {
-      return `${maybeName}=${originForGoUpstream(maybeUrl)}`;
-    }
+  return spec.trim();
+}
+
+function warnIfOpenAIBaseURLLooksLikeProxy(env: NodeJS.ProcessEnv): void {
+  const openai = firstNonEmpty(env.OPENAI_BASE_URL);
+  if (!openai || !looksLikeLlmentaryProxy(openai, env)) return;
+  console.warn(
+    "OPENAI_BASE_URL points at a llmentary proxy; it is not used as the upstream. Set LLMENTARY_UPSTREAM_BASE_URL (or startProxy upstreams) for the real provider.",
+  );
+}
+
+export function looksLikeLlmentaryProxy(url: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  try {
+    const parsed = new URL(url);
+    if (/(?:^|\/)s\/[^/]+(?:\/|$)/.test(parsed.pathname)) return true;
+    const proxy = firstNonEmpty(env.LLMENTARY_PROXY_URL);
+    if (proxy && new URL(proxy).origin === parsed.origin) return true;
+    return false;
+  } catch {
+    return false;
   }
-  return originForGoUpstream(spec);
 }
 
 export async function startProxy(options: ProxyLaunchOptions = {}): Promise<ProxyHandle> {

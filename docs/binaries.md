@@ -23,4 +23,4 @@ CI builds the proxy from `barzoj-co/llmentary` source. The release workflow copi
 
 ## Attach vs start
 
-Use `LLMENTARY_PROXY_URL` (and `LLMENTARY_CONTROL_URL` — control listens on a separate port) to attach to an already-running proxy instead of starting a process. When this client starts the binary it passes `-listen`, `-control`, and `-upstream name=url`. Trailing `/v1` is stripped from the upstream URL because the Go process prefixes the client path (`/v1/chat/completions`). Empty `LLMENTARY_UPSTREAM_BASE_URL` / `OPENAI_BASE_URL` values fall through to `https://api.openai.com`.
+Use `LLMENTARY_PROXY_URL` (and `LLMENTARY_CONTROL_URL` — control listens on a separate port) to attach to an already-running proxy instead of starting a process. When this client starts the binary it passes `-listen` and `-control`. It passes `-upstream name=url` only when `upstreams`, `upstreamBaseUrl`, `LLMENTARY_UPSTREAMS`, or `LLMENTARY_UPSTREAM_BASE_URL` is set. Otherwise the proxy's own default (`openai=https://api.openai.com/v1`) is used. Upstream URLs are not rewritten; the proxy joins overlapping `/v1` segments. `OPENAI_BASE_URL` is never used as the upstream.

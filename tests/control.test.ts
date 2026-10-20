@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { ControlClient, combineAbortSignals, parseControlBody, type ControlFetch } from "../src/control.js";
-import { resetWaitEnvDeprecationWarnings } from "../src/wait.js";
+import {
+  ControlClient,
+  SessionNotFound,
+  combineAbortSignals,
+  formatZeroCallsMessage,
+  parseControlBody,
+  type ControlFetch,
+} from "../src/control.js";
+import { WaitTimeoutError, resetWaitEnvDeprecationWarnings } from "../src/wait.js";
 
 const WAIT_ENV = [
   "LLMENTARY_WAIT_TIMEOUT",
@@ -61,6 +68,58 @@ describe("ControlClient", () => {
     expect(queryString(urls[1])).toBe("timeout=90s&quiet=200ms");
     await client.wait("s1", { timeoutMs: 5_000, idleMs: 100 });
     expect(queryString(urls[2])).toBe("timeout=5s&quiet=100ms");
+    await client.wait("s1", { timeout: 5, quiet: "100ms", minCalls: 2 });
+    expect(queryString(urls[3])).toBe("timeout=5s&quiet=100ms&min_calls=2");
+  });
+
+  it("lists sessions and surfaces SessionNotFound on 404", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.endsWith("/sessions") || url.endsWith("/sessions?source=header")) {
+        return new Response(
+          JSON.stringify({
+            sessions: [
+              {
+                id: "default",
+                calls: 3,
+                active: 0,
+                sources: ["default"],
+                first_started_at: "2026-10-20T00:00:00Z",
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/sessions/missing")) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              type: "session_not_found",
+              message: 'no calls recorded for session "missing"; known sessions: GET /sessions',
+            },
+          }),
+          { status: 404, statusText: "Not Found" },
+        );
+      }
+      if (url.includes("/config")) {
+        return new Response(JSON.stringify({ version: "0.2.0-dev", upstreams: { openai: "https://api.openai.com/v1" } }), {
+          status: 200,
+        });
+      }
+      return new Response("ok", { status: 200 });
+    };
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    await expect(client.listSessions()).resolves.toEqual([
+      expect.objectContaining({ id: "default", calls: 3, active: 0, sources: ["default"] }),
+    ]);
+    await expect(client.listSessions({ source: "header" })).resolves.toHaveLength(1);
+    await expect(client.getSession("missing")).rejects.toBeInstanceOf(SessionNotFound);
+    await expect(client.getSession("missing")).rejects.toThrow(/no calls recorded for session "missing"/);
+    await expect(client.getConfig()).resolves.toMatchObject({ version: "0.2.0-dev" });
+    expect(formatZeroCallsMessage("abc", ["default", "other"])).toBe(
+      "no calls recorded for session abc; known sessions: default, other",
+    );
   });
 
   it("turns a wait 504 into a timeout error with session counts", async () => {
@@ -82,6 +141,7 @@ describe("ControlClient", () => {
       controlUrl: "http://127.0.0.1:9",
       fetch: fetchImpl,
     });
+    await expect(client.wait("s1")).rejects.toBeInstanceOf(WaitTimeoutError);
     await expect(client.wait("s1")).rejects.toThrow(
       "wait timed out after 30s on session s1 (2 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
     );
@@ -111,6 +171,27 @@ describe("ControlClient", () => {
     });
     await expect(client.wait("s1")).rejects.toThrow(
       "wait timed out after 30s on session s1 (3 calls so far, still active: 2). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+    );
+  });
+
+  it("reads calls_seen from a wait_timeout JSON error when the session body is absent", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/wait")) {
+        return new Response(JSON.stringify({ error: { type: "wait_timeout", calls_seen: 0, min_calls: 2 } }), {
+          status: 504,
+          statusText: "Gateway Timeout",
+        });
+      }
+      return new Response(
+        JSON.stringify({ error: { type: "session_not_found", message: 'no calls recorded for session "s1"' } }),
+        { status: 404, statusText: "Not Found" },
+      );
+    };
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    await expect(client.wait("s1", { minCalls: 2 })).rejects.toThrow(
+      "wait timed out after 30s on session s1 (0 calls so far, still active: 0). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
     );
   });
 

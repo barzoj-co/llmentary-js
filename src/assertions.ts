@@ -1,29 +1,35 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { ControlClient } from "./control.js";
+import { ControlClient, SessionNotFound, formatZeroCallsMessage } from "./control.js";
 import {
   asArray,
   asObject,
   firstPositiveOrDefined,
   numberAt,
   objectAt,
+  specStatusForRecord,
   stringAt,
+  validationWasRun,
   valueAt,
 } from "./normalize.js";
 import type {
   AssertionResult,
   Bounds,
   CallRecord,
+  IgnoredField,
   JsonObject,
   JsonSchemaAssertionOptions,
   JsonValue,
   NormalizedToolCall,
   QueryOptions,
   SessionTrace,
+  SpecAssertionOptions,
+  SpecViolation,
   TokenBounds,
   ToolCallAssertionOptions,
   UsageDetailsBounds,
   WaitOptions,
 } from "./types.js";
+import { WaitTimeoutError } from "./wait.js";
 
 export class SessionAssertionError extends Error {
   readonly trace: SessionTrace;
@@ -465,6 +471,14 @@ export class AssertionScope {
     });
   }
 
+  async noSpecViolations(options: SpecAssertionOptions = {}): Promise<AssertionResult> {
+    return this.check("expected no spec violations", (trace) => evaluateSpecFindings(trace, this.query, options, "violations"));
+  }
+
+  async noIgnoredFields(options: SpecAssertionOptions = {}): Promise<AssertionResult> {
+    return this.check("expected no ignored fields", (trace) => evaluateSpecFindings(trace, this.query, options, "ignored"));
+  }
+
   private async numericRecordBound(field: "latencyMs" | "ttftMs" | "retries", bounds: Bounds): Promise<AssertionResult> {
     return this.check(`expected ${field} bounds`, (trace) => {
       const records = recordsForTrace(trace, this.query);
@@ -490,13 +504,41 @@ export class AssertionScope {
     defaultMessage: string,
     predicate: (trace: SessionTrace) => { pass: boolean; message?: string } | Promise<{ pass: boolean; message?: string }>,
   ): Promise<AssertionResult> {
-    const trace = await this.control.wait(this.sessionId, this.defaultWait);
+    let trace: SessionTrace;
+    try {
+      trace = await this.control.wait(this.sessionId, this.defaultWait);
+    } catch (error) {
+      if (error instanceof SessionNotFound || (error instanceof WaitTimeoutError && error.calls === 0)) {
+        return this.failZeroCalls(emptyTrace(this.sessionId), defaultMessage);
+      }
+      throw error;
+    }
     const result = await predicate(trace);
     const message = result.message ?? defaultMessage;
     if (result.pass) return { pass: true, message, trace };
+    if (trace.calls.length === 0) {
+      return this.failZeroCalls(trace, message);
+    }
     const error = new SessionAssertionError(message, trace);
     if (this.softMode) return { pass: false, message, trace, error };
     throw error;
+  }
+
+  private async failZeroCalls(trace: SessionTrace, fallback: string): Promise<AssertionResult> {
+    const known = await this.knownSessionIds();
+    const message = `${formatZeroCallsMessage(this.sessionId, known)}${fallback ? `\n${fallback}` : ""}`;
+    const error = new SessionAssertionError(message, trace);
+    if (this.softMode) return { pass: false, message, trace, error };
+    throw error;
+  }
+
+  private async knownSessionIds(): Promise<string[]> {
+    if (typeof this.control.listSessions !== "function") return [];
+    try {
+      return (await this.control.listSessions()).map((session) => session.id);
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -942,13 +984,89 @@ function hasRawPayload(record: CallRecord): boolean {
 }
 
 export function formatTraceSummary(trace: SessionTrace): string {
-  if (trace.summary) return trace.summary;
   const lines = [`llmentary trace summary for session ${trace.id}: ${trace.calls.length} call(s)`];
+  if (trace.summary) lines.push(trace.summary);
   trace.calls.forEach((record, index) => {
     const tools = toolCallsForRecords([record]).map((tool) => tool.name);
     lines.push(
-      `${index + 1}. ${record.apiType ?? "unknown"} model=${record.model ?? "unknown"} tools=${tools.join(",") || "-"} finish=${finishReasons(record.response).join(",") || "-"} error=${record.error ? "yes" : "no"}`,
+      `${index + 1}. ${record.apiFamily ?? record.apiType ?? "unknown"} model=${record.model ?? "unknown"} tools=${tools.join(",") || "-"} finish=${finishReasons(record.response).join(",") || "-"} error=${record.error ? "yes" : "no"} spec=${specStatusForRecord(record)}`,
     );
   });
   return lines.join("\n");
+}
+
+function emptyTrace(sessionId: string): SessionTrace {
+  return {
+    id: sessionId,
+    calls: [],
+    raw: { id: sessionId, calls: [] },
+    specViolations: () => [],
+    ignoredFields: () => [],
+  };
+}
+
+function evaluateSpecFindings(
+  trace: SessionTrace,
+  query: QueryOptions,
+  options: SpecAssertionOptions,
+  kind: "violations" | "ignored",
+): { pass: boolean; message: string } {
+  const records = selectRecordsForSpec(trace, query, options.calls);
+  const findings: string[] = [];
+  let anyChecked = false;
+  let anyUnchecked = false;
+  records.forEach((record, index) => {
+    const checked =
+      kind === "violations" ? validationWasRun(record) : record.ignoredFields !== undefined || validationWasRun(record);
+    if (!checked) {
+      anyUnchecked = true;
+      return;
+    }
+    anyChecked = true;
+    const items = kind === "violations" ? (record.specViolations ?? []) : (record.ignoredFields ?? []);
+    for (const item of items) {
+      if (!includeFinding(item, options)) continue;
+      findings.push(formatContractFinding(index + 1, record, item));
+    }
+  });
+  if (findings.length > 0) {
+    return { pass: false, message: findings.join("\n") };
+  }
+  if (!anyChecked || anyUnchecked) {
+    if (options.allowUnvalidated) {
+      return { pass: true, message: "validation was not run" };
+    }
+    return { pass: false, message: "validation was not run" };
+  }
+  return {
+    pass: true,
+    message: kind === "violations" ? "no spec violations" : "no ignored fields",
+  };
+}
+
+function selectRecordsForSpec(trace: SessionTrace, query: QueryOptions, calls?: Array<number | string>): CallRecord[] {
+  const records = recordsForTrace(trace, query);
+  if (!calls?.length) return records;
+  return records.filter((record, index) => calls.includes(index) || (record.id !== undefined && calls.includes(record.id)));
+}
+
+function includeFinding(item: SpecViolation | IgnoredField, options: SpecAssertionOptions): boolean {
+  if (options.side && item.side !== options.side) return false;
+  if (options.ignorePaths?.some((path) => findingMatchesPath(item, path))) return false;
+  if (options.ignoreKeywords?.some((keyword) => "keyword" in item && item.keyword === keyword)) return false;
+  return true;
+}
+
+function findingMatchesPath(item: SpecViolation | IgnoredField, ignore: string): boolean {
+  const candidates = [item.path, item.pointer].filter((value): value is string => Boolean(value));
+  return candidates.some((candidate) => candidate === ignore || candidate.endsWith(ignore) || candidate.includes(ignore));
+}
+
+function formatContractFinding(callNumber: number, record: CallRecord, item: SpecViolation | IgnoredField): string {
+  const family = record.apiFamily ?? record.apiType ?? "unknown";
+  const side = item.side ?? "unknown";
+  const path = item.pointer || item.path || "-";
+  const message = item.message ?? "";
+  const hint = ("keyword" in item && item.keyword) || ("kind" in item && item.kind) || "spec";
+  return `${callNumber} ${family} ${side} ${path}: ${message} — ${hint}`;
 }

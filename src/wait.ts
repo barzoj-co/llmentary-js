@@ -28,6 +28,7 @@ export interface ResolvedWait {
   quiet: string;
   timeoutMs: number;
   quietMs: number;
+  minCalls?: number;
 }
 
 export function resetWaitEnvDeprecationWarnings(): void {
@@ -98,6 +99,7 @@ export function resolveWait(options: WaitOptions = {}, env: NodeJS.ProcessEnv = 
     quiet: formatGoDurationMs(quietMs),
     timeoutMs,
     quietMs,
+    ...(options.minCalls !== undefined ? { minCalls: options.minCalls } : {}),
   };
 }
 
@@ -107,6 +109,7 @@ export function resolvedWaitToOptions(resolved: ResolvedWait): WaitOptions {
     quiet: resolved.quiet,
     timeoutMs: resolved.timeoutMs,
     idleMs: resolved.quietMs,
+    ...(resolved.minCalls !== undefined ? { minCalls: resolved.minCalls } : {}),
   };
 }
 
@@ -125,6 +128,7 @@ export function mergeWaitOptions(base: WaitOptions, override: WaitOptions = {}):
     if (override.idleMs !== undefined) merged.idleMs = override.idleMs;
   }
   if (override.signal !== undefined) merged.signal = override.signal;
+  if (override.minCalls !== undefined) merged.minCalls = override.minCalls;
   return merged;
 }
 
@@ -135,6 +139,22 @@ export function formatWaitTimeoutError(
   stillActive: number,
 ): string {
   return `wait timed out after ${timeout} on session ${sessionId} (${calls} calls so far, still active: ${stillActive}). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.`;
+}
+
+export class WaitTimeoutError extends Error {
+  readonly sessionId: string;
+  readonly timeout: string;
+  readonly calls: number;
+  readonly stillActive: number;
+
+  constructor(sessionId: string, timeout: string, calls: number, stillActive: number) {
+    super(formatWaitTimeoutError(sessionId, timeout, calls, stillActive));
+    this.name = "WaitTimeoutError";
+    this.sessionId = sessionId;
+    this.timeout = timeout;
+    this.calls = calls;
+    this.stillActive = stillActive;
+  }
 }
 
 function resolveWaitField(input: {

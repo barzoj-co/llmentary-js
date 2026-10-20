@@ -9,6 +9,8 @@ export interface WaitOptions {
   timeout?: number | string;
   /** Quiet window after the last call. Number is seconds; string is a Go duration. */
   quiet?: number | string;
+  /** Return only after at least this many finished calls (proxy `min_calls`). */
+  minCalls?: number;
   /** @deprecated Use `timeout` (seconds or Go duration). */
   timeoutMs?: number;
   /** @deprecated Use `quiet` (seconds or Go duration). */
@@ -59,9 +61,56 @@ export interface ProxyHandle {
   stop(): Promise<void>;
 }
 
+export interface Validation {
+  mode?: string;
+  profile?: string;
+  specSha?: string;
+  requestChecked?: boolean;
+  responseChecked?: boolean;
+  skippedReason?: string;
+  truncated?: boolean;
+  schemaSubsetRetrieved?: string;
+  durationUs?: number;
+  raw: JsonValue;
+}
+
+export interface SpecViolation {
+  side?: string;
+  source?: string;
+  path?: string;
+  pointer?: string;
+  keyword?: string;
+  message?: string;
+  profile?: string;
+  schemaRef?: string;
+  offset?: number;
+  eventIndex?: number;
+  raw: JsonValue;
+}
+
+export interface IgnoredField {
+  side?: string;
+  path?: string;
+  pointer?: string;
+  kind?: string;
+  severity?: string;
+  message?: string;
+  raw: JsonValue;
+}
+
+export interface SpecAssertionOptions {
+  side?: string;
+  /** 0-based indices into the filtered call list, or call ids. */
+  calls?: Array<number | string>;
+  ignorePaths?: string[];
+  ignoreKeywords?: string[];
+  allowUnvalidated?: boolean;
+}
+
 export interface CallRecord {
   id?: string;
   apiType?: ApiType;
+  apiFamily?: string;
   model?: string;
   request?: JsonValue;
   response?: JsonValue;
@@ -75,6 +124,11 @@ export interface CallRecord {
   finishedAt?: string;
   streamed?: boolean;
   httpStatus?: number;
+  validation?: Validation;
+  /** `[]` means checked and clean; omitted means validation was not run. */
+  specViolations?: SpecViolation[];
+  /** `[]` means checked and clean; omitted means ignored fields were not recorded. */
+  ignoredFields?: IgnoredField[];
   raw: JsonValue;
 }
 
@@ -83,6 +137,28 @@ export interface SessionTrace {
   calls: CallRecord[];
   raw: JsonValue;
   summary?: string;
+  specViolations(): SpecViolation[];
+  ignoredFields(): IgnoredField[];
+}
+
+export interface SessionSummary {
+  id: string;
+  calls: number;
+  active: number;
+  sources: string[];
+  firstStartedAt?: string;
+  lastEndedAt?: string;
+  raw: JsonValue;
+}
+
+export interface ProxyConfig {
+  version?: string;
+  upstreams?: JsonValue;
+  raw: JsonValue;
+}
+
+export interface ListSessionsOptions {
+  source?: string;
 }
 
 export interface AssertionResult {
