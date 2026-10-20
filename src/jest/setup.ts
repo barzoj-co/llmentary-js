@@ -1,4 +1,4 @@
-import { cleanupLab } from "../jest.js";
+import { cleanupSession } from "../jest.js";
 import { toHaveRequestParam, toHaveToolCalled, toHaveToolCalledTimes } from "../matchers.js";
 import { applyState, readState } from "./state.js";
 
@@ -8,7 +8,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  await cleanupLab();
+  await cleanupSession();
 });
 
 expect.extend({ toHaveToolCalled, toHaveToolCalledTimes, toHaveRequestParam });

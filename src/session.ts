@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { AssertionScope, recordsForTrace } from "./assertions.js";
 import { ControlClient } from "./control.js";
 import { firstNonEmpty } from "./env.js";
-import type { LabConfig, QueryOptions, SessionTrace, WaitOptions } from "./types.js";
+import type { QueryOptions, SessionOptions, SessionTrace, WaitOptions } from "./types.js";
 
 const SESSION_HEADER = "x-test-session";
 const BAGGAGE_KEY = "llmentary.session.id";
 
-export class Lab {
+export class Session {
   readonly sessionId: string;
   readonly proxyUrl: string;
   readonly controlUrl: string;
@@ -17,7 +17,7 @@ export class Lab {
   readonly control: ControlClient;
   readonly defaultWait: WaitOptions;
 
-  constructor(config: LabConfig = {}) {
+  constructor(config: SessionOptions = {}) {
     this.sessionId = config.sessionId ?? randomUUID();
     this.proxyUrl = trimTrailingSlash(
       firstNonEmpty(config.proxyUrl, process.env.LLMENTARY_PROXY_URL) ?? "http://127.0.0.1:4010",
@@ -46,8 +46,8 @@ export class Lab {
     });
   }
 
-  query(query: QueryOptions): LabQuery {
-    return new LabQuery(this, query);
+  query(query: QueryOptions): SessionQuery {
+    return new SessionQuery(this, query);
   }
 
   expect(): AssertionScope {
@@ -109,18 +109,18 @@ export class Lab {
   }
 }
 
-export class LabQuery {
+export class SessionQuery {
   constructor(
-    readonly lab: Lab,
+    readonly session: Session,
     readonly queryOptions: QueryOptions,
   ) {}
 
   expect(): AssertionScope {
     return new AssertionScope({
-      control: this.lab.control,
-      sessionId: this.lab.sessionId,
+      control: this.session.control,
+      sessionId: this.session.sessionId,
       query: this.queryOptions,
-      defaultWait: this.lab.defaultWait,
+      defaultWait: this.session.defaultWait,
     });
   }
 
@@ -129,7 +129,7 @@ export class LabQuery {
   }
 
   async wait(options?: WaitOptions): Promise<SessionTrace> {
-    const trace = await this.lab.wait(options);
+    const trace = await this.session.wait(options);
     return {
       ...trace,
       calls: recordsForTrace(trace, this.queryOptions),
@@ -137,8 +137,8 @@ export class LabQuery {
   }
 }
 
-export function createLab(config: LabConfig = {}): Lab {
-  return new Lab(config);
+export function llmentary(config: SessionOptions = {}): Session {
+  return new Session(config);
 }
 
 export function sessionHeaders(sessionId: string): Record<string, string> {

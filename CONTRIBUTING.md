@@ -68,7 +68,28 @@ npm run test:e2e:openai
 Never print, log, or commit `OPENAI_API_KEY`, `LLMTESTLAB_REPO_TOKEN`, or any
 `Authorization` / `api-key` value.
 
+## Binary resolution and releasing
+
+How the client finds the proxy binary, optional platform packages, and attach-vs-start
+environment variables is documented in [docs/binaries.md](docs/binaries.md).
+Trusted publishing, provenance, and the `NPM_PUBLISH_ENABLED` gate are in
+[docs/releasing.md](docs/releasing.md).
+
 ## CI secrets and the e2e gate
+
+The included CI workflow expects:
+
+- `LLMTESTLAB_REPO_TOKEN`: a GitHub token that can read the private
+  `barzoj-co/llmentary` repo so CI can run `go build ./cmd/llmentary`.
+  Remove this secret/workflow usage once that repo is public. Keep the secret
+  name as-is; it is an existing org secret.
+- `OPENAI_API_KEY`: required for real OpenAI E2E tests on same-repo PRs and
+  pushes. Fork PRs skip private-binary checkout and this E2E step because
+  secrets are unavailable.
+
+Prefix-cache hits are required for Chat Completions (up to 3 attempts) and
+optional for Responses; both always check that recorded `cached_tokens` match
+the nested value in the raw upstream body. See [docs/api.md](docs/api.md).
 
 Live OpenAI e2e runs in a dedicated `e2e-openai` job (`OpenAI E2E`). That job
 holds every `secrets.OPENAI_API_KEY` reference in `ci.yml`. Secrets reach only

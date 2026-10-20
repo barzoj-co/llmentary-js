@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
-import { ControlClient, LabAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
+import { ControlClient, SessionAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
 import {
   CACHE_SECOND_CALL_ATTEMPTS,
   CITY_SCHEMA,
@@ -14,7 +14,7 @@ import {
   expectCachedTokensFaithful,
   expectHttpError,
   longPrompt,
-  newLab,
+  newSession,
   newPromptCacheKey,
   noteResponsesCacheMiss,
   openaiClient,
@@ -55,8 +55,8 @@ describe("OpenAI E2E through llmentary", () => {
 
   describe("Chat Completions", () => {
     it("records non-streaming plain text", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
           model: TEXT_MODEL,
@@ -65,17 +65,17 @@ describe("OpenAI E2E through llmentary", () => {
           messages: [{ role: "user", content: "Reply with the single word ping." }],
         }),
       );
-      await lab.expect().outputText();
-      await lab.expect().model(TEXT_MODEL);
-      await lab.expect().tokenBounds({ total: { min: 1 } });
-      await lab.expect().finishReason(/stop|completed/i);
-      await lab.expect().noErrors();
-      await lab.cleanup();
+      await lm.expect().outputText();
+      await lm.expect().model(TEXT_MODEL);
+      await lm.expect().tokenBounds({ total: { min: 1 } });
+      await lm.expect().finishReason(/stop|completed/i);
+      await lm.expect().noErrors();
+      await lm.cleanup();
     });
 
     it("records streaming plain text", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const stream = await retryNetwork(() =>
         client.chat.completions.create({
           model: TEXT_MODEL,
@@ -87,18 +87,18 @@ describe("OpenAI E2E through llmentary", () => {
         }),
       );
       await consumeChatStream(stream);
-      await lab.expect().outputText();
-      await lab.expect().model(TEXT_MODEL);
-      await lab.expect().tokenBounds({ total: { min: 1 } });
-      await lab.expect().finishReason(/stop|completed/i);
-      await lab.expect().streamed(true);
-      await lab.expect().outputMatchesDeltas();
-      await lab.cleanup();
+      await lm.expect().outputText();
+      await lm.expect().model(TEXT_MODEL);
+      await lm.expect().tokenBounds({ total: { min: 1 } });
+      await lm.expect().finishReason(/stop|completed/i);
+      await lm.expect().streamed(true);
+      await lm.expect().outputMatchesDeltas();
+      await lm.cleanup();
     });
 
     it("records a forced tool call, result feedback, and final answer", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const first = await retryNetwork(() =>
         client.chat.completions.create({
           model: TOOL_MODEL,
@@ -124,16 +124,16 @@ describe("OpenAI E2E through llmentary", () => {
           ],
         }),
       );
-      await lab.expect().toolCalled("lookup_weather");
-      await lab.expect().toolResultFedBack("lookup_weather");
-      await lab.expect().outputText();
-      await lab.expect().model(TOOL_MODEL);
-      await lab.cleanup();
+      await lm.expect().toolCalled("lookup_weather");
+      await lm.expect().toolResultFedBack("lookup_weather");
+      await lm.expect().outputText();
+      await lm.expect().model(TOOL_MODEL);
+      await lm.cleanup();
     });
 
     it("records a streaming forced tool call with JSON arguments from deltas", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const stream = await retryNetwork(() =>
         client.chat.completions.create({
           model: TOOL_MODEL,
@@ -177,17 +177,17 @@ describe("OpenAI E2E through llmentary", () => {
           ],
         }),
       );
-      await lab.expect().streamed(true);
-      await lab.expect().streamedToolArgsJson("lookup_weather");
-      await lab.expect().toolCalled("lookup_weather");
-      await lab.expect().toolResultFedBack("lookup_weather");
-      await lab.expect().outputText();
-      await lab.cleanup();
+      await lm.expect().streamed(true);
+      await lm.expect().streamedToolArgsJson("lookup_weather");
+      await lm.expect().toolCalled("lookup_weather");
+      await lm.expect().toolResultFedBack("lookup_weather");
+      await lm.expect().outputText();
+      await lm.cleanup();
     });
 
     it("records parallel tool calls order-independently", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
           model: TOOL_MODEL,
@@ -204,17 +204,17 @@ describe("OpenAI E2E through llmentary", () => {
           ],
         }),
       );
-      await lab.expect().callCount(1);
-      await lab.expect().toolCalled("lookup_weather");
-      await lab.expect().toolCalled("lookup_time");
-      await lab.expect().calledTimes("lookup_weather", 1);
-      await lab.expect().calledTimes("lookup_time", 1);
-      await lab.cleanup();
+      await lm.expect().callCount(1);
+      await lm.expect().toolCalled("lookup_weather");
+      await lm.expect().toolCalled("lookup_time");
+      await lm.expect().calledTimes("lookup_weather", 1);
+      await lm.expect().calledTimes("lookup_time", 1);
+      await lm.cleanup();
     });
 
     it("records strict json_schema structured output", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
           model: TOOL_MODEL,
@@ -227,13 +227,13 @@ describe("OpenAI E2E through llmentary", () => {
           messages: [{ role: "user", content: "Return JSON with city Paris and ok true." }],
         }),
       );
-      await lab.expect().outputJsonValid(CITY_SCHEMA);
-      await lab.cleanup();
+      await lm.expect().outputJsonValid(CITY_SCHEMA);
+      await lm.cleanup();
     });
 
     it("records a multi-turn session with count, order, and filter helpers", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
           model: TEXT_MODEL,
@@ -262,17 +262,17 @@ describe("OpenAI E2E through llmentary", () => {
           tool_choice: { type: "function", function: { name: "lookup_time" } },
         }),
       );
-      await lab.expect().callCount(3);
-      await lab.expect().order(["lookup_weather", "lookup_time"]);
-      await lab.query({ apiType: "chat_completions" }).expect().callCount(3);
-      await lab.query({ model: TEXT_MODEL }).expect().callCount(1);
-      await lab.query({ model: TOOL_MODEL }).expect().callCount(2);
-      await lab.cleanup();
+      await lm.expect().callCount(3);
+      await lm.expect().order(["lookup_weather", "lookup_time"]);
+      await lm.query({ apiType: "chat_completions" }).expect().callCount(3);
+      await lm.query({ model: TEXT_MODEL }).expect().callCount(1);
+      await lm.query({ model: TOOL_MODEL }).expect().callCount(2);
+      await lm.cleanup();
     });
 
     it("records upstream 4xx for an invalid model and invalid key", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await expectHttpError(
         () =>
           client.chat.completions.create({
@@ -283,14 +283,14 @@ describe("OpenAI E2E through llmentary", () => {
           }),
         404,
       );
-      await lab.expect().hasError();
-      await lab.expect().errorStatus(404);
-      await lab.expect().errorType(/invalid_request|invalid/i);
-      await lab.expect().errorCode(/model/i);
-      await lab.cleanup();
+      await lm.expect().hasError();
+      await lm.expect().errorStatus(404);
+      await lm.expect().errorType(/invalid_request|invalid/i);
+      await lm.expect().errorCode(/model/i);
+      await lm.cleanup();
 
-      const authLab = newLab(proxy);
-      const authClient = new OpenAI(authLab.openAI());
+      const authLm = newSession(proxy);
+      const authClient = new OpenAI(authLm.openAI());
       await expectHttpError(
         () =>
           authClient.chat.completions.create(
@@ -304,16 +304,16 @@ describe("OpenAI E2E through llmentary", () => {
           ),
         401,
       );
-      await authLab.expect().hasError();
-      await authLab.expect().errorStatus(401);
-      await authLab.expect().errorType(/auth|invalid/i);
-      await authLab.expect().errorCode(/api_key|invalid|unauthorized/i);
-      await authLab.cleanup();
+      await authLm.expect().hasError();
+      await authLm.expect().errorStatus(401);
+      await authLm.expect().errorType(/auth|invalid/i);
+      await authLm.expect().errorCode(/api_key|invalid|unauthorized/i);
+      await authLm.cleanup();
     });
 
     it("records a client abort mid-stream and leaves the proxy healthy", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const controller = new AbortController();
       const stream = await retryNetwork(() =>
         client.chat.completions.create(
@@ -337,13 +337,13 @@ describe("OpenAI E2E through llmentary", () => {
       } catch (error) {
         if (!controller.signal.aborted && !isAbortError(error)) throw error;
       }
-      await lab.expect().incomplete();
+      await lm.expect().incomplete();
       const health = await new ControlClient({ controlUrl: proxy.controlUrl }).health();
       expect(health).toBe("ok");
       const rawHealth = await fetch(`${proxy.controlUrl.replace(/\/$/, "")}/healthz`);
       expect(rawHealth.status).toBe(200);
       expect((await rawHealth.text()).trim()).toBe("ok");
-      const followUp = newLab(proxy);
+      const followUp = newSession(proxy);
       const followClient = openaiClient(followUp);
       await retryNetwork(() =>
         followClient.chat.completions.create({
@@ -354,7 +354,7 @@ describe("OpenAI E2E through llmentary", () => {
         }),
       );
       await followUp.expect().outputText();
-      await lab.cleanup();
+      await lm.cleanup();
       await followUp.cleanup();
     });
 
@@ -363,8 +363,8 @@ describe("OpenAI E2E through llmentary", () => {
       // The second call is retried up to 3 times; a hit is still required.
       // Recorded cached_tokens must equal nested cached_tokens in the raw body
       // on index 0 and on the call that actually hit.
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const prompt = longPrompt();
       const promptCacheKey = newPromptCacheKey();
       await retryNetwork(() =>
@@ -389,29 +389,29 @@ describe("OpenAI E2E through llmentary", () => {
           }),
         );
         const index = 1 + attempt;
-        await lab.query({ index }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
-        const record = (await lab.query({ index }).wait()).calls[0];
+        await lm.query({ index }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+        const record = (await lm.query({ index }).wait()).calls[0];
         expect(record).toBeDefined();
         if ((recordedCachedTokens(record!) ?? 0) > 0) {
           hitIndex = index;
           break;
         }
       }
-      await lab.query({ index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
-      await expectCachedTokensFaithful(lab, 0);
-      if (hitIndex !== undefined) await expectCachedTokensFaithful(lab, hitIndex);
-      await expect(lab.query({ index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } })).rejects.toThrow(
+      await lm.query({ index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+      await expectCachedTokensFaithful(lm, 0);
+      if (hitIndex !== undefined) await expectCachedTokensFaithful(lm, hitIndex);
+      await expect(lm.query({ index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } })).rejects.toThrow(
         /usage details/i,
       );
-      await lab.query({ index: hitIndex ?? 1 }).expect().usageDetails({ cachedTokens: { min: 1 } });
-      await lab.cleanup();
+      await lm.query({ index: hitIndex ?? 1 }).expect().usageDetails({ cachedTokens: { min: 1 } });
+      await lm.cleanup();
     });
 
     it("isolates concurrent sessions", async () => {
-      const labA = newLab(proxy);
-      const labB = newLab(proxy);
-      const clientA = openaiClient(labA);
-      const clientB = openaiClient(labB);
+      const lmA = newSession(proxy);
+      const lmB = newSession(proxy);
+      const clientA = openaiClient(lmA);
+      const clientB = openaiClient(lmB);
       await Promise.all([
         retryNetwork(() =>
           clientA.chat.completions.create({
@@ -430,19 +430,19 @@ describe("OpenAI E2E through llmentary", () => {
           }),
         ),
       ]);
-      await labA.expect().promptContains("ALPHA_SESSION_A");
-      await labB.expect().promptContains("BETA_SESSION_B");
-      await labA.expect().callCount(1);
-      await labB.expect().callCount(1);
-      await expect(labA.expect().promptContains("BETA_SESSION_B")).rejects.toBeInstanceOf(LabAssertionError);
-      await expect(labB.expect().promptContains("ALPHA_SESSION_A")).rejects.toBeInstanceOf(LabAssertionError);
-      await labA.cleanup();
-      await labB.cleanup();
+      await lmA.expect().promptContains("ALPHA_SESSION_A");
+      await lmB.expect().promptContains("BETA_SESSION_B");
+      await lmA.expect().callCount(1);
+      await lmB.expect().callCount(1);
+      await expect(lmA.expect().promptContains("BETA_SESSION_B")).rejects.toBeInstanceOf(SessionAssertionError);
+      await expect(lmB.expect().promptContains("ALPHA_SESSION_A")).rejects.toBeInstanceOf(SessionAssertionError);
+      await lmA.cleanup();
+      await lmB.cleanup();
     });
 
     it("fails main assertion helpers with clear messages when false", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
           model: TEXT_MODEL,
@@ -451,30 +451,30 @@ describe("OpenAI E2E through llmentary", () => {
           messages: [{ role: "user", content: "Reply with the single word ping." }],
         }),
       );
-      await expect(lab.expect().toolCalled("no_such_tool")).rejects.toThrow(/expected tool "no_such_tool"/i);
-      await expect(lab.expect().calledTimes("no_such_tool", 1)).rejects.toThrow(/called 1 time/i);
-      await expect(lab.expect().order(["no_such_tool"])).rejects.toThrow(/expected tool order/i);
-      await expect(lab.expect().toolResultFedBack("no_such_tool")).rejects.toThrow(/no call with an id was recorded/i);
-      await expect(lab.expect().model("definitely-not-this-model")).rejects.toThrow(/expected model/i);
-      await expect(lab.expect().finishReason("length")).rejects.toThrow(/finish reason/i);
-      await expect(lab.expect().tokenBounds({ total: { max: 0 } })).rejects.toThrow(/token bounds/i);
-      await expect(lab.expect().hasError()).rejects.toThrow(/expected an error/i);
-      await expect(lab.expect().responseContains("___NO_SUCH_TEXT___")).rejects.toThrow(/response to contain/i);
-      await expect(lab.expect().streamed(true)).rejects.toThrow(/streamed/i);
-      await expect(lab.expect().callCount(0)).rejects.toThrow(/recorded call/i);
-      await expect(lab.expect().outputText("___NO_SUCH_TEXT___")).rejects.toThrow(/output text/i);
-      await expect(lab.expect().incomplete()).rejects.toThrow(/incomplete or errored/i);
-      await expect(lab.expect().outputMatchesDeltas()).rejects.toThrow(/concatenated stream deltas/i);
-      await expect(lab.expect().streamedToolArgsJson("lookup_weather")).rejects.toThrow(/streamed tool arguments/i);
-      await expect(lab.expect().outputJsonValid(CITY_SCHEMA)).rejects.toThrow(/output text JSON to match schema/i);
-      await expect(lab.expect().usageDetails({ cachedTokens: { min: 1_000_000 } })).rejects.toThrow(/usage details/i);
-      await expect(lab.expect().errorStatus(500)).rejects.toThrow(/error status/i);
-      await expect(lab.expect().errorType("no_such_error_type")).rejects.toThrow(/error type/i);
-      await expect(lab.expect().errorCode("no_such_error_code")).rejects.toThrow(/error code/i);
-      await expect(lab.query({ apiType: "responses" }).expect().rawRecorded()).rejects.toThrow(/raw_request or raw_response/i);
+      await expect(lm.expect().toolCalled("no_such_tool")).rejects.toThrow(/expected tool "no_such_tool"/i);
+      await expect(lm.expect().calledTimes("no_such_tool", 1)).rejects.toThrow(/called 1 time/i);
+      await expect(lm.expect().order(["no_such_tool"])).rejects.toThrow(/expected tool order/i);
+      await expect(lm.expect().toolResultFedBack("no_such_tool")).rejects.toThrow(/no call with an id was recorded/i);
+      await expect(lm.expect().model("definitely-not-this-model")).rejects.toThrow(/expected model/i);
+      await expect(lm.expect().finishReason("length")).rejects.toThrow(/finish reason/i);
+      await expect(lm.expect().tokenBounds({ total: { max: 0 } })).rejects.toThrow(/token bounds/i);
+      await expect(lm.expect().hasError()).rejects.toThrow(/expected an error/i);
+      await expect(lm.expect().responseContains("___NO_SUCH_TEXT___")).rejects.toThrow(/response to contain/i);
+      await expect(lm.expect().streamed(true)).rejects.toThrow(/streamed/i);
+      await expect(lm.expect().callCount(0)).rejects.toThrow(/recorded call/i);
+      await expect(lm.expect().outputText("___NO_SUCH_TEXT___")).rejects.toThrow(/output text/i);
+      await expect(lm.expect().incomplete()).rejects.toThrow(/incomplete or errored/i);
+      await expect(lm.expect().outputMatchesDeltas()).rejects.toThrow(/concatenated stream deltas/i);
+      await expect(lm.expect().streamedToolArgsJson("lookup_weather")).rejects.toThrow(/streamed tool arguments/i);
+      await expect(lm.expect().outputJsonValid(CITY_SCHEMA)).rejects.toThrow(/output text JSON to match schema/i);
+      await expect(lm.expect().usageDetails({ cachedTokens: { min: 1_000_000 } })).rejects.toThrow(/usage details/i);
+      await expect(lm.expect().errorStatus(500)).rejects.toThrow(/error status/i);
+      await expect(lm.expect().errorType("no_such_error_type")).rejects.toThrow(/error type/i);
+      await expect(lm.expect().errorCode("no_such_error_code")).rejects.toThrow(/error code/i);
+      await expect(lm.query({ apiType: "responses" }).expect().rawRecorded()).rejects.toThrow(/raw_request or raw_response/i);
 
-      const toolLab = newLab(proxy);
-      const toolClient = openaiClient(toolLab);
+      const toolLm = newSession(proxy);
+      const toolClient = openaiClient(toolLm);
       await retryNetwork(() =>
         toolClient.chat.completions.create({
           model: TOOL_MODEL,
@@ -485,11 +485,11 @@ describe("OpenAI E2E through llmentary", () => {
           tool_choice: { type: "function", function: { name: "lookup_weather" } },
         }),
       );
-      await expect(toolLab.expect().notCalled("lookup_weather")).rejects.toThrow(/not to be called/i);
+      await expect(toolLm.expect().notCalled("lookup_weather")).rejects.toThrow(/not to be called/i);
 
-      const schemaLab = newLab(proxy);
+      const schemaLm = newSession(proxy);
       await retryNetwork(() =>
-        openaiClient(schemaLab).chat.completions.create({
+        openaiClient(schemaLm).chat.completions.create({
           model: TOOL_MODEL,
           temperature: 0,
           max_tokens: 32,
@@ -500,17 +500,17 @@ describe("OpenAI E2E through llmentary", () => {
           messages: [{ role: "user", content: "Return JSON with name hello." }],
         }),
       );
-      await expect(schemaLab.expect().outputJsonValid(CITY_SCHEMA)).rejects.toThrow(/output text JSON to match schema/i);
-      await lab.cleanup();
-      await toolLab.cleanup();
-      await schemaLab.cleanup();
+      await expect(schemaLm.expect().outputJsonValid(CITY_SCHEMA)).rejects.toThrow(/output text JSON to match schema/i);
+      await lm.cleanup();
+      await toolLm.cleanup();
+      await schemaLm.cleanup();
     });
   });
 
   describe("Responses", () => {
     it("records non-streaming plain text", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.responses.create({
           model: TEXT_MODEL,
@@ -519,18 +519,18 @@ describe("OpenAI E2E through llmentary", () => {
           input: "Reply with the single word ping.",
         }),
       );
-      const scoped = lab.query({ apiType: "responses" }).expect();
+      const scoped = lm.query({ apiType: "responses" }).expect();
       await scoped.outputText();
       await scoped.model(TEXT_MODEL);
       await scoped.tokenBounds({ total: { min: 1 } });
       await scoped.finishReason(/completed|stop/i);
       await scoped.noErrors();
-      await lab.cleanup();
+      await lm.cleanup();
     });
 
     it("records streaming plain text", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const stream = await retryNetwork(() =>
         client.responses.create({
           model: TEXT_MODEL,
@@ -543,19 +543,19 @@ describe("OpenAI E2E through llmentary", () => {
       for await (const event of stream) {
         void event;
       }
-      const scoped = lab.query({ apiType: "responses" }).expect();
+      const scoped = lm.query({ apiType: "responses" }).expect();
       await scoped.outputText();
       await scoped.model(TEXT_MODEL);
       await scoped.tokenBounds({ total: { min: 1 } });
       await scoped.finishReason(/completed|stop/i);
       await scoped.streamed(true);
       await scoped.outputMatchesDeltas();
-      await lab.cleanup();
+      await lm.cleanup();
     });
 
     it("records a forced tool call, result feedback, and final answer", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const response = await retryNetwork(() =>
         client.responses.create({
           model: TOOL_MODEL,
@@ -581,16 +581,16 @@ describe("OpenAI E2E through llmentary", () => {
           ],
         }),
       );
-      const scoped = lab.query({ apiType: "responses" }).expect();
+      const scoped = lm.query({ apiType: "responses" }).expect();
       await scoped.toolCalled("lookup_weather");
       await scoped.toolResultFedBack("lookup_weather");
       await scoped.outputText();
-      await lab.cleanup();
+      await lm.cleanup();
     });
 
     it("records a streaming forced tool call with JSON arguments from deltas", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const stream = await retryNetwork(() =>
         client.responses.create({
           model: TOOL_MODEL,
@@ -631,18 +631,18 @@ describe("OpenAI E2E through llmentary", () => {
           ],
         }),
       );
-      const scoped = lab.query({ apiType: "responses" }).expect();
+      const scoped = lm.query({ apiType: "responses" }).expect();
       await scoped.streamed(true);
       await scoped.streamedToolArgsJson("lookup_weather");
       await scoped.toolCalled("lookup_weather");
       await scoped.toolResultFedBack("lookup_weather");
       await scoped.outputText();
-      await lab.cleanup();
+      await lm.cleanup();
     });
 
     it("records parallel tool calls order-independently", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.responses.create({
           model: TOOL_MODEL,
@@ -654,18 +654,18 @@ describe("OpenAI E2E through llmentary", () => {
           input: "Call lookup_weather and lookup_time for Paris in the same turn. Do not reply with text.",
         }),
       );
-      const scoped = lab.query({ apiType: "responses" }).expect();
+      const scoped = lm.query({ apiType: "responses" }).expect();
       await scoped.callCount(1);
       await scoped.toolCalled("lookup_weather");
       await scoped.toolCalled("lookup_time");
       await scoped.calledTimes("lookup_weather", 1);
       await scoped.calledTimes("lookup_time", 1);
-      await lab.cleanup();
+      await lm.cleanup();
     });
 
     it("records strict json_schema structured output", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.responses.create({
           model: TOOL_MODEL,
@@ -675,13 +675,13 @@ describe("OpenAI E2E through llmentary", () => {
           input: "Return JSON with city Paris and ok true.",
         }),
       );
-      await lab.query({ apiType: "responses" }).expect().outputJsonValid(CITY_SCHEMA);
-      await lab.cleanup();
+      await lm.query({ apiType: "responses" }).expect().outputJsonValid(CITY_SCHEMA);
+      await lm.cleanup();
     });
 
     it("records a multi-turn session with count, order, and filter helpers", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await retryNetwork(() =>
         client.responses.create({
           model: TEXT_MODEL,
@@ -710,17 +710,17 @@ describe("OpenAI E2E through llmentary", () => {
           tool_choice: { type: "function", name: "lookup_time" },
         }),
       );
-      const scoped = lab.query({ apiType: "responses" }).expect();
+      const scoped = lm.query({ apiType: "responses" }).expect();
       await scoped.callCount(3);
       await scoped.order(["lookup_weather", "lookup_time"]);
-      await lab.query({ model: TEXT_MODEL }).expect().callCount(1);
-      await lab.query({ model: TOOL_MODEL }).expect().callCount(2);
-      await lab.cleanup();
+      await lm.query({ model: TEXT_MODEL }).expect().callCount(1);
+      await lm.query({ model: TOOL_MODEL }).expect().callCount(2);
+      await lm.cleanup();
     });
 
     it("records upstream 4xx for an invalid model and invalid key", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       await expectHttpError(
         () =>
           client.responses.create({
@@ -731,15 +731,15 @@ describe("OpenAI E2E through llmentary", () => {
           }),
         404,
       );
-      const scoped = lab.query({ apiType: "responses" }).expect();
+      const scoped = lm.query({ apiType: "responses" }).expect();
       await scoped.hasError();
       await scoped.errorStatus(404);
       await scoped.errorType(/invalid_request|invalid/i);
       await scoped.errorCode(/model/i);
-      await lab.cleanup();
+      await lm.cleanup();
 
-      const authLab = newLab(proxy);
-      const authClient = new OpenAI(authLab.openAI());
+      const authLm = newSession(proxy);
+      const authClient = new OpenAI(authLm.openAI());
       await expectHttpError(
         () =>
           authClient.responses.create(
@@ -753,17 +753,17 @@ describe("OpenAI E2E through llmentary", () => {
           ),
         401,
       );
-      const authScoped = authLab.query({ apiType: "responses" }).expect();
+      const authScoped = authLm.query({ apiType: "responses" }).expect();
       await authScoped.hasError();
       await authScoped.errorStatus(401);
       await authScoped.errorType(/auth|invalid/i);
       await authScoped.errorCode(/api_key|invalid|unauthorized/i);
-      await authLab.cleanup();
+      await authLm.cleanup();
     });
 
     it("records a client abort mid-stream and leaves the proxy healthy", async () => {
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const controller = new AbortController();
       const stream = await retryNetwork(() =>
         client.responses.create(
@@ -787,13 +787,13 @@ describe("OpenAI E2E through llmentary", () => {
       } catch (error) {
         if (!controller.signal.aborted && !isAbortError(error)) throw error;
       }
-      await lab.query({ apiType: "responses" }).expect().incomplete();
+      await lm.query({ apiType: "responses" }).expect().incomplete();
       const health = await new ControlClient({ controlUrl: proxy.controlUrl }).health();
       expect(health).toBe("ok");
       const rawHealth = await fetch(`${proxy.controlUrl.replace(/\/$/, "")}/healthz`);
       expect(rawHealth.status).toBe(200);
       expect((await rawHealth.text()).trim()).toBe("ok");
-      const followUp = newLab(proxy);
+      const followUp = newSession(proxy);
       await retryNetwork(() =>
         openaiClient(followUp).responses.create({
           model: TEXT_MODEL,
@@ -803,7 +803,7 @@ describe("OpenAI E2E through llmentary", () => {
         }),
       );
       await followUp.query({ apiType: "responses" }).expect().outputText();
-      await lab.cleanup();
+      await lm.cleanup();
       await followUp.cleanup();
     });
 
@@ -814,8 +814,8 @@ describe("OpenAI E2E through llmentary", () => {
       // A prefix-cache hit is optional. Both calls share prompt_cache_key; the
       // second call is retried up to 3 times. If none hit, warn/notice and do
       // not fail — OpenAI Responses often returns cached_tokens=0 here.
-      const lab = newLab(proxy);
-      const client = openaiClient(lab);
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
       const prompt = longPrompt();
       const promptCacheKey = newPromptCacheKey();
       const responsesQuery = { apiType: "responses" as const };
@@ -841,34 +841,34 @@ describe("OpenAI E2E through llmentary", () => {
           }),
         );
         const index = 1 + attempt;
-        await lab.query({ ...responsesQuery, index }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
-        const record = (await lab.query({ ...responsesQuery, index }).wait()).calls[0];
+        await lm.query({ ...responsesQuery, index }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+        const record = (await lm.query({ ...responsesQuery, index }).wait()).calls[0];
         expect(record).toBeDefined();
         if ((recordedCachedTokens(record!) ?? 0) > 0) {
           hitIndex = index;
           break;
         }
       }
-      await lab.query({ ...responsesQuery, index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
-      await expectCachedTokensFaithful(lab, 0, responsesQuery);
+      await lm.query({ ...responsesQuery, index: 0 }).expect().tokenBounds({ prompt: { min: 1024 }, total: { min: 1 } });
+      await expectCachedTokensFaithful(lm, 0, responsesQuery);
       if (hitIndex !== undefined) {
-        await expectCachedTokensFaithful(lab, hitIndex, responsesQuery);
-        await lab.query({ ...responsesQuery, index: hitIndex }).expect().usageDetails({ cachedTokens: { min: 1 } });
+        await expectCachedTokensFaithful(lm, hitIndex, responsesQuery);
+        await lm.query({ ...responsesQuery, index: hitIndex }).expect().usageDetails({ cachedTokens: { min: 1 } });
       } else {
         noteResponsesCacheMiss();
       }
       await expect(
-        lab.query({ ...responsesQuery, index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } }),
+        lm.query({ ...responsesQuery, index: 0 }).expect().usageDetails({ cachedTokens: { min: 1 } }),
       ).rejects.toThrow(/usage details/i);
-      await lab.cleanup();
+      await lm.cleanup();
     });
 
     it("isolates concurrent sessions", async () => {
-      const labA = newLab(proxy);
-      const labB = newLab(proxy);
+      const lmA = newSession(proxy);
+      const lmB = newSession(proxy);
       await Promise.all([
         retryNetwork(() =>
-          openaiClient(labA).responses.create({
+          openaiClient(lmA).responses.create({
             model: TEXT_MODEL,
             temperature: 0,
             max_output_tokens: 16,
@@ -876,7 +876,7 @@ describe("OpenAI E2E through llmentary", () => {
           }),
         ),
         retryNetwork(() =>
-          openaiClient(labB).responses.create({
+          openaiClient(lmB).responses.create({
             model: TEXT_MODEL,
             temperature: 0,
             max_output_tokens: 16,
@@ -884,27 +884,27 @@ describe("OpenAI E2E through llmentary", () => {
           }),
         ),
       ]);
-      await labA.query({ apiType: "responses" }).expect().promptContains("ALPHA_SESSION_A");
-      await labB.query({ apiType: "responses" }).expect().promptContains("BETA_SESSION_B");
-      await labA.expect().callCount(1);
-      await labB.expect().callCount(1);
-      await expect(labA.expect().promptContains("BETA_SESSION_B")).rejects.toBeInstanceOf(LabAssertionError);
-      await expect(labB.expect().promptContains("ALPHA_SESSION_A")).rejects.toBeInstanceOf(LabAssertionError);
-      await labA.cleanup();
-      await labB.cleanup();
+      await lmA.query({ apiType: "responses" }).expect().promptContains("ALPHA_SESSION_A");
+      await lmB.query({ apiType: "responses" }).expect().promptContains("BETA_SESSION_B");
+      await lmA.expect().callCount(1);
+      await lmB.expect().callCount(1);
+      await expect(lmA.expect().promptContains("BETA_SESSION_B")).rejects.toBeInstanceOf(SessionAssertionError);
+      await expect(lmB.expect().promptContains("ALPHA_SESSION_A")).rejects.toBeInstanceOf(SessionAssertionError);
+      await lmA.cleanup();
+      await lmB.cleanup();
     });
 
     it("fails main assertion helpers with clear messages when false", async () => {
-      const lab = newLab(proxy);
+      const lm = newSession(proxy);
       await retryNetwork(() =>
-        openaiClient(lab).responses.create({
+        openaiClient(lm).responses.create({
           model: TEXT_MODEL,
           temperature: 0,
           max_output_tokens: 16,
           input: "Reply with the single word ping.",
         }),
       );
-      const scoped = lab.query({ apiType: "responses" }).expect();
+      const scoped = lm.query({ apiType: "responses" }).expect();
       await expect(scoped.toolCalled("no_such_tool")).rejects.toThrow(/expected tool "no_such_tool"/i);
       await expect(scoped.calledTimes("no_such_tool", 1)).rejects.toThrow(/called 1 time/i);
       await expect(scoped.order(["no_such_tool"])).rejects.toThrow(/expected tool order/i);
@@ -925,13 +925,13 @@ describe("OpenAI E2E through llmentary", () => {
       await expect(scoped.errorStatus(500)).rejects.toThrow(/error status/i);
       await expect(scoped.errorType("no_such_error_type")).rejects.toThrow(/error type/i);
       await expect(scoped.errorCode("no_such_error_code")).rejects.toThrow(/error code/i);
-      await expect(lab.query({ apiType: "chat_completions" }).expect().rawRecorded()).rejects.toThrow(
+      await expect(lm.query({ apiType: "chat_completions" }).expect().rawRecorded()).rejects.toThrow(
         /raw_request or raw_response/i,
       );
 
-      const toolLab = newLab(proxy);
+      const toolLm = newSession(proxy);
       await retryNetwork(() =>
-        openaiClient(toolLab).responses.create({
+        openaiClient(toolLm).responses.create({
           model: TOOL_MODEL,
           temperature: 0,
           max_output_tokens: 32,
@@ -940,13 +940,13 @@ describe("OpenAI E2E through llmentary", () => {
           tool_choice: { type: "function", name: "lookup_weather" },
         }),
       );
-      await expect(toolLab.query({ apiType: "responses" }).expect().notCalled("lookup_weather")).rejects.toThrow(
+      await expect(toolLm.query({ apiType: "responses" }).expect().notCalled("lookup_weather")).rejects.toThrow(
         /not to be called/i,
       );
 
-      const schemaLab = newLab(proxy);
+      const schemaLm = newSession(proxy);
       await retryNetwork(() =>
-        openaiClient(schemaLab).responses.create({
+        openaiClient(schemaLm).responses.create({
           model: TOOL_MODEL,
           temperature: 0,
           max_output_tokens: 32,
@@ -954,33 +954,33 @@ describe("OpenAI E2E through llmentary", () => {
           input: "Return JSON with name hello.",
         }),
       );
-      await expect(schemaLab.query({ apiType: "responses" }).expect().outputJsonValid(CITY_SCHEMA)).rejects.toThrow(
+      await expect(schemaLm.query({ apiType: "responses" }).expect().outputJsonValid(CITY_SCHEMA)).rejects.toThrow(
         /output text JSON to match schema/i,
       );
-      await lab.cleanup();
-      await toolLab.cleanup();
-      await schemaLab.cleanup();
+      await lm.cleanup();
+      await toolLm.cleanup();
+      await schemaLm.cleanup();
     });
   });
 
   describe("shared", () => {
     it("proxies GET /v1/models and records the raw passthrough", async () => {
-      const lab = newLab(proxy);
-      const response = await lab.fetch(`${lab.baseURL}/models`, {
+      const lm = newSession(proxy);
+      const response = await lm.fetch(`${lm.baseURL}/models`, {
         headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}` },
       });
       expect(response.ok).toBe(true);
       const body = (await response.json()) as { data?: unknown };
       expect(Array.isArray(body.data)).toBe(true);
-      await lab.expect().callCount(1);
-      await lab.expect().rawRecorded();
-      await lab.cleanup();
+      await lm.expect().callCount(1);
+      await lm.expect().rawRecorded();
+      await lm.cleanup();
     });
 
     it("parses reasoning tokens from one reasoning-model call", async () => {
-      const lab = newLab(proxy);
+      const lm = newSession(proxy);
       await retryNetwork(() =>
-        openaiClient(lab).responses.create({
+        openaiClient(lm).responses.create({
           model: REASONING_MODEL,
           max_output_tokens: 256,
           reasoning: { effort: "medium" },
@@ -988,9 +988,9 @@ describe("OpenAI E2E through llmentary", () => {
             "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How many cents does the ball cost? Reply with only the integer.",
         }),
       );
-      await lab.expect().model(REASONING_MODEL);
-      await lab.expect().usageDetails({ reasoningTokens: { min: 1 } });
-      await lab.cleanup();
+      await lm.expect().model(REASONING_MODEL);
+      await lm.expect().usageDetails({ reasoningTokens: { min: 1 } });
+      await lm.cleanup();
     });
   });
 });

@@ -1,12 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
-import { createLab, type Lab } from "./index.js";
+import { llmentary as createSession, type Session } from "./session.js";
 import { firstNonEmpty } from "./env.js";
 import { toHaveRequestParam, toHaveToolCalled, toHaveToolCalledTimes } from "./matchers.js";
 import { startProxy, type ProxyHandle, type ProxyLaunchOptions } from "./index.js";
-import type { LabConfig } from "./types.js";
+import type { SessionOptions } from "./types.js";
 
 let proxy: ProxyHandle | undefined;
-let currentLab: Lab | undefined;
+let current: Session | undefined;
 
 export async function globalSetup(options: ProxyLaunchOptions = {}): Promise<() => Promise<void>> {
   proxy = await startProxy(options);
@@ -18,7 +18,7 @@ export async function globalSetup(options: ProxyLaunchOptions = {}): Promise<() 
   };
 }
 
-export function setupVitest(options: { proxy?: ProxyLaunchOptions; lab?: LabConfig } = {}): void {
+export function setupVitest(options: { proxy?: ProxyLaunchOptions; session?: SessionOptions } = {}): void {
   let ownedProxy: ProxyHandle | undefined;
   beforeAll(async () => {
     if (!firstNonEmpty(process.env.LLMENTARY_PROXY_URL)) {
@@ -37,24 +37,24 @@ export function setupVitest(options: { proxy?: ProxyLaunchOptions; lab?: LabConf
   });
 
   beforeEach(() => {
-    currentLab = createLab(options.lab);
+    current = createSession(options.session);
   });
 
   afterEach(async () => {
-    await currentLab?.cleanup().catch(() => undefined);
-    currentLab = undefined;
+    await current?.cleanup().catch(() => undefined);
+    current = undefined;
   });
 
   expect.extend({ toHaveToolCalled, toHaveToolCalledTimes, toHaveRequestParam });
 }
 
-export function lab(config?: LabConfig): Lab {
-  if (config) return createLab(config);
-  if (!currentLab) currentLab = createLab();
-  return currentLab;
+export function llmentary(config?: SessionOptions): Session {
+  if (config) return createSession(config);
+  if (!current) current = createSession();
+  return current;
 }
 
-export { createLab };
+export type { Session, SessionOptions };
 
 function applyProxyEnv(handle: ProxyHandle): void {
   process.env.LLMENTARY_PROXY_URL = handle.proxyUrl;

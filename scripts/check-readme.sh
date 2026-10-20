@@ -29,6 +29,7 @@ done
 
 python3 - "$README" <<'PY'
 from pathlib import Path
+import re
 import sys
 
 canonical = """<!-- llmentary-repos:start -->
@@ -45,6 +46,13 @@ canonical = """<!-- llmentary-repos:start -->
 text = Path(sys.argv[1]).read_text()
 if canonical not in text:
     print("README.md is missing or altered the canonical llmentary-repos block", file=sys.stderr)
+    raise SystemExit(1)
+if "Renamed from" in text:
+    print("README.md must not mention the pre-release rename", file=sys.stderr)
+    raise SystemExit(1)
+old = "l" + "ab"
+if re.search(rf"\b{old}\b", text):
+    print("README.md still contains a removed factory name", file=sys.stderr)
     raise SystemExit(1)
 PY
 

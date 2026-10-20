@@ -66,12 +66,40 @@ function hasMissingExportDiagnostic(output, name) {
   write(
     dir,
     "index.js",
-    `import { createLab } from "llmentary";
-import { lab } from "llmentary/jest";
-if (typeof createLab !== "function") throw new Error("createLab missing");
-if (typeof lab !== "function") throw new Error("lab missing");
-const facade = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+    `import { llmentary, Session } from "llmentary";
+import { llmentary as current } from "llmentary/jest";
+if (typeof llmentary !== "function") throw new Error("llmentary missing");
+if (typeof Session !== "function") throw new Error("Session missing");
+if (typeof current !== "function") throw new Error("jest llmentary missing");
+const facade = llmentary({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+if (!(facade instanceof Session)) throw new Error("Session instance");
 if (!facade.baseURL.endsWith("/v1")) throw new Error("baseURL");
+const core = await import("llmentary");
+const jestApi = await import("llmentary/jest");
+const old = ["l", "ab"].join("");
+const Old = old[0].toUpperCase() + old.slice(1);
+const Handle = ["Llm", "entary"].join("");
+const removed = [
+  old,
+  "create" + Old,
+  "cleanup" + Old,
+  Old,
+  Old + "Query",
+  Old + "Config",
+  Old + "Globals",
+  Old + "AssertionError",
+  Handle,
+  "create" + Handle,
+  "cleanup" + Handle,
+  Handle + "Query",
+  Handle + "Options",
+  Handle + "Globals",
+  Handle + "AssertionError",
+];
+for (const name of removed) {
+  if (name in core) throw new Error("core still exports " + name);
+  if (name in jestApi) throw new Error("jest still exports " + name);
+}
 `,
   );
   runNode(dir, ["index.js"]);
@@ -85,11 +113,13 @@ if (!facade.baseURL.endsWith("/v1")) throw new Error("baseURL");
   write(
     dir,
     "index.cjs",
-    `const { createLab } = require("llmentary");
-const { lab } = require("llmentary/jest");
-if (typeof createLab !== "function") throw new Error("createLab missing");
-if (typeof lab !== "function") throw new Error("lab missing");
-const facade = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+    `const { llmentary, Session } = require("llmentary");
+const { llmentary: current } = require("llmentary/jest");
+if (typeof llmentary !== "function") throw new Error("llmentary missing");
+if (typeof Session !== "function") throw new Error("Session missing");
+if (typeof current !== "function") throw new Error("jest llmentary missing");
+const facade = llmentary({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+if (!(facade instanceof Session)) throw new Error("Session instance");
 if (!facade.baseURL.endsWith("/v1")) throw new Error("baseURL");
 `,
   );
@@ -110,11 +140,12 @@ function tsConsumer(name, pkg, tsconfig, sourceName, source) {
   });
 }
 
-const importSource = `import { createLab, type Lab, type LabQuery } from "llmentary";
-import { lab } from "llmentary/jest";
-export const facade: Lab = createLab({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
-export const query: LabQuery = facade.query({});
-export const current = lab();
+const importSource = `import { llmentary, type Session, type SessionQuery, type SessionOptions } from "llmentary";
+import { llmentary as currentSession } from "llmentary/jest";
+const options: SessionOptions = { proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" };
+export const facade: Session = llmentary(options);
+export const query: SessionQuery = facade.query({});
+export const current = currentSession();
 `;
 
 tsConsumer(
@@ -172,10 +203,24 @@ tsConsumer(
 {
   const dir = join(packDir, "ts-nodenext");
   const tsc = join(dir, "node_modules", ".bin", "tsc");
+  const Old = ["L", "ab"].join("");
+  const Handle = ["Llm", "entary"].join("");
   const oldNames = [
-    ["Llm", "Test", "Lab"].join(""),
-    ["Llm", "Test", "Lab", "Query"].join(""),
-    ["Llm", "Test", "Lab", "Globals"].join(""),
+    ["Llm", "Test", Old].join(""),
+    ["Llm", "Test", Old, "Query"].join(""),
+    ["Llm", "Test", Old, "Globals"].join(""),
+    Old,
+    Old + "Query",
+    Old + "Config",
+    Old + "Globals",
+    Old + "AssertionError",
+    "create" + Old,
+    Handle,
+    Handle + "Query",
+    Handle + "Options",
+    Handle + "Globals",
+    Handle + "AssertionError",
+    "create" + Handle,
   ];
   write(
     dir,

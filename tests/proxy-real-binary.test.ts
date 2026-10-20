@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLab, startProxy, type ProxyHandle } from "../src/index.js";
+import { llmentary, startProxy, type ProxyHandle } from "../src/index.js";
 
 describe("real Go proxy with fake upstream", () => {
   let upstream: Awaited<ReturnType<typeof startFakeUpstream>>;
@@ -26,8 +26,8 @@ describe("real Go proxy with fake upstream", () => {
   });
 
   it("records Chat Completions tool calls", async () => {
-    const lab = createLab();
-    const response = await lab.fetch(`${lab.baseURL}/chat/completions`, {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -43,15 +43,15 @@ describe("real Go proxy with fake upstream", () => {
     });
     expect(response.ok).toBe(true);
 
-    await expect(lab.expect().toolCalled("lookup_weather", { argsSubset: { city: "Amsterdam" } })).resolves.toMatchObject({
+    await expect(lm.expect().toolCalled("lookup_weather", { argsSubset: { city: "Amsterdam" } })).resolves.toMatchObject({
       pass: true,
     });
-    await lab.cleanup();
+    await lm.cleanup();
   });
 
   it("records streaming Chat Completions", async () => {
-    const lab = createLab();
-    const response = await lab.fetch(`${lab.baseURL}/chat/completions`, {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -62,13 +62,13 @@ describe("real Go proxy with fake upstream", () => {
     });
     expect(response.ok).toBe(true);
     await response.text();
-    await expect(lab.expect().responseContains("hello-stream")).resolves.toMatchObject({ pass: true });
-    await lab.cleanup();
+    await expect(lm.expect().responseContains("hello-stream")).resolves.toMatchObject({ pass: true });
+    await lm.cleanup();
   });
 
   it("records a mid-stream error", async () => {
-    const lab = createLab();
-    const response = await lab.fetch(`${lab.baseURL}/chat/completions`, {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-fake-mode": "mid-stream-error" },
       body: JSON.stringify({
@@ -78,38 +78,38 @@ describe("real Go proxy with fake upstream", () => {
       }),
     });
     await response.text().catch(() => undefined);
-    await expect(lab.expect().midStreamError(/boom|error/i)).resolves.toMatchObject({ pass: true });
-    await lab.cleanup();
+    await expect(lm.expect().midStreamError(/boom|error/i)).resolves.toMatchObject({ pass: true });
+    await lm.cleanup();
   });
 
   it("records Responses function calls", async () => {
-    const lab = createLab();
-    const response = await lab.fetch(`${lab.baseURL}/responses`, {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/responses`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model: "gpt-4.1-mini", input: "weather in Rotterdam" }),
     });
     expect(response.ok).toBe(true);
 
-    await expect(lab.query({ apiType: "responses" }).expect().toolCalled("lookup_weather")).resolves.toMatchObject({
+    await expect(lm.query({ apiType: "responses" }).expect().toolCalled("lookup_weather")).resolves.toMatchObject({
       pass: true,
     });
-    await lab.cleanup();
+    await lm.cleanup();
   });
 
   it("records streaming Responses", async () => {
-    const lab = createLab();
-    const response = await lab.fetch(`${lab.baseURL}/responses`, {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/responses`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model: "gpt-4.1-mini", stream: true, input: "stream responses" }),
     });
     expect(response.ok).toBe(true);
     await response.text();
-    await expect(lab.query({ apiType: "responses" }).expect().responseContains("hello-stream")).resolves.toMatchObject({
+    await expect(lm.query({ apiType: "responses" }).expect().responseContains("hello-stream")).resolves.toMatchObject({
       pass: true,
     });
-    await lab.cleanup();
+    await lm.cleanup();
   });
 });
 

@@ -17,7 +17,7 @@ export interface QueryOptions {
   index?: number;
 }
 
-export interface LabConfig {
+export interface SessionOptions {
   proxyUrl?: string;
   controlUrl?: string;
   bearerToken?: string;
@@ -140,6 +140,6 @@ export interface BinaryResolutionOptions extends BinaryDownloadOptions {
   allowDownload?: boolean;
 }
 
-export interface LabGlobals {
+export interface SessionGlobals {
   __LLMENTARY__?: ProxyHandle;
 }

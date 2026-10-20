@@ -1,17 +1,17 @@
-import { createLab, type Lab } from "./lab.js";
-import type { LabConfig } from "./types.js";
+import { llmentary as createSession, type Session } from "./session.js";
+import type { SessionOptions } from "./types.js";
 
-let currentLab: Lab | undefined;
+let current: Session | undefined;
 
-export function lab(config?: LabConfig): Lab {
-  if (config) return createLab(config);
-  if (!currentLab) currentLab = createLab();
-  return currentLab;
+export function llmentary(config?: SessionOptions): Session {
+  if (config) return createSession(config);
+  if (!current) current = createSession();
+  return current;
 }
 
-export async function cleanupLab(): Promise<void> {
-  await currentLab?.cleanup().catch(() => undefined);
-  currentLab = undefined;
+export async function cleanupSession(): Promise<void> {
+  await current?.cleanup().catch(() => undefined);
+  current = undefined;
 }
 
-export { createLab };
+export type { Session, SessionOptions };

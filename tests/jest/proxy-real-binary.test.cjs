@@ -1,5 +1,5 @@
 const { createServer } = require("node:http");
-const { createLab, startProxy } = require("../../dist/cjs/index.js");
+const { llmentary, startProxy } = require("../../dist/cjs/index.js");
 
 describe("real Go proxy with Jest", () => {
   let upstream;
@@ -25,20 +25,20 @@ describe("real Go proxy with Jest", () => {
   });
 
   test("records a Chat Completions tool call", async () => {
-    const lab = createLab();
-    const response = await lab.fetch(`${lab.baseURL}/chat/completions`, {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model: "gpt-4.1-mini", messages: [{ role: "user", content: "weather" }] }),
     });
     expect(response.ok).toBe(true);
-    await expect(lab.expect()).toHaveToolCalled("lookup_weather");
-    await lab.cleanup();
+    await expect(lm.expect()).toHaveToolCalled("lookup_weather");
+    await lm.cleanup();
   }, 30_000);
 
   test("records streaming Chat Completions", async () => {
-    const lab = createLab();
-    const response = await lab.fetch(`${lab.baseURL}/chat/completions`, {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -49,8 +49,8 @@ describe("real Go proxy with Jest", () => {
     });
     expect(response.ok).toBe(true);
     await response.text();
-    await lab.expect().responseContains("hello-stream");
-    await lab.cleanup();
+    await lm.expect().responseContains("hello-stream");
+    await lm.cleanup();
   }, 30_000);
 });
 
