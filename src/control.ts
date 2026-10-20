@@ -145,9 +145,15 @@ export class ControlApiError extends Error {
 
 function trySessionCounts(sessionId: string, text: string): { calls: number; stillActive: number } | undefined {
   const trimmed = text.trim();
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
+  if (!trimmed.startsWith("{")) return undefined;
   try {
-    return sessionCounts(normalizeSessionTrace(sessionId, JSON.parse(trimmed) as JsonValue));
+    const parsed = JSON.parse(trimmed) as JsonValue;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    const hasCalls = ["calls", "records", "requests", "traces"].some((key) =>
+      Array.isArray((parsed as Record<string, unknown>)[key]),
+    );
+    if (!hasCalls) return undefined;
+    return sessionCounts(normalizeSessionTrace(sessionId, parsed));
   } catch {
     return undefined;
   }

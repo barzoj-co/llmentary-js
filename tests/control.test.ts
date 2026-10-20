@@ -87,6 +87,33 @@ describe("ControlClient", () => {
     );
   });
 
+  it("falls back to getSession when a wait 504 body has no calls array", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/wait")) {
+        return new Response(JSON.stringify({ error: "wait timeout" }), {
+          status: 504,
+          statusText: "Gateway Timeout",
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          id: "s1",
+          calls: [{ id: "c1" }, { id: "c2" }, { id: "c3", ended_at: "2026-10-20T00:00:00Z" }],
+        }),
+        { status: 200 },
+      );
+    };
+    clearWaitEnv();
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      fetch: fetchImpl,
+    });
+    await expect(client.wait("s1")).rejects.toThrow(
+      "wait timed out after 30s on session s1 (3 calls so far, still active: 2). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+    );
+  });
+
   it("aborts hung requests after requestTimeoutMs and lets wait exceed it", async () => {
     const hungFetch: ControlFetch = async (input, init) => {
       void input;

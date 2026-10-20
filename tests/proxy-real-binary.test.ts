@@ -42,9 +42,14 @@ describe("real Go proxy with fake upstream", () => {
       }),
     });
     expect(response.ok).toBe(true);
-    const started = Date.now();
+    const shortStarted = Date.now();
     const trace = await lm.wait({ quiet: "100ms" });
-    expect(Date.now() - started).toBeLessThan(400);
+    const shortElapsed = Date.now() - shortStarted;
+    expect(shortElapsed).toBeGreaterThanOrEqual(100);
+    const longStarted = Date.now();
+    await lm.wait({ quiet: "1s" });
+    const longElapsed = Date.now() - longStarted;
+    expect(shortElapsed).toBeLessThan(longElapsed / 2);
     expect(trace.calls.length).toBeGreaterThanOrEqual(1);
     await lm.cleanup();
   });
