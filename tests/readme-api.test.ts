@@ -17,8 +17,9 @@ describe("README public API snippets", () => {
 
   it("does not document the removed pre-1.0 factory names", () => {
     const oldFactory = ["l", "ab"].join("");
+    const oldCreate = "create" + oldFactory.charAt(0).toUpperCase() + oldFactory.slice(1);
     expect(readme).not.toMatch(new RegExp(`\\b${oldFactory}\\b`));
-    expect(readme).not.toMatch(new RegExp(`\\bcreate${oldFactory[0].toUpperCase()}${oldFactory.slice(1)}\\b`));
+    expect(readme).not.toMatch(new RegExp(`\\b${oldCreate}\\b`));
     expect(readme).not.toContain("Renamed from");
   });
 
