@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
-import { ControlClient, SessionAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
+import { ControlClient, llmentary, SessionAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
 import {
   CACHE_SECOND_CALL_ATTEMPTS,
   CITY_SCHEMA,
@@ -974,6 +974,29 @@ describe("OpenAI E2E through llmentary", () => {
       expect(Array.isArray(body.data)).toBe(true);
       await lm.expect().callCount(1);
       await lm.expect().rawRecorded();
+      await lm.cleanup();
+    });
+
+    it("waits with default timeout and quiet after a streaming Chat Completions call", async () => {
+      const lm = llmentary({
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+      });
+      const stream = await retryNetwork(() =>
+        openaiClient(lm).chat.completions.create({
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 8,
+          stream: true,
+          stream_options: { include_usage: true },
+          messages: [{ role: "user", content: "Reply with the single word ping." }],
+        }),
+      );
+      await consumeChatStream(stream);
+      const trace = await lm.wait();
+      expect(trace.calls.length).toBeGreaterThanOrEqual(1);
+      await lm.expect().streamed(true);
+      await lm.expect().outputText();
       await lm.cleanup();
     });
 

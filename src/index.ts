@@ -7,8 +7,17 @@ export {
   DEFAULT_REPO,
   DEFAULT_BINARY_NAME,
 } from "./binary.js";
-export { ControlClient, parseControlBody } from "./control.js";
+export { ControlClient, ControlApiError, parseControlBody } from "./control.js";
 export type { ControlClientOptions, ControlFetch } from "./control.js";
+export {
+  DEFAULT_WAIT_QUIET_MS,
+  DEFAULT_WAIT_TIMEOUT_MS,
+  formatGoDurationMs,
+  formatWaitTimeoutError,
+  parseWaitDuration,
+  parseWaitDurationMs,
+  resolveWait,
+} from "./wait.js";
 export { llmentary, Session, SessionQuery, sessionHeaders } from "./session.js";
 export { startProxy, waitForHealth, formatUpstreamSpec, resolveUpstreamSpec, originForGoUpstream } from "./proxy.js";
 export type {

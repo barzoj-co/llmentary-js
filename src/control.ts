@@ -1,5 +1,10 @@
-import type { JsonValue, SessionTrace, WaitOptions } from "./types.js";
+import type { CallRecord, JsonValue, SessionTrace, WaitOptions } from "./types.js";
 import { normalizeSessionTrace } from "./normalize.js";
+import {
+  WAIT_HTTP_PADDING_MS,
+  formatWaitTimeoutError,
+  resolveWait,
+} from "./wait.js";
 
 export type ControlFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -7,12 +12,11 @@ export interface ControlClientOptions {
   controlUrl: string;
   bearerToken?: string;
   fetch?: ControlFetch;
-  /** Client-side abort timeout for control requests. `wait()` uses a longer window than `timeoutMs`. */
+  /** Client-side abort timeout for non-wait control requests. `wait()` aborts at timeout + quiet + 5s. */
   requestTimeoutMs?: number;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-const WAIT_ABORT_PADDING_MS = 5_000;
 
 export class ControlClient {
   readonly controlUrl: string;
@@ -40,17 +44,37 @@ export class ControlClient {
   }
 
   async wait(sessionId: string, options: WaitOptions = {}): Promise<SessionTrace> {
+    const resolved = resolveWait(options);
     const params = new URLSearchParams();
-    if (options.timeoutMs !== undefined) params.set("timeout_ms", String(options.timeoutMs));
-    if (options.idleMs !== undefined) params.set("idle_ms", String(options.idleMs));
-    const query = params.toString();
-    const suffix = query ? `?${query}` : "";
-    const waitMs = options.timeoutMs ?? this.requestTimeoutMs;
-    const timeout = AbortSignal.timeout(Math.max(this.requestTimeoutMs, waitMs + WAIT_ABORT_PADDING_MS));
-    const body = await this.request(`/sessions/${encodeURIComponent(sessionId)}/wait${suffix}`, {
-      signal: options.signal ? combineAbortSignals(options.signal, timeout) : timeout,
-    });
-    return normalizeSessionTrace(sessionId, body);
+    params.set("timeout", resolved.timeout);
+    params.set("quiet", resolved.quiet);
+    const abortMs = resolved.timeoutMs + resolved.quietMs + WAIT_HTTP_PADDING_MS;
+    const timeout = AbortSignal.timeout(abortMs);
+    try {
+      const body = await this.request(`/sessions/${encodeURIComponent(sessionId)}/wait?${params.toString()}`, {
+        signal: options.signal ? combineAbortSignals(options.signal, timeout) : timeout,
+      });
+      return normalizeSessionTrace(sessionId, body);
+    } catch (error) {
+      if (error instanceof ControlApiError && error.status === 504) {
+        const stats = await this.waitTimeoutStats(sessionId, error.body);
+        throw new Error(formatWaitTimeoutError(sessionId, resolved.timeout, stats.calls, stats.stillActive));
+      }
+      throw error;
+    }
+  }
+
+  private async waitTimeoutStats(
+    sessionId: string,
+    body: string,
+  ): Promise<{ calls: number; stillActive: number }> {
+    const fromBody = trySessionCounts(sessionId, body);
+    if (fromBody) return fromBody;
+    try {
+      return sessionCounts(await this.getSession(sessionId));
+    } catch {
+      return { calls: 0, stillActive: 0 };
+    }
   }
 
   async deleteSession(sessionId: string): Promise<void> {
@@ -68,8 +92,9 @@ export class ControlClient {
     const response = await this.fetchImpl(`${this.controlUrl}${path}`, { ...init, headers, signal });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new Error(
+      throw new ControlApiError(
         `llmentary control API ${init.method ?? "GET"} ${path} failed: ${response.status} ${response.statusText}${text ? `\n${text}` : ""}`,
+        { status: response.status, path, body: text },
       );
     }
     if (response.status === 204) return null;
@@ -102,6 +127,41 @@ export function combineAbortSignals(left: AbortSignal, right: AbortSignal): Abor
   left.addEventListener("abort", onAbort, { once: true });
   right.addEventListener("abort", onAbort, { once: true });
   return controller.signal;
+}
+
+export class ControlApiError extends Error {
+  readonly status: number;
+  readonly path: string;
+  readonly body: string;
+
+  constructor(message: string, options: { status: number; path: string; body: string }) {
+    super(message);
+    this.name = "ControlApiError";
+    this.status = options.status;
+    this.path = options.path;
+    this.body = options.body;
+  }
+}
+
+function trySessionCounts(sessionId: string, text: string): { calls: number; stillActive: number } | undefined {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
+  try {
+    return sessionCounts(normalizeSessionTrace(sessionId, JSON.parse(trimmed) as JsonValue));
+  } catch {
+    return undefined;
+  }
+}
+
+function sessionCounts(trace: SessionTrace): { calls: number; stillActive: number } {
+  return {
+    calls: trace.calls.length,
+    stillActive: trace.calls.filter((call) => isActiveCall(call)).length,
+  };
+}
+
+function isActiveCall(call: CallRecord): boolean {
+  return !call.finishedAt;
 }
 
 function trimTrailingSlash(value: string): string {

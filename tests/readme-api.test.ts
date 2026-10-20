@@ -13,6 +13,11 @@ describe("README public API snippets", () => {
     expect(readme).toContain("lm.expect()");
     expect(readme).toContain('lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect()');
     expect(readme).toContain("SessionAssertionError");
+    expect(readme).toContain("## Waiting for calls");
+    expect(readme).toContain("LLMENTARY_WAIT_TIMEOUT");
+    expect(readme).toContain("LLMENTARY_WAIT_QUIET");
+    expect(readme).toContain("`30s`");
+    expect(readme).toContain("`500ms`");
   });
 
   it("does not document removed factory or handle names", () => {

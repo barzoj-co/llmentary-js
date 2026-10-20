@@ -25,6 +25,30 @@ describe("real Go proxy with fake upstream", () => {
     delete process.env.LLMENTARY_CONTROL_URL;
   });
 
+  it("honours wait quiet=100ms after one finished call", async () => {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        messages: [{ role: "user", content: "weather in Amsterdam" }],
+        tools: [
+          {
+            type: "function",
+            function: { name: "lookup_weather", parameters: { type: "object", properties: { city: { type: "string" } } } },
+          },
+        ],
+      }),
+    });
+    expect(response.ok).toBe(true);
+    const started = Date.now();
+    const trace = await lm.wait({ quiet: "100ms" });
+    expect(Date.now() - started).toBeLessThan(400);
+    expect(trace.calls.length).toBeGreaterThanOrEqual(1);
+    await lm.cleanup();
+  });
+
   it("records Chat Completions tool calls", async () => {
     const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
