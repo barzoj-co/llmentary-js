@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import OpenAI from "openai";
 import { ControlClient, SessionNotFound, llmentary, startProxy, type ProxyHandle, type Session } from "../src/index.js";
 
 describe("real Go proxy with fake upstream", () => {
@@ -206,6 +208,58 @@ describe("real Go proxy with fake upstream", () => {
     });
     await lm.cleanup();
   });
+
+  it("attributes an unmodified OpenAI client constructed before the session via pathBaseURL", async () => {
+    const sessionId = randomUUID();
+    const previous = process.env.OPENAI_BASE_URL;
+    process.env.OPENAI_BASE_URL = `${proxy.proxyUrl}/s/${encodeURIComponent(sessionId)}/v1`;
+    const openai = new OpenAI({ apiKey: "llmentary" });
+    const lm = llmentary({
+      sessionId,
+      proxyUrl: proxy.proxyUrl,
+      controlUrl: proxy.controlUrl,
+    });
+    expect(lm.pathBaseURL()).toBe(process.env.OPENAI_BASE_URL);
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: [{ role: "user", content: "path-session ping" }],
+      });
+      expect(response.model).toBe("gpt-4.1-mini");
+      await lm.expect().callCount(1);
+      await lm.expect().promptContains("path-session ping");
+      const sessions = await lm.listSessions();
+      expect(sessions.some((session) => session.id === sessionId && session.calls >= 1)).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.OPENAI_BASE_URL;
+      else process.env.OPENAI_BASE_URL = previous;
+      await lm.cleanup();
+    }
+  });
+
+  it("scopes mark/since to the second turn of two calls", async () => {
+    const lm = llmentary();
+    await postChat(lm, { messages: [{ role: "user", content: "turn-1-a" }] });
+    await postChat(lm, { messages: [{ role: "user", content: "turn-1-b" }] });
+    const mark = await lm.mark();
+    expect(mark).toBe(2);
+    await postChat(lm, {
+      messages: [{ role: "user", content: "turn-2-a" }],
+      tools: [{ type: "function", function: { name: "lookup_time", parameters: { type: "object", properties: {} } } }],
+    });
+    await postChat(lm, {
+      messages: [{ role: "user", content: "turn-2-b" }],
+      tools: [{ type: "function", function: { name: "lookup_time", parameters: { type: "object", properties: {} } } }],
+    });
+    await lm.expect({ since: mark }).callCount(2);
+    await lm.expect({ since: mark }).promptContains("turn-2-a");
+    await expect(lm.expect({ since: mark }).soft().promptContains("turn-1-a")).resolves.toMatchObject({ pass: false });
+    await lm.query({ since: mark, offersTool: "lookup_time" }).expect().callCount(2);
+    await lm.expect({ since: mark }).notCalled("lookup_weather");
+    const summary = (await lm.wait()).calls.length;
+    expect(summary).toBe(4);
+    await lm.cleanup();
+  });
 });
 
 async function postChat(lm: Session, extra: Record<string, unknown> = {}): Promise<Response> {
@@ -268,6 +322,12 @@ async function handleChat(request: IncomingMessage, response: ServerResponse): P
     response.end();
     return;
   }
+  const offered =
+    Array.isArray(body.tools) && body.tools[0] && typeof body.tools[0] === "object"
+      ? ((body.tools[0] as { function?: { name?: string }; name?: string }).function?.name ??
+        (body.tools[0] as { name?: string }).name)
+      : undefined;
+  const toolName = offered || "lookup_weather";
   response.setHeader("content-type", "application/json");
   response.end(
     JSON.stringify({
@@ -284,7 +344,7 @@ async function handleChat(request: IncomingMessage, response: ServerResponse): P
               {
                 id: "call_fake",
                 type: "function",
-                function: { name: "lookup_weather", arguments: '{"city":"Amsterdam"}' },
+                function: { name: toolName, arguments: '{"city":"Amsterdam"}' },
               },
             ],
           },

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
@@ -1091,6 +1092,120 @@ describe("OpenAI E2E through llmentary", () => {
       );
       await lm.expect().model(REASONING_MODEL);
       await lm.expect().usageDetails({ reasoningTokens: { min: 1 } });
+      await lm.cleanup();
+    });
+
+    it("attributes a live OpenAI SDK call through pathBaseURL with no session header", async () => {
+      const sessionId = randomUUID();
+      const previous = process.env.OPENAI_BASE_URL;
+      process.env.OPENAI_BASE_URL = `${proxy.proxyUrl}/s/${encodeURIComponent(sessionId)}/v1`;
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const lm = llmentary({
+        sessionId,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      expect(lm.pathBaseURL()).toBe(process.env.OPENAI_BASE_URL);
+      try {
+        await retryNetwork(() =>
+          openai.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word ping." }],
+          }),
+        );
+        await lm.expect().callCount(1);
+        await lm.expect().outputText();
+      } finally {
+        if (previous === undefined) delete process.env.OPENAI_BASE_URL;
+        else process.env.OPENAI_BASE_URL = previous;
+        await lm.cleanup();
+      }
+    });
+
+    it("scopes a second live turn with since(mark) and filters a router call with withoutTools", async () => {
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
+      await retryNetwork(() =>
+        client.chat.completions.create({
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 32,
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "city", strict: true, schema: CITY_SCHEMA },
+          },
+          messages: [{ role: "user", content: "Return JSON with city Amsterdam and ok true." }],
+        }),
+      );
+      await lm.query({ withoutTools: true }).expect().callCount(1);
+      const mark = await lm.mark();
+      const first = await retryNetwork(() =>
+        client.chat.completions.create({
+          model: TOOL_MODEL,
+          temperature: 0,
+          max_tokens: 32,
+          messages: [{ role: "user", content: "Use lookup_weather for Amsterdam." }],
+          tools: [weatherToolChat()],
+          tool_choice: { type: "function", function: { name: "lookup_weather" } },
+        }),
+      );
+      const assistant = first.choices[0]?.message;
+      const toolCall = chatFunctionCall(assistant);
+      await retryNetwork(() =>
+        client.chat.completions.create({
+          model: TOOL_MODEL,
+          temperature: 0,
+          max_tokens: 32,
+          messages: [
+            { role: "user", content: "Use lookup_weather for Amsterdam." },
+            assistant ?? { role: "assistant", content: "" },
+            { role: "tool", tool_call_id: toolCall?.id ?? "missing", content: "sunny" },
+          ],
+        }),
+      );
+      await lm.expect({ since: mark }).callCount(2);
+      await lm.expect({ since: mark }).toolCalled("lookup_weather");
+      await lm.expect({ since: mark }).toolResultFedBack("lookup_weather");
+      await expect(lm.expect({ since: mark }).soft().outputJsonValid(CITY_SCHEMA)).resolves.toMatchObject({
+        pass: false,
+      });
+      await lm.cleanup();
+    });
+
+    it.each([1, 2, 3])("asserts a live tool round-trip on the trace and mentions 20/sunny (run %s)", async () => {
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
+      const toolPayload = JSON.stringify({ temperature: 20, condition: "sunny", token: "SEED_X" });
+      const first = await retryNetwork(() =>
+        client.chat.completions.create({
+          model: TOOL_MODEL,
+          temperature: 0,
+          max_tokens: 48,
+          messages: [{ role: "user", content: "Use lookup_weather for Amsterdam. In the final answer mention 20 and sunny." }],
+          tools: [weatherToolChat()],
+          tool_choice: { type: "function", function: { name: "lookup_weather" } },
+        }),
+      );
+      const assistant = first.choices[0]?.message;
+      const toolCall = chatFunctionCall(assistant);
+      await retryNetwork(() =>
+        client.chat.completions.create({
+          model: TOOL_MODEL,
+          temperature: 0,
+          max_tokens: 48,
+          messages: [
+            { role: "user", content: "Use lookup_weather for Amsterdam. In the final answer mention 20 and sunny." },
+            assistant ?? { role: "assistant", content: "" },
+            { role: "tool", tool_call_id: toolCall?.id ?? "missing", content: toolPayload },
+          ],
+        }),
+      );
+      await lm.expect().toolResultInPrompt("lookup_weather");
+      await lm.expect().promptContains("SEED_X");
+      await lm.expect().finalResponseMentionsAny(["20", "sunny"]);
       await lm.cleanup();
     });
   });

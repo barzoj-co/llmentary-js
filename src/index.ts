@@ -29,7 +29,9 @@ export {
   resolveWait,
   WaitTimeoutError,
 } from "./wait.js";
-export { llmentary, Session, SessionQuery, sessionHeaders } from "./session.js";
+export { mentionsAny, mentionsAnyResult } from "./mentions.js";
+export type { MentionsAnyOptions, MentionsAnyResult } from "./mentions.js";
+export { llmentary, Session, SessionQuery, sessionHeaders, formatPathBaseURL } from "./session.js";
 export {
   startProxy,
   waitForHealth,
@@ -56,6 +58,7 @@ export type {
   ProxyHandle,
   ProxyLaunchOptions,
   QueryOptions,
+  SessionMark,
   SessionGlobals,
   SessionOptions,
   SessionSummary,

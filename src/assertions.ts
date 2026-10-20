@@ -1,8 +1,10 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { ControlClient, SessionNotFound, formatZeroCallsMessage } from "./control.js";
+import { mentionsAnyResult, type MentionsAnyOptions } from "./mentions.js";
 import {
   asArray,
   asObject,
+  attachSessionTraceHelpers,
   firstPositiveOrDefined,
   numberAt,
   objectAt,
@@ -55,6 +57,8 @@ export class AssertionScope {
   private readonly query: QueryOptions;
   private readonly defaultWait: WaitOptions;
   private readonly softMode: boolean;
+  private readonly collected: AssertionResult[] = [];
+  private lastTrace: SessionTrace | undefined;
 
   constructor(options: AssertionScopeOptions) {
     this.control = options.control;
@@ -75,7 +79,7 @@ export class AssertionScope {
   }
 
   async toolCalled(name: string, options: ToolCallAssertionOptions = {}): Promise<AssertionResult> {
-    return this.check(`expected tool "${name}" to be called`, (trace) => {
+    return this.evaluate(`expected tool "${name}" to be called`, (trace) => {
       const calls = toolCallsForTrace(trace, this.query).filter((call) => call.name === name);
       const matching = filterByArgs(calls, options);
       return {
@@ -89,7 +93,7 @@ export class AssertionScope {
   }
 
   async notCalled(name: string): Promise<AssertionResult> {
-    return this.check(`expected tool "${name}" not to be called`, (trace) => {
+    return this.evaluate(`expected tool "${name}" not to be called`, (trace) => {
       const calls = toolCallsForTrace(trace, this.query).filter((call) => call.name === name);
       return {
         pass: calls.length === 0,
@@ -102,7 +106,7 @@ export class AssertionScope {
   }
 
   async calledTimes(name: string, count: number, options: ToolCallAssertionOptions = {}): Promise<AssertionResult> {
-    return this.check(`expected tool "${name}" to be called ${count} time(s)`, (trace) => {
+    return this.evaluate(`expected tool "${name}" to be called ${count} time(s)`, (trace) => {
       const calls = filterByArgs(
         toolCallsForTrace(trace, this.query).filter((call) => call.name === name),
         options,
@@ -126,7 +130,7 @@ export class AssertionScope {
   }
 
   async order(expectedToolNames: string[]): Promise<AssertionResult> {
-    return this.check(`expected tool order ${expectedToolNames.join(" -> ")}`, (trace) => {
+    return this.evaluate(`expected tool order ${expectedToolNames.join(" -> ")}`, (trace) => {
       const actual = toolCallsForTrace(trace, this.query).map((call) => call.name);
       let position = 0;
       for (const name of actual) {
@@ -145,7 +149,7 @@ export class AssertionScope {
   }
 
   async toolResultFedBack(name?: string): Promise<AssertionResult> {
-    return this.check("expected tool result to be fed back", (trace) => {
+    return this.evaluate("expected tool result to be fed back", (trace) => {
       const records = recordsForTrace(trace, this.query);
       const toolCallIds = new Set(
         toolCallsForRecords(records)
@@ -170,7 +174,7 @@ export class AssertionScope {
   }
 
   async model(expected: string | RegExp): Promise<AssertionResult> {
-    return this.check(`expected model ${String(expected)}`, (trace) => {
+    return this.evaluate(`expected model ${String(expected)}`, (trace) => {
       const records = recordsForTrace(trace, this.query);
       const models = records.flatMap((record) => {
         const requested = stringAt(asObject(record.request), "model");
@@ -182,7 +186,7 @@ export class AssertionScope {
   }
 
   async requestParam(path: string, expected: JsonValue | ((value: JsonValue | undefined) => boolean)): Promise<AssertionResult> {
-    return this.check(`expected request param ${path}`, (trace) => {
+    return this.evaluate(`expected request param ${path}`, (trace) => {
       const records = recordsForTrace(trace, this.query);
       const values = records.map((record) => getPath(record.request, path));
       const pass = values.some((value) => (typeof expected === "function" ? expected(value) : deepEqual(value, expected)));
@@ -191,7 +195,7 @@ export class AssertionScope {
   }
 
   async finishReason(expected: string | RegExp): Promise<AssertionResult> {
-    return this.check(`expected finish reason ${String(expected)}`, (trace) => {
+    return this.evaluate(`expected finish reason ${String(expected)}`, (trace) => {
       const reasons = recordsForTrace(trace, this.query).flatMap((record) => finishReasons(record.response));
       const pass = reasons.some((reason) => (expected instanceof RegExp ? expected.test(reason) : reason === expected));
       return { pass, message: `expected finish reason ${String(expected)}, saw ${reasons.join(", ") || "<none>"}` };
@@ -199,7 +203,7 @@ export class AssertionScope {
   }
 
   async tokenBounds(bounds: TokenBounds): Promise<AssertionResult> {
-    return this.check("expected token usage bounds", (trace) => {
+    return this.evaluate("expected token usage bounds", (trace) => {
       const records = recordsForTrace(trace, this.query);
       const usages = records.map((record) => usageNumbers(record));
       const pass =
@@ -232,14 +236,14 @@ export class AssertionScope {
   }
 
   async noErrors(): Promise<AssertionResult> {
-    return this.check("expected no errors", (trace) => {
+    return this.evaluate("expected no errors", (trace) => {
       const errors = recordsForTrace(trace, this.query).filter((record) => record.error !== undefined);
       return { pass: errors.length === 0, message: `expected no errors, saw ${errors.length}` };
     });
   }
 
   async hasError(pattern?: string | RegExp): Promise<AssertionResult> {
-    return this.check("expected an error", (trace) => {
+    return this.evaluate("expected an error", (trace) => {
       const errors = recordsForTrace(trace, this.query).map((record) => record.error).filter((value) => value !== undefined);
       const pass = pattern
         ? errors.some((error) => matchesText(extractText(error), pattern))
@@ -249,7 +253,7 @@ export class AssertionScope {
   }
 
   async midStreamError(pattern?: string | RegExp): Promise<AssertionResult> {
-    return this.check("expected a mid-stream error", (trace) => {
+    return this.evaluate("expected a mid-stream error", (trace) => {
       const errors = recordsForTrace(trace, this.query)
         .map((record) => record.error)
         .filter((error): error is JsonValue => error !== undefined && isMidStreamError(error));
@@ -272,7 +276,7 @@ export class AssertionScope {
   }
 
   async responseJsonValid(options: JsonSchemaAssertionOptions): Promise<AssertionResult> {
-    return this.check("expected response JSON schema to be valid", (trace) => {
+    return this.evaluate("expected response JSON schema to be valid", (trace) => {
       const ajv = new Ajv2020({ strict: false });
       const validate = ajv.compile(options.schema);
       const values =
@@ -298,7 +302,7 @@ export class AssertionScope {
   }
 
   async callCount(expected: number): Promise<AssertionResult> {
-    return this.check(`expected ${expected} recorded call(s)`, (trace) => {
+    return this.evaluate(`expected ${expected} recorded call(s)`, (trace) => {
       const records = recordsForTrace(trace, this.query);
       return {
         pass: records.length === expected,
@@ -308,7 +312,7 @@ export class AssertionScope {
   }
 
   async streamed(expected = true): Promise<AssertionResult> {
-    return this.check(`expected streamed=${expected}`, (trace) => {
+    return this.evaluate(`expected streamed=${expected}`, (trace) => {
       const records = recordsForTrace(trace, this.query);
       const flags = records.map((record) => record.streamed === true);
       const pass = expected ? flags.some(Boolean) : records.length > 0 && flags.every((flag) => !flag);
@@ -320,7 +324,7 @@ export class AssertionScope {
   }
 
   async outputText(expected?: string | RegExp): Promise<AssertionResult> {
-    return this.check("expected output text", (trace) => {
+    return this.evaluate("expected output text", (trace) => {
       const texts = recordsForTrace(trace, this.query).flatMap(outputTextsForRecord);
       const pass =
         expected === undefined ? texts.some((text) => text.trim().length > 0) : texts.some((text) => matchesText(text, expected));
@@ -332,7 +336,7 @@ export class AssertionScope {
   }
 
   async outputMatchesDeltas(): Promise<AssertionResult> {
-    return this.check("expected output text to equal concatenated stream deltas", (trace) => {
+    return this.evaluate("expected output text to equal concatenated stream deltas", (trace) => {
       const comparisons = recordsForTrace(trace, this.query).map((record) => {
         const output = outputTextsForRecord(record)[0] ?? "";
         const deltas = concatenatedDeltasForRecord(record);
@@ -347,7 +351,7 @@ export class AssertionScope {
   }
 
   async streamedToolArgsJson(name?: string): Promise<AssertionResult> {
-    return this.check("expected streamed tool arguments to be valid JSON", (trace) => {
+    return this.evaluate("expected streamed tool arguments to be valid JSON", (trace) => {
       const parsed: JsonValue[] = [];
       const errors: string[] = [];
       for (const record of recordsForTrace(trace, this.query)) {
@@ -378,7 +382,7 @@ export class AssertionScope {
   }
 
   async outputJsonValid(schema: JsonObject): Promise<AssertionResult> {
-    return this.check("expected output JSON to match schema", (trace) => {
+    return this.evaluate("expected output JSON to match schema", (trace) => {
       const ajv = new Ajv2020({ strict: false });
       const validate = ajv.compile(schema);
       const texts = recordsForTrace(trace, this.query).flatMap(outputTextsForRecord);
@@ -401,7 +405,7 @@ export class AssertionScope {
   }
 
   async usageDetails(bounds: UsageDetailsBounds): Promise<AssertionResult> {
-    return this.check("expected usage details", (trace) => {
+    return this.evaluate("expected usage details", (trace) => {
       const details = recordsForTrace(trace, this.query).map(usageDetailsForRecord);
       const pass = details.some(
         (detail) =>
@@ -413,7 +417,7 @@ export class AssertionScope {
   }
 
   async errorStatus(expected: number | Bounds): Promise<AssertionResult> {
-    return this.check(`expected error status ${stringify(expected)}`, (trace) => {
+    return this.evaluate(`expected error status ${stringify(expected)}`, (trace) => {
       const statuses = recordsForTrace(trace, this.query)
         .map((record) => record.httpStatus ?? httpStatusFromError(record.error) ?? httpStatusFromError(record.response))
         .filter((status): status is number => status !== undefined);
@@ -428,7 +432,7 @@ export class AssertionScope {
   }
 
   async errorType(expected: string | RegExp): Promise<AssertionResult> {
-    return this.check(`expected error type ${String(expected)}`, (trace) => {
+    return this.evaluate(`expected error type ${String(expected)}`, (trace) => {
       const types = recordsForTrace(trace, this.query).flatMap((record) => errorFields(record, "type"));
       const pass = types.some((type) => matchesText(type, expected));
       return { pass, message: `expected error type ${String(expected)}, saw ${types.join(", ") || "<none>"}` };
@@ -436,7 +440,7 @@ export class AssertionScope {
   }
 
   async errorCode(expected: string | RegExp): Promise<AssertionResult> {
-    return this.check(`expected error code ${String(expected)}`, (trace) => {
+    return this.evaluate(`expected error code ${String(expected)}`, (trace) => {
       const codes = recordsForTrace(trace, this.query).flatMap((record) => errorFields(record, "code"));
       const pass = codes.some((code) => matchesText(code, expected));
       return { pass, message: `expected error code ${String(expected)}, saw ${codes.join(", ") || "<none>"}` };
@@ -444,7 +448,7 @@ export class AssertionScope {
   }
 
   async incomplete(): Promise<AssertionResult> {
-    return this.check("expected an incomplete or errored trace", (trace) => {
+    return this.evaluate("expected an incomplete or errored trace", (trace) => {
       const records = recordsForTrace(trace, this.query);
       const pass = records.some((record) => isIncompleteRecord(record));
       return {
@@ -459,7 +463,7 @@ export class AssertionScope {
   }
 
   async rawRecorded(): Promise<AssertionResult> {
-    return this.check("expected raw request/response to be recorded", (trace) => {
+    return this.evaluate("expected raw request/response to be recorded", (trace) => {
       const records = recordsForTrace(trace, this.query);
       const pass = records.some((record) => hasRawPayload(record));
       return {
@@ -472,15 +476,72 @@ export class AssertionScope {
   }
 
   async noSpecViolations(options: SpecAssertionOptions = {}): Promise<AssertionResult> {
-    return this.check("expected no spec violations", (trace) => evaluateSpecFindings(trace, this.query, options, "violations"));
+    return this.evaluate("expected no spec violations", (trace) => evaluateSpecFindings(trace, this.query, options, "violations"));
   }
 
   async noIgnoredFields(options: SpecAssertionOptions = {}): Promise<AssertionResult> {
-    return this.check("expected no ignored fields", (trace) => evaluateSpecFindings(trace, this.query, options, "ignored"));
+    return this.evaluate("expected no ignored fields", (trace) => evaluateSpecFindings(trace, this.query, options, "ignored"));
+  }
+
+  async finalResponseMentionsAny(
+    candidates: readonly string[],
+    options: MentionsAnyOptions = {},
+  ): Promise<AssertionResult> {
+    return this.evaluate("expected the final response to mention any candidate", (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      const last = records[records.length - 1];
+      const text = last ? last.responseText || outputTextsForRecord(last).join("\n") || extractText(last.response) : "";
+      return mentionsAnyResult(text, candidates, options);
+    });
+  }
+
+  async toolResultInPrompt(name?: string): Promise<AssertionResult> {
+    return this.evaluate("expected tool result in the next prompt", (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      let sawCall = false;
+      for (let index = 0; index < records.length; index += 1) {
+        const record = records[index];
+        if (!record) continue;
+        const called = toolCallsForRecords([record]).filter((call) => (name ? call.name === name : true));
+        if (called.length === 0) continue;
+        sawCall = true;
+        const ids = new Set(called.map((call) => call.id).filter((id): id is string => Boolean(id)));
+        for (const later of records.slice(index + 1)) {
+          const contents = toolResultContents(later.request, ids);
+          const prompt = later.promptText || extractText(later.request);
+          if (contents.some((content) => content.length > 0 && prompt.includes(content))) {
+            return {
+              pass: true,
+              message: name
+                ? `tool "${name}" result was present in a later prompt`
+                : "tool result was present in a later prompt",
+            };
+          }
+        }
+      }
+      return {
+        pass: false,
+        message: name
+          ? sawCall
+            ? `expected the next request after tool "${name}" to carry that tool's result content`
+            : `expected a result for tool "${name}" in a later prompt, but no call was recorded`
+          : "expected a later request to carry a tool result verbatim",
+      };
+    });
+  }
+
+  check(): Promise<AssertionResult> {
+    const failures = this.collected.filter((result) => !result.pass);
+    const trace = this.lastTrace ?? emptyTrace(this.sessionId);
+    if (failures.length === 0) {
+      return Promise.resolve({ pass: true, message: "all soft assertions passed", trace });
+    }
+    const message = failures.map((result) => result.message).join("\n");
+    return Promise.reject(new SessionAssertionError(message, trace));
   }
 
   private async numericRecordBound(field: "latencyMs" | "ttftMs" | "retries", bounds: Bounds): Promise<AssertionResult> {
-    return this.check(`expected ${field} bounds`, (trace) => {
+    return this.evaluate(`expected ${field} bounds`, (trace) => {
       const records = recordsForTrace(trace, this.query);
       const values = records.map((record) => record[field] ?? (field === "retries" ? 0 : undefined));
       const pass = records.length > 0 && values.every((value) => checkBounds(value, bounds));
@@ -493,14 +554,14 @@ export class AssertionScope {
     pattern: string | RegExp,
     getText: (record: CallRecord) => string,
   ): Promise<AssertionResult> {
-    return this.check(`expected ${label} to contain ${String(pattern)}`, (trace) => {
+    return this.evaluate(`expected ${label} to contain ${String(pattern)}`, (trace) => {
       const texts = recordsForTrace(trace, this.query).map(getText);
       const pass = texts.some((text) => matchesText(text, pattern));
       return { pass, message: `expected ${label} to contain ${String(pattern)}, saw ${texts.join("\n---\n") || "<none>"}` };
     });
   }
 
-  private async check(
+  private async evaluate(
     defaultMessage: string,
     predicate: (trace: SessionTrace) => { pass: boolean; message?: string } | Promise<{ pass: boolean; message?: string }>,
   ): Promise<AssertionResult> {
@@ -515,12 +576,12 @@ export class AssertionScope {
     }
     const result = await predicate(trace);
     const message = result.message ?? defaultMessage;
-    if (result.pass) return { pass: true, message, trace };
+    if (result.pass) return this.finish({ pass: true, message, trace });
     if (trace.calls.length === 0) {
       return this.failZeroCalls(trace, message);
     }
     const error = new SessionAssertionError(message, trace);
-    if (this.softMode) return { pass: false, message, trace, error };
+    if (this.softMode) return this.finish({ pass: false, message, trace, error });
     throw error;
   }
 
@@ -528,8 +589,14 @@ export class AssertionScope {
     const known = await this.knownSessionIds();
     const message = `${formatZeroCallsMessage(this.sessionId, known)}${fallback ? `\n${fallback}` : ""}`;
     const error = new SessionAssertionError(message, trace);
-    if (this.softMode) return { pass: false, message, trace, error };
+    if (this.softMode) return this.finish({ pass: false, message, trace, error });
     throw error;
+  }
+
+  private finish(result: AssertionResult): AssertionResult {
+    this.lastTrace = result.trace;
+    if (this.softMode) this.collected.push(result);
+    return result;
   }
 
   private async knownSessionIds(): Promise<string[]> {
@@ -543,17 +610,34 @@ export class AssertionScope {
 }
 
 export function recordsForTrace(trace: SessionTrace, query: QueryOptions = {}): CallRecord[] {
-  const records = trace.calls.filter((record) => {
+  const records = trace.calls.filter((record, index) => {
+    if (query.since !== undefined && index < query.since) return false;
     if (query.apiType && record.apiType !== query.apiType) return false;
     if (query.model) {
       const requested = stringAt(asObject(record.request), "model");
       if (!matchesModel(record.model, query.model) && !matchesModel(requested, query.model)) return false;
     }
+    const offered = offeredToolNames(record);
+    if (query.offersTool && !offered.includes(query.offersTool)) return false;
+    if (query.withoutTools && offered.length > 0) return false;
     return true;
   });
   if (query.index === undefined) return records;
   const record = records[query.index];
   return record ? [record] : [];
+}
+
+export function offeredToolNames(record: CallRecord): string[] {
+  const request = asObject(record.request);
+  const names: string[] = [];
+  const add = (value: JsonValue | undefined): void => {
+    const object = asObject(value);
+    const name = stringAt(objectAt(object, "function"), "name") ?? stringAt(object, "name");
+    if (name) names.push(name);
+  };
+  for (const tool of asArray(valueAt(request, "tools"))) add(tool);
+  for (const fn of asArray(valueAt(request, "functions"))) add(fn);
+  return [...new Set(names)];
 }
 
 const MODEL_SNAPSHOT_SUFFIX = /^(.+)-\d{4}-\d{2}-\d{2}$/;
@@ -989,20 +1073,38 @@ export function formatTraceSummary(trace: SessionTrace): string {
   trace.calls.forEach((record, index) => {
     const tools = toolCallsForRecords([record]).map((tool) => tool.name);
     lines.push(
-      `${index + 1}. ${record.apiFamily ?? record.apiType ?? "unknown"} model=${record.model ?? "unknown"} tools=${tools.join(",") || "-"} finish=${finishReasons(record.response).join(",") || "-"} error=${record.error ? "yes" : "no"} spec=${specStatusForRecord(record)}`,
+      `${index + 1}. seq=${index} ${record.apiFamily ?? record.apiType ?? "unknown"} model=${record.model ?? "unknown"} tools=${tools.join(",") || "-"} finish=${finishReasons(record.response).join(",") || "-"} error=${record.error ? "yes" : "no"} spec=${specStatusForRecord(record)}`,
     );
   });
   return lines.join("\n");
 }
 
 function emptyTrace(sessionId: string): SessionTrace {
-  return {
-    id: sessionId,
-    calls: [],
-    raw: { id: sessionId, calls: [] },
-    specViolations: () => [],
-    ignoredFields: () => [],
+  return attachSessionTraceHelpers(sessionId, [], { id: sessionId, calls: [] });
+}
+
+function toolResultContents(value: JsonValue | undefined, toolCallIds: Set<string>): string[] {
+  const out: string[] = [];
+  const visit = (candidate: JsonValue | undefined): void => {
+    if (candidate === undefined || candidate === null) return;
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) visit(item);
+      return;
+    }
+    if (typeof candidate !== "object") return;
+    const object = asObject(candidate);
+    const role = stringAt(object, "role");
+    const type = stringAt(object, "type");
+    const toolCallId = stringAt(object, "tool_call_id") ?? stringAt(object, "toolCallId") ?? stringAt(object, "call_id");
+    const isResult = role === "tool" || type === "function_call_output";
+    if (isResult && (!toolCallIds.size || (toolCallId && toolCallIds.has(toolCallId)))) {
+      const content = stringAt(object, "content") ?? stringAt(object, "output");
+      if (content) out.push(content);
+    }
+    for (const child of Object.values(object)) visit(child);
   };
+  visit(value);
+  return out;
 }
 
 function evaluateSpecFindings(

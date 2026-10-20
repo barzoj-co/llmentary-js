@@ -16,6 +16,7 @@ describe("CJS export", () => {
     });
     expect(lm).toBeInstanceOf(Session);
     expect(lm.baseURL).toBe("http://127.0.0.1:9999/v1");
+    expect(lm.pathBaseURL()).toBe("http://127.0.0.1:9999/s/session-1/v1");
     expect(lm.headers["x-test-session"]).toBe("session-1");
   });
 });
