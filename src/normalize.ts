@@ -449,8 +449,19 @@ function responseTextFromPayload(response: JsonValue | undefined, normalized: Js
     const content = valueAt(objectAt(asObject(choice), "message"), "content");
     if (typeof content === "string" && content.trim()) texts.push(content);
   }
+  for (const item of asArray(valueAt(asObject(response), "output"))) {
+    const itemObject = asObject(item);
+    if (stringAt(itemObject, "type") !== "message") continue;
+    for (const part of asArray(valueAt(itemObject, "content"))) {
+      if (typeof part === "string" && part.trim()) texts.push(part);
+      else {
+        const text = stringAt(asObject(part), "text");
+        if (text?.trim()) texts.push(text);
+      }
+    }
+  }
   if (texts.length > 0) return texts.join("\n");
-  return textFromPayload(response);
+  return typeof response === "string" && response.trim() ? response : undefined;
 }
 
 function collectText(value: JsonValue | undefined): string {

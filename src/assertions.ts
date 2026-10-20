@@ -490,12 +490,12 @@ export class AssertionScope {
     return this.evaluate("expected the final response to mention any candidate", (trace) => {
       const records = recordsForTrace(trace, this.query);
       const last = records[records.length - 1];
-      const text = last ? last.responseText || outputTextsForRecord(last).join("\n") || extractText(last.response) : "";
+      const text = last ? outputTextsForRecord(last).join("\n") || last.responseText || "" : "";
       return mentionsAnyResult(text, candidates, options);
     });
   }
 
-  async toolResultInPrompt(name?: string): Promise<AssertionResult> {
+  async toolResultInPrompt(name?: string, expected?: string | RegExp): Promise<AssertionResult> {
     return this.evaluate("expected tool result in the next prompt", (trace) => {
       const records = recordsForTrace(trace, this.query);
       let sawCall = false;
@@ -506,17 +506,20 @@ export class AssertionScope {
         if (called.length === 0) continue;
         sawCall = true;
         const ids = new Set(called.map((call) => call.id).filter((id): id is string => Boolean(id)));
-        for (const later of records.slice(index + 1)) {
-          const contents = toolResultContents(later.request, ids);
-          const prompt = later.promptText || extractText(later.request);
-          if (contents.some((content) => content.length > 0 && prompt.includes(content))) {
-            return {
-              pass: true,
-              message: name
-                ? `tool "${name}" result was present in a later prompt`
-                : "tool result was present in a later prompt",
-            };
-          }
+        const next = records[index + 1];
+        if (!next || ids.size === 0) continue;
+        const contents = toolResultContents(next.request, ids);
+        if (
+          contents.some(
+            (content) => content.length > 0 && (expected === undefined || matchesText(content, expected)),
+          )
+        ) {
+          return {
+            pass: true,
+            message: name
+              ? `tool "${name}" result was present in the next prompt`
+              : "tool result was present in the next prompt",
+          };
         }
       }
       return {
@@ -525,7 +528,7 @@ export class AssertionScope {
           ? sawCall
             ? `expected the next request after tool "${name}" to carry that tool's result content`
             : `expected a result for tool "${name}" in a later prompt, but no call was recorded`
-          : "expected a later request to carry a tool result verbatim",
+          : "expected the next request to carry a tool result verbatim",
       };
     });
   }

@@ -126,6 +126,9 @@ describe("mentionsAny", () => {
     expect(mentionsAny("MODERATE", ["Moderate"])).toBe(true);
     expect(mentionsAny("20°C today", ["20 °C"], { normalizeNumbers: false })).toBe(false);
     expect(mentionsAny("Moderate", ["moderate"], { casefold: false })).toBe(false);
+    expect(mentionsAny("model gpt-4.1-mini-2025-04-14", ["20"])).toBe(false);
+    expect(mentionsAny("cost 120 euros", ["20"])).toBe(false);
+    expect(mentionsAny("it is 20 C", ["20"])).toBe(true);
   });
 
   it("lists candidates and a 200-char excerpt on no match", () => {
@@ -155,6 +158,10 @@ describe("finalResponseMentionsAny and toolResultInPrompt", () => {
 
   it("passes on a golden tool round-trip and fails on a mutated trace", async () => {
     await expect(scopeFor(clean).toolResultInPrompt("lookup_weather")).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(clean).toolResultInPrompt("lookup_weather", "SEED_X")).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(clean).soft().toolResultInPrompt("lookup_weather", "SEED_Y")).resolves.toMatchObject({
+      pass: false,
+    });
     await expect(scopeFor(clean).promptContains("SEED_X")).resolves.toMatchObject({ pass: true });
     await expect(scopeFor(clean).finalResponseMentionsAny(["20", "sunny"])).resolves.toMatchObject({ pass: true });
 
@@ -162,6 +169,25 @@ describe("finalResponseMentionsAny and toolResultInPrompt", () => {
     await expect(scopeFor(mutated).soft().finalResponseMentionsAny(["20", "sunny"])).resolves.toMatchObject({
       pass: false,
     });
+  });
+
+  it("does not treat response metadata as the final answer", async () => {
+    const toolOnly = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_family: "openai.chat",
+          response: {
+            id: "chatcmpl_meta",
+            model: "gpt-4.1-mini-2025-04-14",
+            choices: [{ finish_reason: "tool_calls", message: { tool_calls: [] } }],
+            usage: { total_tokens: 20 },
+          },
+        },
+      ],
+    });
+    expect(toolOnly.calls[0]?.responseText).toBeUndefined();
+    await expect(scopeFor(toolOnly).soft().finalResponseMentionsAny(["20"])).resolves.toMatchObject({ pass: false });
   });
 });
 

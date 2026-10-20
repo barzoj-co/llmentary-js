@@ -27,7 +27,7 @@ export function mentionsAnyResult(
   options: MentionsAnyOptions = {},
 ): MentionsAnyResult {
   const hay = normalizeMention(text, options);
-  const matched = candidates.find((candidate) => hay.includes(normalizeMention(candidate, options)));
+  const matched = candidates.find((candidate) => containsMention(hay, normalizeMention(candidate, options)));
   const excerpt = text.length > EXCERPT_LIMIT ? text.slice(0, EXCERPT_LIMIT) : text;
   if (matched !== undefined) {
     return { pass: true, message: `answer mentions ${JSON.stringify(matched)}` };
@@ -36,6 +36,24 @@ export function mentionsAnyResult(
     pass: false,
     message: `expected answer to mention any of [${candidates.map((candidate) => JSON.stringify(candidate)).join(", ")}]; excerpt: ${excerpt}`,
   };
+}
+
+function containsMention(hay: string, needle: string): boolean {
+  if (!needle) return false;
+  let from = 0;
+  while (from < hay.length) {
+    const index = hay.indexOf(needle, from);
+    if (index === -1) return false;
+    const before = hay[index - 1];
+    const after = hay[index + needle.length];
+    const startsDigit = /^\d/.test(needle);
+    const endsDigit = /\d$/.test(needle);
+    const beforeOk = !startsDigit || before === undefined || !/[\d.]/.test(before);
+    const afterOk = !endsDigit || after === undefined || !/\d/.test(after);
+    if (beforeOk && afterOk) return true;
+    from = index + 1;
+  }
+  return false;
 }
 
 function normalizeMention(text: string, options: MentionsAnyOptions): string {
