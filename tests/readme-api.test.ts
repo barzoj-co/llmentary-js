@@ -18,6 +18,13 @@ describe("README public API snippets", () => {
     expect(readme).toContain("LLMENTARY_WAIT_QUIET");
     expect(readme).toContain("`30s`");
     expect(readme).toContain("`500ms`");
+    expect(readme).toContain("lm.pathBaseURL()");
+    expect(readme).toContain("OPENAI_BASE_URL");
+    expect(readme).toContain("docs/black-box.md");
+    expect(readme).toContain("docs/assertions-guide.md");
+    expect(readme).toContain("offersTool");
+    expect(readme).toContain("withoutTools");
+    expect(readme).toContain("since");
   });
 
   it("does not document removed factory or handle names", () => {
@@ -42,5 +49,12 @@ describe("README public API snippets", () => {
     expect(lm.query({ apiType: "responses" })).toBeInstanceOf(SessionQuery);
     expect(typeof lm.expect().toolCalled).toBe("function");
     expect(typeof lm.expect().calledTimes).toBe("function");
+    expect(lm.pathBaseURL()).toBe("http://127.0.0.1:9/s/readme-snippet/v1");
+    expect(typeof lm.mark).toBe("function");
+    expect(typeof lm.query({}).offersTool).toBe("function");
+    expect(typeof lm.query({}).withoutTools).toBe("function");
+    expect(typeof lm.expect().finalResponseMentionsAny).toBe("function");
+    expect(typeof lm.expect().toolResultInPrompt).toBe("function");
+    expect(typeof lm.expect().soft().check).toBe("function");
   });
 });

@@ -3,7 +3,7 @@
 ## Core concepts
 
 - A **proxy** is the separate `llmentary` Go binary. It accepts OpenAI-compatible traffic, forwards to an upstream, and records calls in memory.
-- A **session** is selected with `X-Test-Session` or W3C `baggage` key `llmentary.session.id`.
+- A **session** is selected with `X-Test-Session`, W3C `baggage` key `llmentary.session.id`, or the path prefix `/s/{session}/` (see `lm.pathBaseURL()`).
 - The **control API** is read through `/sessions`, `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, `/healthz`, and `/config`.
 - A **Session** is a per-test handle containing the session id, proxy base URL, headers, fetch helper, query scopes, cleanup, and assertions.
 
@@ -27,6 +27,7 @@ Important properties:
 - `lm.proxyUrl`
 - `lm.controlUrl`
 - `lm.baseURL` (`${proxyUrl}/v1`) for `openai-node`
+- `lm.pathBaseURL()` (`${proxyUrl}/s/{session}/v1`) and `lm.pathBaseURL("openrouter")` (`${proxyUrl}/s/{session}/u/openrouter`) for unmodified / import-time clients
 - `lm.headers` with `x-test-session` and `baggage`
 - `lm.fetch(input, init)` which injects the session headers
 - `lm.openAI()` config for `new OpenAI(...)`
@@ -66,7 +67,14 @@ lm.expect();
 lm.query({ apiType: "chat_completions" }).expect();
 lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect();
 lm.query({ index: 1 }).expect();
+lm.query({}).offersTool("lookup_weather").expect();
+lm.query({}).withoutTools().expect();
+const mark = await lm.mark();
+lm.expect({ since: mark });
+lm.query({}).since(mark).expect();
 ```
+
+`offersTool(name)` keeps calls whose **request** offered that tool. `withoutTools()` keeps calls that offered none (structured-output routers). `await lm.mark()` is the current call count (`seq`). `since: mark` keeps calls with `seq >= mark`. The generated summary prints `seq=N` using those numbers. Per-call `promptText` / `responseText` fill the same role as Python `prompt_text` / `response_text`.
 
 `apiType` values mirror the Go client scoping:
 
@@ -118,7 +126,11 @@ await lm.expect().incomplete();
 await lm.expect().rawRecorded();
 await lm.expect().noSpecViolations();
 await lm.expect().noIgnoredFields({ ignorePaths: ["/foo"] });
+await lm.expect().finalResponseMentionsAny(["20", "sunny"]);
+await lm.expect().toolResultInPrompt("lookup_weather");
 ```
+
+`mentionsAny(text, candidates, { normalizeNumbers, casefold })` is a plain function for answers that come from the app API rather than the trace. Numeric candidates match as whole numbers (`20` does not match `2025`). `finalResponseMentionsAny` runs the same check on the last recorded assistant `output_text` (honours `since`); it does not scan response metadata. `toolResultInPrompt(name, expected?)` requires the **next** request after that tool call to include that call's result content (matching `id`). Pass `expected` (string or `RegExp`) to match the result text. Stronger than `toolResultFedBack`, which only checks that some later request has a tool-role / `function_call_output` message with a matching id.
 
 `noSpecViolations` / `noIgnoredFields` read `normalized.validation`, `normalized.spec_violations`, and `normalized.ignored_fields`. An empty `[]` is clean; a missing field means validation was not run (failure unless `allowUnvalidated: true`). Options: `side`, `calls` (0-based indices or call ids), `ignorePaths`, `ignoreKeywords`. Failure lines look like `<call#> <api_family> <side> <path>: <message> — <hint>`. Vitest/Jest matchers: `toHaveNoSpecViolations()`, `toHaveNoIgnoredFields()`. Per-call accessors are `call.validation`, `call.specViolations`, `call.ignoredFields`; the trace has `trace.specViolations()` / `trace.ignoredFields()`. Each line of the generated summary includes `spec=clean`, `spec=N violation(s)`, or `spec=not checked` (singular `spec=1 violation`).
 
@@ -141,7 +153,7 @@ if (!result.pass) {
 }
 ```
 
-`lm.softExpect()` is equivalent to `lm.expect().soft()`.
+`lm.softExpect()` is equivalent to `lm.expect().soft()`. Soft results stay non-throwing; `await soft.check()` throws one `SessionAssertionError` that lists every collected failure.
 
 ## Runner integrations
 

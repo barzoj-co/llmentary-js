@@ -18,11 +18,20 @@ export interface WaitOptions {
   signal?: AbortSignal;
 }
 
+/** Call-count checkpoint from `lm.mark()`. `since: mark` keeps calls with seq >= mark. */
+export type SessionMark = number;
+
 export interface QueryOptions {
   apiType?: ApiType;
   model?: string | RegExp;
   /** 0-based index into the filtered call list. */
   index?: number;
+  /** Keep calls whose request offered this tool. */
+  offersTool?: string;
+  /** Keep calls that offered no tools (router / structured-output). */
+  withoutTools?: boolean;
+  /** Keep calls after this mark (0-based seq / call count from `mark()`). */
+  since?: SessionMark;
 }
 
 export interface SessionOptions {
@@ -129,6 +138,8 @@ export interface CallRecord {
   specViolations?: SpecViolation[];
   /** `[]` means checked and clean; omitted means ignored fields were not recorded. */
   ignoredFields?: IgnoredField[];
+  promptText?: string;
+  responseText?: string;
   raw: JsonValue;
 }
 
@@ -139,6 +150,7 @@ export interface SessionTrace {
   summary?: string;
   specViolations(): SpecViolation[];
   ignoredFields(): IgnoredField[];
+  since(mark: SessionMark): CallRecord[];
 }
 
 export interface SessionSummary {

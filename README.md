@@ -20,6 +20,8 @@ Node 18 or newer is required. npm installs an optional `@llmentary/<platform>` p
 
 ## Quickstart
 
+In-process (the test can set headers):
+
 ```ts
 // vitest.config.ts
 import { defineConfig } from "vitest/config";
@@ -70,6 +72,18 @@ test("uses the weather tool", async () => {
 });
 ```
 
+Service under test cannot send headers (import-time / `OPENAI_BASE_URL` only). Set the env **before** the app is imported or constructed:
+
+```ts
+import { llmentary } from "llmentary";
+
+const lm = llmentary();
+process.env.OPENAI_BASE_URL = lm.pathBaseURL();
+const { app } = await import("./app.js");
+```
+
+Black-box and sidecar recipes: [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md). When to assert on the trace vs the model's free text: [docs/assertions-guide.md](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
+
 ## Assertions
 
 Use `lm.expect()` or a scoped query:
@@ -77,9 +91,13 @@ Use `lm.expect()` or a scoped query:
 ```ts
 await lm.expect().toolCalled("lookup_weather");
 await lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect().calledTimes("lookup_weather", 1);
+const mark = await lm.mark();
+await lm.expect({ since: mark }).toolCalled("lookup_weather");
+await lm.query({}).withoutTools().expect().callCount(1);
+await lm.query({}).offersTool("lookup_weather").expect().toolCalled("lookup_weather");
 ```
 
-Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, and spec-validation helpers (`noSpecViolations` / `noIgnoredFields`). Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results. `listSessions()` and `proxyVersion()` read the control API.
+Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure. `listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs.
 
 See [docs/api.md](docs/api.md) for the full API, including Jest setup.
 

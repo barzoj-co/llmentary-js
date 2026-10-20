@@ -20,19 +20,7 @@ export function normalizeSessionTrace(sessionId: string, raw: JsonValue): Sessio
     [];
   const calls = callsValue.map((value) => normalizeCallRecord(value));
   const summary = stringAt(object, "summary") ?? stringAt(object, "trace_summary");
-  const trace: SessionTrace = {
-    id,
-    calls,
-    raw,
-    ...(summary !== undefined ? { summary } : {}),
-    specViolations() {
-      return calls.flatMap((call) => call.specViolations ?? []);
-    },
-    ignoredFields() {
-      return calls.flatMap((call) => call.ignoredFields ?? []);
-    },
-  };
-  return trace;
+  return attachTraceHelpers(id, calls, raw, summary);
 }
 
 export function normalizeCallRecord(raw: JsonValue): CallRecord {
@@ -86,6 +74,8 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
   const streamed = inferStreamed(request, normalized, object);
   const httpStatus = inferHttpStatus(object, error, metadata);
   const usageWithDetails = enrichUsageDetails(usage, response, decodedResponse);
+  const promptText = textFromPayload(request);
+  const responseText = responseTextFromPayload(response, normalized);
   return {
     raw,
     ...(id ? { id } : {}),
@@ -107,6 +97,31 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     ...(finishedAt ? { finishedAt } : {}),
     ...(streamed !== undefined ? { streamed } : {}),
     ...(httpStatus !== undefined ? { httpStatus } : {}),
+    ...(promptText ? { promptText } : {}),
+    ...(responseText ? { responseText } : {}),
+  };
+}
+
+function attachTraceHelpers(
+  id: string,
+  calls: CallRecord[],
+  raw: JsonValue,
+  summary?: string,
+): SessionTrace {
+  return {
+    id,
+    calls,
+    raw,
+    ...(summary !== undefined ? { summary } : {}),
+    specViolations() {
+      return calls.flatMap((call) => call.specViolations ?? []);
+    },
+    ignoredFields() {
+      return calls.flatMap((call) => call.ignoredFields ?? []);
+    },
+    since(mark) {
+      return calls.slice(mark);
+    },
   };
 }
 
@@ -410,6 +425,54 @@ export function validationWasRun(record: CallRecord): boolean {
   if (validation.requestChecked === true || validation.responseChecked === true) return true;
   if (validation.mode && validation.mode !== "off") return true;
   return false;
+}
+
+export function attachSessionTraceHelpers(
+  id: string,
+  calls: CallRecord[],
+  raw: JsonValue,
+  summary?: string,
+): SessionTrace {
+  return attachTraceHelpers(id, calls, raw, summary);
+}
+
+function textFromPayload(value: JsonValue | undefined): string | undefined {
+  const text = collectText(value);
+  return text || undefined;
+}
+
+function responseTextFromPayload(response: JsonValue | undefined, normalized: JsonObject | undefined): string | undefined {
+  const outputText = stringAt(asObject(response), "output_text") ?? stringAt(normalized, "output_text");
+  if (outputText) return outputText;
+  const texts: string[] = [];
+  for (const choice of asArray(valueAt(asObject(response), "choices"))) {
+    const content = valueAt(objectAt(asObject(choice), "message"), "content");
+    if (typeof content === "string" && content.trim()) texts.push(content);
+  }
+  for (const item of asArray(valueAt(asObject(response), "output"))) {
+    const itemObject = asObject(item);
+    if (stringAt(itemObject, "type") !== "message") continue;
+    for (const part of asArray(valueAt(itemObject, "content"))) {
+      if (typeof part === "string" && part.trim()) texts.push(part);
+      else {
+        const text = stringAt(asObject(part), "text");
+        if (text?.trim()) texts.push(text);
+      }
+    }
+  }
+  if (texts.length > 0) return texts.join("\n");
+  return typeof response === "string" && response.trim() ? response : undefined;
+}
+
+function collectText(value: JsonValue | undefined): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(collectText).filter(Boolean).join("\n");
+  return Object.values(value)
+    .map(collectText)
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function specStatusForRecord(record: CallRecord): string {

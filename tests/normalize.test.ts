@@ -74,6 +74,7 @@ describe("normalizeCallRecord Go control schema", () => {
     expect(record.latencyMs).toBe(3);
     expect(record.finishedAt).toBe("2026-10-18T10:13:53.765Z");
     expect(record.request).toMatchObject({ model: "gpt-4.1-mini" });
+    expect(record.promptText).toMatch(/weather in Amsterdam/);
     expect(record.response).toMatchObject({ id: "chatcmpl_fake" });
     expect(record.usage).toMatchObject({ input_tokens: 4, total_tokens: 6 });
   });

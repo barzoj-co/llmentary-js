@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { AssertionScope, recordsForTrace } from "./assertions.js";
 import { ControlClient } from "./control.js";
+import { attachSessionTraceHelpers } from "./normalize.js";
 import { firstNonEmpty } from "./env.js";
 import type {
   ListSessionsOptions,
   ProxyConfig,
   QueryOptions,
+  SessionMark,
   SessionOptions,
   SessionSummary,
   SessionTrace,
@@ -52,16 +54,25 @@ export class Session {
     });
   }
 
+  pathBaseURL(upstream?: string): string {
+    return formatPathBaseURL(this.proxyUrl, this.sessionId, upstream);
+  }
+
   query(query: QueryOptions): SessionQuery {
     return new SessionQuery(this, query);
   }
 
-  expect(): AssertionScope {
+  expect(query?: QueryOptions): AssertionScope {
     return new AssertionScope({
       control: this.control,
       sessionId: this.sessionId,
+      ...(query ? { query } : {}),
       defaultWait: this.defaultWait,
     });
+  }
+
+  async mark(options?: WaitOptions): Promise<SessionMark> {
+    return (await this.wait(options)).calls.length;
   }
 
   softExpect(): AssertionScope {
@@ -133,11 +144,23 @@ export class SessionQuery {
     readonly queryOptions: QueryOptions,
   ) {}
 
-  expect(): AssertionScope {
+  offersTool(name: string): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, offersTool: name });
+  }
+
+  withoutTools(): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, withoutTools: true });
+  }
+
+  since(mark: SessionMark): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, since: mark });
+  }
+
+  expect(query?: QueryOptions): AssertionScope {
     return new AssertionScope({
       control: this.session.control,
       sessionId: this.session.sessionId,
-      query: this.queryOptions,
+      query: { ...this.queryOptions, ...query },
       defaultWait: this.session.defaultWait,
     });
   }
@@ -148,10 +171,7 @@ export class SessionQuery {
 
   async wait(options?: WaitOptions): Promise<SessionTrace> {
     const trace = await this.session.wait(options);
-    return {
-      ...trace,
-      calls: recordsForTrace(trace, this.queryOptions),
-    };
+    return attachSessionTraceHelpers(trace.id, recordsForTrace(trace, this.queryOptions), trace.raw, trace.summary);
   }
 }
 
@@ -164,6 +184,13 @@ export function sessionHeaders(sessionId: string): Record<string, string> {
     [SESSION_HEADER]: sessionId,
     baggage: `${BAGGAGE_KEY}=${sessionId}`,
   };
+}
+
+export function formatPathBaseURL(proxyUrl: string, sessionId: string, upstream?: string): string {
+  const base = trimTrailingSlash(proxyUrl);
+  const session = encodeURIComponent(sessionId);
+  if (upstream) return `${base}/s/${session}/u/${encodeURIComponent(upstream)}`;
+  return `${base}/s/${session}/v1`;
 }
 
 function trimTrailingSlash(value: string): string {
