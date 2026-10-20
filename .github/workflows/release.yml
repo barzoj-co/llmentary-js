@@ -139,7 +139,8 @@ jobs:
               echo "skip existing ${name}@${version}"
               continue
             fi
-            npm publish "$tarball" --access public
+            # npm 11 treats `dist/foo.tgz` as GitHub shorthand (user/repo).
+            npm publish "./$tarball" --access public
           done
           if [ -z "$root_tarball" ]; then
             echo "::error::root llmentary tarball not found"
@@ -149,5 +150,5 @@ jobs:
           if npm view "llmentary@${root_version}" version >/dev/null 2>&1; then
             echo "skip existing llmentary@${root_version}"
           else
-            npm publish "$root_tarball" --access public
+            npm publish "./$root_tarball" --access public
           fi
