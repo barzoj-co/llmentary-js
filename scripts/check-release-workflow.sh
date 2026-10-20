@@ -34,7 +34,7 @@ if "vars.NPM_PUBLISH_ENABLED == 'true'" not in release and 'vars.NPM_PUBLISH_ENA
     errors.append("release.yml publish job must be gated on vars.NPM_PUBLISH_ENABLED == 'true'")
 if not re.search(r"npm publish\b", release):
     errors.append("release.yml must publish with npm publish")
-if re.search(r"npm publish\b[^\n]*--provenance", release):
+if re.search(r"npm publish\b(?:[^\n]|\\\n)*--provenance", release):
     errors.append("release.yml must not pass --provenance (npm rejects provenance from private repos; OIDC generates it automatically once public)")
 if re.search(r"(?m)^\s+registry-url:", release):
     errors.append("release.yml must not set setup-node registry-url (it writes a placeholder NODE_AUTH_TOKEN that breaks OIDC)")
