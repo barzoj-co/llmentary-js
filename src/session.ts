@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { AssertionScope, recordsForTrace } from "./assertions.js";
 import { ControlClient } from "./control.js";
 import { firstNonEmpty } from "./env.js";
-import type { LlmentaryOptions, QueryOptions, SessionTrace, WaitOptions } from "./types.js";
+import type { QueryOptions, SessionOptions, SessionTrace, WaitOptions } from "./types.js";
 
 const SESSION_HEADER = "x-test-session";
 const BAGGAGE_KEY = "llmentary.session.id";
 
-export class Llmentary {
+export class Session {
   readonly sessionId: string;
   readonly proxyUrl: string;
   readonly controlUrl: string;
@@ -17,7 +17,7 @@ export class Llmentary {
   readonly control: ControlClient;
   readonly defaultWait: WaitOptions;
 
-  constructor(config: LlmentaryOptions = {}) {
+  constructor(config: SessionOptions = {}) {
     this.sessionId = config.sessionId ?? randomUUID();
     this.proxyUrl = trimTrailingSlash(
       firstNonEmpty(config.proxyUrl, process.env.LLMENTARY_PROXY_URL) ?? "http://127.0.0.1:4010",
@@ -46,8 +46,8 @@ export class Llmentary {
     });
   }
 
-  query(query: QueryOptions): LlmentaryQuery {
-    return new LlmentaryQuery(this, query);
+  query(query: QueryOptions): SessionQuery {
+    return new SessionQuery(this, query);
   }
 
   expect(): AssertionScope {
@@ -109,18 +109,18 @@ export class Llmentary {
   }
 }
 
-export class LlmentaryQuery {
+export class SessionQuery {
   constructor(
-    readonly client: Llmentary,
+    readonly session: Session,
     readonly queryOptions: QueryOptions,
   ) {}
 
   expect(): AssertionScope {
     return new AssertionScope({
-      control: this.client.control,
-      sessionId: this.client.sessionId,
+      control: this.session.control,
+      sessionId: this.session.sessionId,
       query: this.queryOptions,
-      defaultWait: this.client.defaultWait,
+      defaultWait: this.session.defaultWait,
     });
   }
 
@@ -129,7 +129,7 @@ export class LlmentaryQuery {
   }
 
   async wait(options?: WaitOptions): Promise<SessionTrace> {
-    const trace = await this.client.wait(options);
+    const trace = await this.session.wait(options);
     return {
       ...trace,
       calls: recordsForTrace(trace, this.queryOptions),
@@ -137,11 +137,9 @@ export class LlmentaryQuery {
   }
 }
 
-export function createLlmentary(config: LlmentaryOptions = {}): Llmentary {
-  return new Llmentary(config);
+export function llmentary(config: SessionOptions = {}): Session {
+  return new Session(config);
 }
-
-export const llmentary = createLlmentary;
 
 export function sessionHeaders(sessionId: string): Record<string, string> {
   return {

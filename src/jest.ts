@@ -1,17 +1,17 @@
-import { createLlmentary, type Llmentary } from "./llmentary.js";
-import type { LlmentaryOptions } from "./types.js";
+import { llmentary as createSession, type Session } from "./session.js";
+import type { SessionOptions } from "./types.js";
 
-let current: Llmentary | undefined;
+let current: Session | undefined;
 
-export function llmentary(config?: LlmentaryOptions): Llmentary {
-  if (config) return createLlmentary(config);
-  if (!current) current = createLlmentary();
+export function llmentary(config?: SessionOptions): Session {
+  if (config) return createSession(config);
+  if (!current) current = createSession();
   return current;
 }
 
-export async function cleanupLlmentary(): Promise<void> {
+export async function cleanupSession(): Promise<void> {
   await current?.cleanup().catch(() => undefined);
   current = undefined;
 }
 
-export { createLlmentary };
+export type { Session, SessionOptions };

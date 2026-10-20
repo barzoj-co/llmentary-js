@@ -3,12 +3,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import { expect } from "vitest";
 import OpenAI, { APIError } from "openai";
 import {
-  LlmentaryAssertionError,
-  createLlmentary,
+  SessionAssertionError,
+  llmentary,
   type CallRecord,
   type JsonObject,
   type JsonValue,
-  type Llmentary,
+  type Session,
   type ProxyHandle,
 } from "../../src/index.js";
 import { asObject, numberAt, objectAt, stringAt } from "../../src/normalize.js";
@@ -36,20 +36,20 @@ export const NAME_SCHEMA: JsonObject = {
   required: ["name"],
 };
 
-export function newLlmentary(proxy: ProxyHandle): Llmentary {
-  return createLlmentary({
+export function newSession(proxy: ProxyHandle): Session {
+  return llmentary({
     proxyUrl: proxy.proxyUrl,
     controlUrl: proxy.controlUrl,
     defaultWait: { timeoutMs: 25_000, idleMs: 200 },
   });
 }
 
-export function openaiClient(lm: Llmentary): OpenAI {
+export function openaiClient(lm: Session): OpenAI {
   return new OpenAI(lm.openAI());
 }
 
 export function isRetryableNetworkError(error: unknown): boolean {
-  if (error instanceof LlmentaryAssertionError) return false;
+  if (error instanceof SessionAssertionError) return false;
   if (!error || typeof error !== "object") return false;
   const candidate = error as { status?: number; code?: string; message?: string; cause?: unknown };
   if (candidate.status === 429 || (candidate.status !== undefined && candidate.status >= 500)) return true;
@@ -81,7 +81,7 @@ export async function expectHttpError(fn: () => Promise<unknown>, status: number
   try {
     await fn();
   } catch (error) {
-    if (error instanceof LlmentaryAssertionError) throw error;
+    if (error instanceof SessionAssertionError) throw error;
     if (error instanceof APIError && error.status === status) return error;
     if (error && typeof error === "object" && "status" in error && (error as { status?: number }).status === status) {
       return error;
@@ -209,7 +209,7 @@ export function expectCachedTokensMatchRaw(record: CallRecord): void {
 }
 
 export async function expectCachedTokensFaithful(
-  lm: Llmentary,
+  lm: Session,
   index: number,
   query: { apiType?: "chat_completions" | "responses" } = {},
 ): Promise<void> {

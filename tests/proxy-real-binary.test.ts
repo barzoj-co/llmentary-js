@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createLlmentary, startProxy, type ProxyHandle } from "../src/index.js";
+import { llmentary, startProxy, type ProxyHandle } from "../src/index.js";
 
 describe("real Go proxy with fake upstream", () => {
   let upstream: Awaited<ReturnType<typeof startFakeUpstream>>;
@@ -26,7 +26,7 @@ describe("real Go proxy with fake upstream", () => {
   });
 
   it("records Chat Completions tool calls", async () => {
-    const lm = createLlmentary();
+    const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -50,7 +50,7 @@ describe("real Go proxy with fake upstream", () => {
   });
 
   it("records streaming Chat Completions", async () => {
-    const lm = createLlmentary();
+    const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -67,7 +67,7 @@ describe("real Go proxy with fake upstream", () => {
   });
 
   it("records a mid-stream error", async () => {
-    const lm = createLlmentary();
+    const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-fake-mode": "mid-stream-error" },
@@ -83,7 +83,7 @@ describe("real Go proxy with fake upstream", () => {
   });
 
   it("records Responses function calls", async () => {
-    const lm = createLlmentary();
+    const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/responses`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -98,7 +98,7 @@ describe("real Go proxy with fake upstream", () => {
   });
 
   it("records streaming Responses", async () => {
-    const lm = createLlmentary();
+    const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/responses`, {
       method: "POST",
       headers: { "content-type": "application/json" },

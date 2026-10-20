@@ -1,5 +1,5 @@
 const { createServer } = require("node:http");
-const { createLlmentary, startProxy } = require("../../dist/cjs/index.js");
+const { llmentary, startProxy } = require("../../dist/cjs/index.js");
 
 describe("real Go proxy with Jest", () => {
   let upstream;
@@ -25,7 +25,7 @@ describe("real Go proxy with Jest", () => {
   });
 
   test("records a Chat Completions tool call", async () => {
-    const lm = createLlmentary();
+    const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -37,7 +37,7 @@ describe("real Go proxy with Jest", () => {
   }, 30_000);
 
   test("records streaming Chat Completions", async () => {
-    const lm = createLlmentary();
+    const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },

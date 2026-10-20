@@ -79,7 +79,7 @@ await lm.expect().toolCalled("lookup_weather");
 await lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect().calledTimes("lookup_weather", 1);
 ```
 
-Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, and JSON schema validation. Failures throw `LlmentaryAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results.
+Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, and JSON schema validation. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results.
 
 See [docs/api.md](docs/api.md) for the full API, including Jest setup.
 

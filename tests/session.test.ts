@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createLlmentary, llmentary } from "../src/llmentary.js";
+import { llmentary } from "../src/session.js";
 
-describe("createLlmentary env fallbacks", () => {
+describe("llmentary env fallbacks", () => {
   const keys = [
     "LLMENTARY_PROXY_URL",
     "LLMENTARY_CONTROL_URL",
@@ -27,10 +27,9 @@ describe("createLlmentary env fallbacks", () => {
   it("falls through an empty bearer token to LLMENTARY_CONTROL_TOKEN", () => {
     stash("LLMENTARY_BEARER_TOKEN", "  ");
     stash("LLMENTARY_CONTROL_TOKEN", "control-secret");
-    const lm = createLlmentary({ proxyUrl: "http://127.0.0.1:4010" });
+    const lm = llmentary({ proxyUrl: "http://127.0.0.1:4010" });
     expect(lm.bearerToken).toBe("control-secret");
-    expect(lm.constructor.name).toBe("Llmentary");
-    expect(lm.query({}).constructor.name).toBe("LlmentaryQuery");
-    expect(llmentary).toBe(createLlmentary);
+    expect(lm.constructor.name).toBe("Session");
+    expect(lm.query({}).constructor.name).toBe("SessionQuery");
   });
 });

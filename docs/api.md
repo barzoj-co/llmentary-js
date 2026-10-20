@@ -5,9 +5,9 @@
 - A **proxy** is the separate `llmentary` Go binary. It accepts OpenAI-compatible traffic, forwards to an upstream, and records calls in memory.
 - A **session** is selected with `X-Test-Session` or W3C `baggage` key `llmentary.session.id`.
 - The **control API** is read through `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, and `/healthz`.
-- An **llmentary** instance is a per-test facade containing the session id, proxy base URL, headers, fetch helper, query scopes, cleanup, and assertions.
+- A **Session** is a per-test handle containing the session id, proxy base URL, headers, fetch helper, query scopes, cleanup, and assertions.
 
-## Creating a client
+## Creating a session
 
 ```ts
 import { llmentary } from "llmentary";
@@ -19,7 +19,7 @@ const lm = llmentary({
 });
 ```
 
-`llmentary()` (also exported as `createLlmentary()`) returns a `Llmentary`. `lm.query(...)` returns a `LlmentaryQuery`. Defaults come from `LLMENTARY_PROXY_URL`, `LLMENTARY_CONTROL_URL`, and `LLMENTARY_BEARER_TOKEN` when present. Otherwise `proxyUrl` defaults to `http://127.0.0.1:4010`.
+`llmentary()` returns a `Session`. `lm.query(...)` returns a `SessionQuery`. Defaults come from `LLMENTARY_PROXY_URL`, `LLMENTARY_CONTROL_URL`, and `LLMENTARY_BEARER_TOKEN` when present. Otherwise `proxyUrl` defaults to `http://127.0.0.1:4010`. Options use `SessionOptions`.
 
 Important properties:
 
@@ -117,7 +117,7 @@ await lm.expect().incomplete();
 await lm.expect().rawRecorded();
 ```
 
-Failures throw `LlmentaryAssertionError`; its message appends the proxy trace summary when present, or a generated summary with call count, API type, model, tools, finish reasons, and error markers.
+Failures throw `SessionAssertionError`; its message appends the proxy trace summary when present, or a generated summary with call count, API type, model, tools, finish reasons, and error markers.
 
 ### Soft assertions
 

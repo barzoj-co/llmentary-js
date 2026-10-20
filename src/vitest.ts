@@ -1,12 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
-import { createLlmentary, type Llmentary } from "./index.js";
+import { llmentary as createSession, type Session } from "./session.js";
 import { firstNonEmpty } from "./env.js";
 import { toHaveRequestParam, toHaveToolCalled, toHaveToolCalledTimes } from "./matchers.js";
 import { startProxy, type ProxyHandle, type ProxyLaunchOptions } from "./index.js";
-import type { LlmentaryOptions } from "./types.js";
+import type { SessionOptions } from "./types.js";
 
 let proxy: ProxyHandle | undefined;
-let current: Llmentary | undefined;
+let current: Session | undefined;
 
 export async function globalSetup(options: ProxyLaunchOptions = {}): Promise<() => Promise<void>> {
   proxy = await startProxy(options);
@@ -18,7 +18,7 @@ export async function globalSetup(options: ProxyLaunchOptions = {}): Promise<() 
   };
 }
 
-export function setupVitest(options: { proxy?: ProxyLaunchOptions; llmentary?: LlmentaryOptions } = {}): void {
+export function setupVitest(options: { proxy?: ProxyLaunchOptions; session?: SessionOptions } = {}): void {
   let ownedProxy: ProxyHandle | undefined;
   beforeAll(async () => {
     if (!firstNonEmpty(process.env.LLMENTARY_PROXY_URL)) {
@@ -37,7 +37,7 @@ export function setupVitest(options: { proxy?: ProxyLaunchOptions; llmentary?: L
   });
 
   beforeEach(() => {
-    current = createLlmentary(options.llmentary);
+    current = createSession(options.session);
   });
 
   afterEach(async () => {
@@ -48,13 +48,13 @@ export function setupVitest(options: { proxy?: ProxyLaunchOptions; llmentary?: L
   expect.extend({ toHaveToolCalled, toHaveToolCalledTimes, toHaveRequestParam });
 }
 
-export function llmentary(config?: LlmentaryOptions): Llmentary {
-  if (config) return createLlmentary(config);
-  if (!current) current = createLlmentary();
+export function llmentary(config?: SessionOptions): Session {
+  if (config) return createSession(config);
+  if (!current) current = createSession();
   return current;
 }
 
-export { createLlmentary };
+export type { Session, SessionOptions };
 
 function applyProxyEnv(handle: ProxyHandle): void {
   process.env.LLMENTARY_PROXY_URL = handle.proxyUrl;

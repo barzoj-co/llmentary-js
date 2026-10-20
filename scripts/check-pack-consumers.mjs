@@ -65,19 +65,36 @@ function hasMissingExportDiagnostic(output, name) {
   write(
     dir,
     "index.js",
-    `import { createLlmentary, llmentary } from "llmentary";
+    `import { llmentary, Session } from "llmentary";
 import { llmentary as current } from "llmentary/jest";
-if (typeof createLlmentary !== "function") throw new Error("createLlmentary missing");
 if (typeof llmentary !== "function") throw new Error("llmentary missing");
+if (typeof Session !== "function") throw new Error("Session missing");
 if (typeof current !== "function") throw new Error("jest llmentary missing");
 const facade = llmentary({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+if (!(facade instanceof Session)) throw new Error("Session instance");
 if (!facade.baseURL.endsWith("/v1")) throw new Error("baseURL");
-if (createLlmentary !== llmentary) throw new Error("createLlmentary alias");
 const core = await import("llmentary");
 const jestApi = await import("llmentary/jest");
 const old = ["l", "ab"].join("");
 const Old = old[0].toUpperCase() + old.slice(1);
-const removed = [old, "create" + Old, "cleanup" + Old, Old, Old + "Query", Old + "Config", Old + "Globals", Old + "AssertionError"];
+const Handle = ["Llm", "entary"].join("");
+const removed = [
+  old,
+  "create" + Old,
+  "cleanup" + Old,
+  Old,
+  Old + "Query",
+  Old + "Config",
+  Old + "Globals",
+  Old + "AssertionError",
+  Handle,
+  "create" + Handle,
+  "cleanup" + Handle,
+  Handle + "Query",
+  Handle + "Options",
+  Handle + "Globals",
+  Handle + "AssertionError",
+];
 for (const name of removed) {
   if (name in core) throw new Error("core still exports " + name);
   if (name in jestApi) throw new Error("jest still exports " + name);
@@ -95,14 +112,14 @@ for (const name of removed) {
   write(
     dir,
     "index.cjs",
-    `const { createLlmentary, llmentary } = require("llmentary");
+    `const { llmentary, Session } = require("llmentary");
 const { llmentary: current } = require("llmentary/jest");
-if (typeof createLlmentary !== "function") throw new Error("createLlmentary missing");
 if (typeof llmentary !== "function") throw new Error("llmentary missing");
+if (typeof Session !== "function") throw new Error("Session missing");
 if (typeof current !== "function") throw new Error("jest llmentary missing");
 const facade = llmentary({ proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" });
+if (!(facade instanceof Session)) throw new Error("Session instance");
 if (!facade.baseURL.endsWith("/v1")) throw new Error("baseURL");
-if (createLlmentary !== llmentary) throw new Error("createLlmentary alias");
 `,
   );
   runNode(dir, ["index.cjs"]);
@@ -122,13 +139,12 @@ function tsConsumer(name, pkg, tsconfig, sourceName, source) {
   });
 }
 
-const importSource = `import { createLlmentary, llmentary, type Llmentary, type LlmentaryQuery, type LlmentaryOptions } from "llmentary";
-import { llmentary as currentLlmentary } from "llmentary/jest";
-const options: LlmentaryOptions = { proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" };
-export const facade: Llmentary = createLlmentary(options);
-export const also: Llmentary = llmentary(options);
-export const query: LlmentaryQuery = facade.query({});
-export const current = currentLlmentary();
+const importSource = `import { llmentary, type Session, type SessionQuery, type SessionOptions } from "llmentary";
+import { llmentary as currentSession } from "llmentary/jest";
+const options: SessionOptions = { proxyUrl: "http://127.0.0.1:9", controlUrl: "http://127.0.0.1:9" };
+export const facade: Session = llmentary(options);
+export const query: SessionQuery = facade.query({});
+export const current = currentSession();
 `;
 
 tsConsumer(
@@ -187,6 +203,7 @@ tsConsumer(
   const dir = join(packDir, "ts-nodenext");
   const tsc = join(dir, "node_modules", ".bin", "tsc");
   const Old = ["L", "ab"].join("");
+  const Handle = ["Llm", "entary"].join("");
   const oldNames = [
     ["Llm", "Test", Old].join(""),
     ["Llm", "Test", Old, "Query"].join(""),
@@ -197,6 +214,12 @@ tsConsumer(
     Old + "Globals",
     Old + "AssertionError",
     "create" + Old,
+    Handle,
+    Handle + "Query",
+    Handle + "Options",
+    Handle + "Globals",
+    Handle + "AssertionError",
+    "create" + Handle,
   ];
   write(
     dir,

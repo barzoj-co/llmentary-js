@@ -1,7 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
-import { ControlClient, LlmentaryAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
+import { ControlClient, SessionAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
 import {
   CACHE_SECOND_CALL_ATTEMPTS,
   CITY_SCHEMA,
@@ -14,7 +14,7 @@ import {
   expectCachedTokensFaithful,
   expectHttpError,
   longPrompt,
-  newLlmentary,
+  newSession,
   newPromptCacheKey,
   noteResponsesCacheMiss,
   openaiClient,
@@ -55,7 +55,7 @@ describe("OpenAI E2E through llmentary", () => {
 
   describe("Chat Completions", () => {
     it("records non-streaming plain text", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
@@ -74,7 +74,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records streaming plain text", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const stream = await retryNetwork(() =>
         client.chat.completions.create({
@@ -97,7 +97,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records a forced tool call, result feedback, and final answer", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const first = await retryNetwork(() =>
         client.chat.completions.create({
@@ -132,7 +132,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records a streaming forced tool call with JSON arguments from deltas", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const stream = await retryNetwork(() =>
         client.chat.completions.create({
@@ -186,7 +186,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records parallel tool calls order-independently", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
@@ -213,7 +213,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records strict json_schema structured output", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
@@ -232,7 +232,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records a multi-turn session with count, order, and filter helpers", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
@@ -271,7 +271,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records upstream 4xx for an invalid model and invalid key", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await expectHttpError(
         () =>
@@ -289,7 +289,7 @@ describe("OpenAI E2E through llmentary", () => {
       await lm.expect().errorCode(/model/i);
       await lm.cleanup();
 
-      const authLm = newLlmentary(proxy);
+      const authLm = newSession(proxy);
       const authClient = new OpenAI(authLm.openAI());
       await expectHttpError(
         () =>
@@ -312,7 +312,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records a client abort mid-stream and leaves the proxy healthy", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const controller = new AbortController();
       const stream = await retryNetwork(() =>
@@ -343,7 +343,7 @@ describe("OpenAI E2E through llmentary", () => {
       const rawHealth = await fetch(`${proxy.controlUrl.replace(/\/$/, "")}/healthz`);
       expect(rawHealth.status).toBe(200);
       expect((await rawHealth.text()).trim()).toBe("ok");
-      const followUp = newLlmentary(proxy);
+      const followUp = newSession(proxy);
       const followClient = openaiClient(followUp);
       await retryNetwork(() =>
         followClient.chat.completions.create({
@@ -363,7 +363,7 @@ describe("OpenAI E2E through llmentary", () => {
       // The second call is retried up to 3 times; a hit is still required.
       // Recorded cached_tokens must equal nested cached_tokens in the raw body
       // on index 0 and on the call that actually hit.
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const prompt = longPrompt();
       const promptCacheKey = newPromptCacheKey();
@@ -408,8 +408,8 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("isolates concurrent sessions", async () => {
-      const lmA = newLlmentary(proxy);
-      const lmB = newLlmentary(proxy);
+      const lmA = newSession(proxy);
+      const lmB = newSession(proxy);
       const clientA = openaiClient(lmA);
       const clientB = openaiClient(lmB);
       await Promise.all([
@@ -434,14 +434,14 @@ describe("OpenAI E2E through llmentary", () => {
       await lmB.expect().promptContains("BETA_SESSION_B");
       await lmA.expect().callCount(1);
       await lmB.expect().callCount(1);
-      await expect(lmA.expect().promptContains("BETA_SESSION_B")).rejects.toBeInstanceOf(LlmentaryAssertionError);
-      await expect(lmB.expect().promptContains("ALPHA_SESSION_A")).rejects.toBeInstanceOf(LlmentaryAssertionError);
+      await expect(lmA.expect().promptContains("BETA_SESSION_B")).rejects.toBeInstanceOf(SessionAssertionError);
+      await expect(lmB.expect().promptContains("ALPHA_SESSION_A")).rejects.toBeInstanceOf(SessionAssertionError);
       await lmA.cleanup();
       await lmB.cleanup();
     });
 
     it("fails main assertion helpers with clear messages when false", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.chat.completions.create({
@@ -473,7 +473,7 @@ describe("OpenAI E2E through llmentary", () => {
       await expect(lm.expect().errorCode("no_such_error_code")).rejects.toThrow(/error code/i);
       await expect(lm.query({ apiType: "responses" }).expect().rawRecorded()).rejects.toThrow(/raw_request or raw_response/i);
 
-      const toolLm = newLlmentary(proxy);
+      const toolLm = newSession(proxy);
       const toolClient = openaiClient(toolLm);
       await retryNetwork(() =>
         toolClient.chat.completions.create({
@@ -487,7 +487,7 @@ describe("OpenAI E2E through llmentary", () => {
       );
       await expect(toolLm.expect().notCalled("lookup_weather")).rejects.toThrow(/not to be called/i);
 
-      const schemaLm = newLlmentary(proxy);
+      const schemaLm = newSession(proxy);
       await retryNetwork(() =>
         openaiClient(schemaLm).chat.completions.create({
           model: TOOL_MODEL,
@@ -509,7 +509,7 @@ describe("OpenAI E2E through llmentary", () => {
 
   describe("Responses", () => {
     it("records non-streaming plain text", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.responses.create({
@@ -529,7 +529,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records streaming plain text", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const stream = await retryNetwork(() =>
         client.responses.create({
@@ -554,7 +554,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records a forced tool call, result feedback, and final answer", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const response = await retryNetwork(() =>
         client.responses.create({
@@ -589,7 +589,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records a streaming forced tool call with JSON arguments from deltas", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const stream = await retryNetwork(() =>
         client.responses.create({
@@ -641,7 +641,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records parallel tool calls order-independently", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.responses.create({
@@ -664,7 +664,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records strict json_schema structured output", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.responses.create({
@@ -680,7 +680,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records a multi-turn session with count, order, and filter helpers", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await retryNetwork(() =>
         client.responses.create({
@@ -719,7 +719,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records upstream 4xx for an invalid model and invalid key", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       await expectHttpError(
         () =>
@@ -738,7 +738,7 @@ describe("OpenAI E2E through llmentary", () => {
       await scoped.errorCode(/model/i);
       await lm.cleanup();
 
-      const authLm = newLlmentary(proxy);
+      const authLm = newSession(proxy);
       const authClient = new OpenAI(authLm.openAI());
       await expectHttpError(
         () =>
@@ -762,7 +762,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("records a client abort mid-stream and leaves the proxy healthy", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const controller = new AbortController();
       const stream = await retryNetwork(() =>
@@ -793,7 +793,7 @@ describe("OpenAI E2E through llmentary", () => {
       const rawHealth = await fetch(`${proxy.controlUrl.replace(/\/$/, "")}/healthz`);
       expect(rawHealth.status).toBe(200);
       expect((await rawHealth.text()).trim()).toBe("ok");
-      const followUp = newLlmentary(proxy);
+      const followUp = newSession(proxy);
       await retryNetwork(() =>
         openaiClient(followUp).responses.create({
           model: TEXT_MODEL,
@@ -814,7 +814,7 @@ describe("OpenAI E2E through llmentary", () => {
       // A prefix-cache hit is optional. Both calls share prompt_cache_key; the
       // second call is retried up to 3 times. If none hit, warn/notice and do
       // not fail — OpenAI Responses often returns cached_tokens=0 here.
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const client = openaiClient(lm);
       const prompt = longPrompt();
       const promptCacheKey = newPromptCacheKey();
@@ -864,8 +864,8 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("isolates concurrent sessions", async () => {
-      const lmA = newLlmentary(proxy);
-      const lmB = newLlmentary(proxy);
+      const lmA = newSession(proxy);
+      const lmB = newSession(proxy);
       await Promise.all([
         retryNetwork(() =>
           openaiClient(lmA).responses.create({
@@ -888,14 +888,14 @@ describe("OpenAI E2E through llmentary", () => {
       await lmB.query({ apiType: "responses" }).expect().promptContains("BETA_SESSION_B");
       await lmA.expect().callCount(1);
       await lmB.expect().callCount(1);
-      await expect(lmA.expect().promptContains("BETA_SESSION_B")).rejects.toBeInstanceOf(LlmentaryAssertionError);
-      await expect(lmB.expect().promptContains("ALPHA_SESSION_A")).rejects.toBeInstanceOf(LlmentaryAssertionError);
+      await expect(lmA.expect().promptContains("BETA_SESSION_B")).rejects.toBeInstanceOf(SessionAssertionError);
+      await expect(lmB.expect().promptContains("ALPHA_SESSION_A")).rejects.toBeInstanceOf(SessionAssertionError);
       await lmA.cleanup();
       await lmB.cleanup();
     });
 
     it("fails main assertion helpers with clear messages when false", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       await retryNetwork(() =>
         openaiClient(lm).responses.create({
           model: TEXT_MODEL,
@@ -929,7 +929,7 @@ describe("OpenAI E2E through llmentary", () => {
         /raw_request or raw_response/i,
       );
 
-      const toolLm = newLlmentary(proxy);
+      const toolLm = newSession(proxy);
       await retryNetwork(() =>
         openaiClient(toolLm).responses.create({
           model: TOOL_MODEL,
@@ -944,7 +944,7 @@ describe("OpenAI E2E through llmentary", () => {
         /not to be called/i,
       );
 
-      const schemaLm = newLlmentary(proxy);
+      const schemaLm = newSession(proxy);
       await retryNetwork(() =>
         openaiClient(schemaLm).responses.create({
           model: TOOL_MODEL,
@@ -965,7 +965,7 @@ describe("OpenAI E2E through llmentary", () => {
 
   describe("shared", () => {
     it("proxies GET /v1/models and records the raw passthrough", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       const response = await lm.fetch(`${lm.baseURL}/models`, {
         headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}` },
       });
@@ -978,7 +978,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("parses reasoning tokens from one reasoning-model call", async () => {
-      const lm = newLlmentary(proxy);
+      const lm = newSession(proxy);
       await retryNetwork(() =>
         openaiClient(lm).responses.create({
           model: REASONING_MODEL,

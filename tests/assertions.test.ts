@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AssertionScope, LlmentaryAssertionError, recordsForTrace } from "../src/assertions.js";
+import { AssertionScope, SessionAssertionError, recordsForTrace } from "../src/assertions.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { QueryOptions, SessionTrace } from "../src/types.js";
 
@@ -114,7 +114,7 @@ describe("AssertionScope", () => {
 
     expect(soft.pass).toBe(false);
     expect(soft.error?.message).toContain("llmentary trace summary");
-    await expect(scopeFor(trace).toolCalled("missing")).rejects.toBeInstanceOf(LlmentaryAssertionError);
+    await expect(scopeFor(trace).toolCalled("missing")).rejects.toBeInstanceOf(SessionAssertionError);
   });
 
   it("requires every matching record to satisfy bounds", async () => {
