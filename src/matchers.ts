@@ -1,5 +1,5 @@
 import type { AssertionScope } from "./assertions.js";
-import type { JsonValue, ToolCallAssertionOptions } from "./types.js";
+import type { JsonValue, SpecAssertionOptions, ToolCallAssertionOptions } from "./types.js";
 
 export interface MatcherResult {
   pass: boolean;
@@ -37,6 +37,28 @@ export async function toHaveRequestParam(
   expected: JsonValue,
 ): Promise<MatcherResult> {
   const result = await scope.soft().requestParam(path, expected);
+  return {
+    pass: result.pass,
+    message: () => result.error?.message ?? result.message,
+  };
+}
+
+export async function toHaveNoSpecViolations(
+  scope: AssertionScope,
+  options: SpecAssertionOptions = {},
+): Promise<MatcherResult> {
+  const result = await scope.soft().noSpecViolations(options);
+  return {
+    pass: result.pass,
+    message: () => result.error?.message ?? result.message,
+  };
+}
+
+export async function toHaveNoIgnoredFields(
+  scope: AssertionScope,
+  options: SpecAssertionOptions = {},
+): Promise<MatcherResult> {
+  const result = await scope.soft().noIgnoredFields(options);
   return {
     pass: result.pass,
     message: () => result.error?.message ?? result.message,

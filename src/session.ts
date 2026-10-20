@@ -2,7 +2,15 @@ import { randomUUID } from "node:crypto";
 import { AssertionScope, recordsForTrace } from "./assertions.js";
 import { ControlClient } from "./control.js";
 import { firstNonEmpty } from "./env.js";
-import type { QueryOptions, SessionOptions, SessionTrace, WaitOptions } from "./types.js";
+import type {
+  ListSessionsOptions,
+  ProxyConfig,
+  QueryOptions,
+  SessionOptions,
+  SessionSummary,
+  SessionTrace,
+  WaitOptions,
+} from "./types.js";
 import { mergeWaitOptions, resolveWait, resolvedWaitToOptions } from "./wait.js";
 
 const SESSION_HEADER = "x-test-session";
@@ -66,6 +74,18 @@ export class Session {
 
   async session(): Promise<SessionTrace> {
     return this.control.getSession(this.sessionId);
+  }
+
+  async listSessions(options: ListSessionsOptions = {}): Promise<SessionSummary[]> {
+    return this.control.listSessions(options);
+  }
+
+  async config(): Promise<ProxyConfig> {
+    return this.control.getConfig();
+  }
+
+  async proxyVersion(): Promise<string | undefined> {
+    return (await this.control.getConfig()).version;
   }
 
   async cleanup(): Promise<void> {

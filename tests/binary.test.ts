@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_BINARY_NAME,
   DEFAULT_REPO,
@@ -10,7 +10,7 @@ import {
   parseChecksumFile,
   resolveBinary,
 } from "../src/binary.js";
-import { formatUpstreamSpec, originForGoUpstream, redactArgs, resolveUpstreamSpec } from "../src/proxy.js";
+import { formatUpstreamSpec, looksLikeLlmentaryProxy, originForGoUpstream, redactArgs, resolveUpstreamSpec } from "../src/proxy.js";
 
 describe("binary release asset matching", () => {
   it("matches GoReleaser-style Linux x64 tarballs", () => {
@@ -112,7 +112,7 @@ describe("proxy CLI helpers", () => {
     ]);
   });
 
-  it("strips trailing /v1 so the Go binary does not join /v1/v1", () => {
+  it("keeps originForGoUpstream available but resolveUpstreamSpec no longer strips /v1", () => {
     expect(originForGoUpstream("https://api.openai.com/v1")).toBe("https://api.openai.com");
     expect(originForGoUpstream("http://127.0.0.1:9/v1/")).toBe("http://127.0.0.1:9");
     expect(originForGoUpstream("https://host/openai/deployments/x?api-version=2024-02-01")).toBe(
@@ -120,21 +120,54 @@ describe("proxy CLI helpers", () => {
     );
     expect(originForGoUpstream("https://host/v1?api-version=2024-02-01")).toBe("https://host/?api-version=2024-02-01");
     expect(originForGoUpstream("https://host/foo?redirect=/v1")).toBe("https://host/foo?redirect=/v1");
-    expect(resolveUpstreamSpec({ upstreamBaseUrl: "http://127.0.0.1:9/v1" })).toBe("openai=http://127.0.0.1:9");
-    expect(resolveUpstreamSpec({ upstreams: "openai=https://api.openai.com/v1" })).toBe("openai=https://api.openai.com");
+    expect(resolveUpstreamSpec({ upstreamBaseUrl: "http://127.0.0.1:9/v1" })).toBe("openai=http://127.0.0.1:9/v1");
+    expect(resolveUpstreamSpec({ upstreams: "openai=https://api.openai.com/v1" })).toBe(
+      "openai=https://api.openai.com/v1",
+    );
     expect(
       resolveUpstreamSpec({
         env: { LLMENTARY_UPSTREAM_BASE_URL: "", OPENAI_BASE_URL: "  " },
       }),
-    ).toBe("openai=https://api.openai.com");
+    ).toBeUndefined();
     expect(
       resolveUpstreamSpec({
         upstreamBaseUrl: "",
         env: { OPENAI_BASE_URL: "https://api.openai.com/v1" },
       }),
-    ).toBe("openai=https://api.openai.com");
+    ).toBeUndefined();
     expect(resolveUpstreamSpec({ upstreamBaseUrl: "https://host/v1?api-version=2024-02-01" })).toBe(
-      "openai=https://host/?api-version=2024-02-01",
+      "openai=https://host/v1?api-version=2024-02-01",
     );
+    expect(resolveUpstreamSpec({ env: {} })).toBeUndefined();
+  });
+
+  it("does not read OPENAI_BASE_URL as the upstream", () => {
+    expect(
+      resolveUpstreamSpec({
+        env: { OPENAI_BASE_URL: "https://api.openai.com/v1" },
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveUpstreamSpec({
+        env: { LLMENTARY_UPSTREAM_BASE_URL: "https://openrouter.ai/api/v1", OPENAI_BASE_URL: "http://127.0.0.1:7777/v1" },
+      }),
+    ).toBe("openai=https://openrouter.ai/api/v1");
+  });
+
+  it("warns when OPENAI_BASE_URL points at a llmentary proxy", () => {
+    expect(looksLikeLlmentaryProxy("http://127.0.0.1:7777/s/t1/v1")).toBe(true);
+    expect(looksLikeLlmentaryProxy("https://api.openai.com/v1")).toBe(false);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      resolveUpstreamSpec({
+        env: {
+          OPENAI_BASE_URL: "http://127.0.0.1:4010/s/abc/v1",
+          LLMENTARY_PROXY_URL: "http://127.0.0.1:4010",
+        },
+      });
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/OPENAI_BASE_URL points at a llmentary proxy/));
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

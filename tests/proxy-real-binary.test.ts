@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { llmentary, startProxy, type ProxyHandle } from "../src/index.js";
+import { ControlClient, SessionNotFound, llmentary, startProxy, type ProxyHandle, type Session } from "../src/index.js";
 
 describe("real Go proxy with fake upstream", () => {
   let upstream: Awaited<ReturnType<typeof startFakeUpstream>>;
@@ -126,6 +127,71 @@ describe("real Go proxy with fake upstream", () => {
     await lm.cleanup();
   });
 
+  it("lists sessions, returns SessionNotFound, and exposes proxy version", async () => {
+    const lm = llmentary();
+    await postChat(lm);
+    const sessions = await lm.listSessions();
+    expect(sessions.some((session) => session.id === lm.sessionId)).toBe(true);
+    const control = new ControlClient({ controlUrl: proxy.controlUrl });
+    await expect(control.getSession("nope-never-created")).rejects.toBeInstanceOf(SessionNotFound);
+    await expect(control.getSession("nope-never-created")).rejects.toThrow(/no calls recorded for session "nope-never-created"/);
+    const listed = await control.listSessions();
+    expect(listed.some((session) => session.id === "nope-never-created")).toBe(false);
+    const config = await control.getConfig();
+    expect(config.version).toEqual(expect.any(String));
+    expect(config.version?.length).toBeGreaterThan(0);
+    expect(await lm.proxyVersion()).toBe(config.version);
+    await lm.cleanup();
+  });
+
+  it("waits until minCalls finished calls arrive", async () => {
+    const lm = llmentary();
+    const pending = lm.wait({ minCalls: 2, timeout: 8, quiet: "50ms" });
+    await delay(150);
+    await postChat(lm);
+    await delay(150);
+    await postChat(lm, { stream: true });
+    const trace = await pending;
+    expect(trace.calls.length).toBeGreaterThanOrEqual(2);
+    await lm.cleanup();
+  });
+
+  it("fails expect helpers on zero calls with the session id and known ids", async () => {
+    const known = llmentary();
+    await postChat(known);
+    const empty = llmentary({ defaultWait: { timeout: "2s", quiet: "50ms" } });
+    await expect(empty.expect().toolCalled("nope")).rejects.toThrow(
+      new RegExp(`no calls recorded for session ${empty.sessionId}`),
+    );
+    try {
+      await empty.expect().toolCalled("nope");
+    } catch (error) {
+      expect(String(error)).toContain(known.sessionId);
+    }
+    await known.cleanup();
+    await empty.cleanup();
+  });
+
+  it("reads spec violations from a request with an unknown field", async () => {
+    const lm = llmentary();
+    const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        foo: 1,
+        messages: [{ role: "user", content: "weather in Amsterdam" }],
+      }),
+    });
+    expect(response.ok).toBe(true);
+    const failed = await lm.expect().soft().noSpecViolations();
+    expect(failed.pass).toBe(false);
+    expect(failed.message).toMatch(/foo/);
+    expect(failed.message).toMatch(/unevaluatedProperties|request/);
+    await lm.expect().noSpecViolations({ side: "request", ignorePaths: ["/foo"] });
+    await lm.cleanup();
+  });
+
   it("records streaming Responses", async () => {
     const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/responses`, {
@@ -141,6 +207,26 @@ describe("real Go proxy with fake upstream", () => {
     await lm.cleanup();
   });
 });
+
+async function postChat(lm: Session, extra: Record<string, unknown> = {}): Promise<Response> {
+  const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: [{ role: "user", content: "weather in Amsterdam" }],
+      tools: [
+        {
+          type: "function",
+          function: { name: "lookup_weather", parameters: { type: "object", properties: { city: { type: "string" } } } },
+        },
+      ],
+      ...extra,
+    }),
+  });
+  if (extra.stream === true) await response.text();
+  return response;
+}
 
 async function startFakeUpstream(): Promise<{ url: string; stop(): Promise<void> }> {
   const server = createServer(async (request, response) => {

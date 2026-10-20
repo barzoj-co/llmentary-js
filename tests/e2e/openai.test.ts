@@ -39,7 +39,6 @@ describe("OpenAI E2E through llmentary", () => {
       throw new Error("LLMENTARY_BIN is required so E2E traffic goes through the real Go proxy.");
     }
     proxy = await startProxy({
-      upstreamBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
       healthTimeoutMs: 20_000,
     });
     process.env.LLMENTARY_PROXY_URL = proxy.proxyUrl;
@@ -975,6 +974,85 @@ describe("OpenAI E2E through llmentary", () => {
       await lm.expect().callCount(1);
       await lm.expect().rawRecorded();
       await lm.cleanup();
+    });
+
+    it("uses the default upstream with no client setting", async () => {
+      const config = await new ControlClient({ controlUrl: proxy.controlUrl }).getConfig();
+      expect(JSON.stringify(config.raw)).toMatch(/api\.openai\.com/);
+      const lm = newSession(proxy);
+      await retryNetwork(() =>
+        openaiClient(lm).chat.completions.create({
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 8,
+          messages: [{ role: "user", content: "Reply with the single word ping." }],
+        }),
+      );
+      await lm.expect().outputText();
+      await lm.expect().noSpecViolations();
+      await lm.cleanup();
+    });
+
+    it("waits for minCalls on a live Chat Completions call", async () => {
+      const lm = newSession(proxy);
+      const pending = lm.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
+      await delay(250);
+      await retryNetwork(() =>
+        openaiClient(lm).chat.completions.create({
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 8,
+          stream: true,
+          stream_options: { include_usage: true },
+          messages: [{ role: "user", content: "Reply with the single word ping." }],
+        }),
+      ).then(async (stream) => {
+        await consumeChatStream(stream);
+      });
+      const trace = await pending;
+      expect(trace.calls.length).toBeGreaterThanOrEqual(1);
+      await lm.cleanup();
+    });
+
+    it("passes noSpecViolations on a live streaming tool call and fails on an unknown request field", async () => {
+      const lm = newSession(proxy);
+      const stream = await retryNetwork(() =>
+        openaiClient(lm).chat.completions.create({
+          model: TOOL_MODEL,
+          temperature: 0,
+          max_tokens: 32,
+          stream: true,
+          messages: [{ role: "user", content: "Use lookup_weather for Amsterdam." }],
+          tools: [weatherToolChat()],
+          tool_choice: { type: "function", function: { name: "lookup_weather" } },
+        }),
+      );
+      await consumeChatStream(stream);
+      await lm.expect().noSpecViolations();
+
+      const dirty = newSession(proxy);
+      const res = await retryNetwork(() =>
+        dirty.fetch(`${dirty.baseURL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}`,
+          },
+          body: JSON.stringify({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            ltl_unknown_field: true,
+            messages: [{ role: "user", content: "Reply with the single word ping." }],
+          }),
+        }),
+      );
+      await res.text();
+      const failed = await dirty.expect().soft().noSpecViolations({ side: "request" });
+      expect(failed.pass).toBe(false);
+      expect(failed.message).toMatch(/ltl_unknown_field/);
+      await lm.cleanup();
+      await dirty.cleanup();
     });
 
     it("waits with default timeout and quiet after a streaming Chat Completions call", async () => {

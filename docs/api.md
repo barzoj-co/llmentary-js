@@ -4,7 +4,7 @@
 
 - A **proxy** is the separate `llmentary` Go binary. It accepts OpenAI-compatible traffic, forwards to an upstream, and records calls in memory.
 - A **session** is selected with `X-Test-Session` or W3C `baggage` key `llmentary.session.id`.
-- The **control API** is read through `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, and `/healthz`.
+- The **control API** is read through `/sessions`, `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, `/healthz`, and `/config`.
 - A **Session** is a per-test handle containing the session id, proxy base URL, headers, fetch helper, query scopes, cleanup, and assertions.
 
 ## Creating a session
@@ -48,12 +48,13 @@ try {
 }
 ```
 
-`startProxy()` attaches when `LLMENTARY_PROXY_URL` is set (`LLMENTARY_CONTROL_URL` for the separate control port). Control auth is `LLMENTARY_CONTROL_TOKEN` or `LLMENTARY_BEARER_TOKEN`. Empty env values are treated as unset. If no upstream is given, it defaults to `openai=https://api.openai.com` (or `OPENAI_BASE_URL` with a trailing `/v1` stripped). The Go binary prefixes the client request path (`/v1/chat/completions`, `/v1/responses`), so passing `https://api.openai.com/v1` would otherwise become `/v1/v1/...`.
+`startProxy()` attaches when `LLMENTARY_PROXY_URL` is set (`LLMENTARY_CONTROL_URL` for the separate control port). Control auth is `LLMENTARY_CONTROL_TOKEN` or `LLMENTARY_BEARER_TOKEN`. Empty env values are treated as unset. If no upstream is given, the client omits `-upstream` and the proxy defaults to `openai=https://api.openai.com/v1`. Upstream URLs are passed through unchanged: the proxy owns the overlap join so `/v1` + `/v1/chat/completions` does not become `/v1/v1`. `OPENAI_BASE_URL` is not used as the upstream (it is the app's client base, often the proxy itself). Set `LLMENTARY_UPSTREAM_BASE_URL` or `upstreams` / `upstreamBaseUrl` when you need a non-default provider. If `OPENAI_BASE_URL` points at a llmentary proxy, the client warns.
 
 When it starts a process, the binary is resolved as described in [binaries.md](binaries.md). The Go proxy CLI is:
 
 ```
-llmentary -listen 127.0.0.1:7777 -control 127.0.0.1:7778 -upstream openai=https://api.openai.com
+llmentary -listen 127.0.0.1:7777 -control 127.0.0.1:7778
+# optional: -upstream openai=https://api.openai.com/v1
 ```
 
 Equivalent env: `LLMENTARY_LISTEN`, `LLMENTARY_CONTROL_LISTEN`, `LLMENTARY_UPSTREAMS`, optional `LLMENTARY_CONTROL_TOKEN`. `/healthz` is on the control listener, not the proxy listener. OpenAI-compatible clients use `${proxyUrl}/v1`. Override with `args` or `LLMENTARY_PROXY_START_ARGS` if needed.
@@ -115,7 +116,19 @@ await lm.expect().errorType(/invalid_request/i);
 await lm.expect().errorCode(/model/i);
 await lm.expect().incomplete();
 await lm.expect().rawRecorded();
+await lm.expect().noSpecViolations();
+await lm.expect().noIgnoredFields({ ignorePaths: ["/foo"] });
 ```
+
+`noSpecViolations` / `noIgnoredFields` read `normalized.validation`, `normalized.spec_violations`, and `normalized.ignored_fields`. An empty `[]` is clean; a missing field means validation was not run (failure unless `allowUnvalidated: true`). Options: `side`, `calls` (0-based indices or call ids), `ignorePaths`, `ignoreKeywords`. Failure lines look like `<call#> <api_family> <side> <path>: <message> — <hint>`. Vitest/Jest matchers: `toHaveNoSpecViolations()`, `toHaveNoIgnoredFields()`. Per-call accessors are `call.validation`, `call.specViolations`, `call.ignoredFields`; the trace has `trace.specViolations()` / `trace.ignoredFields()`. Each line of the generated summary includes `spec=clean`, `spec=N violation(s)`, or `spec=not checked` (singular `spec=1 violation`).
+
+| Field | Meaning |
+|---|---|
+| `validation` | Metadata: was the call checked, which profile/mode, spec SHA. Not a finding. |
+| `spec_violations` | Findings. `[]` is clean; omitted means not checked. |
+| `ignored_fields` | Vendor extensions / dropped fields with `severity:"warning"`. Same empty-vs-absent rule. |
+
+Expect helpers on a session with zero calls fail with `no calls recorded for session <id>; known sessions: …` plus the trace summary. `GET /sessions/{id}` 404 raises `SessionNotFound`.
 
 Failures throw `SessionAssertionError`; its message appends the proxy trace summary when present, or a generated summary with call count, API type, model, tools, finish reasons, and error markers.
 
@@ -196,14 +209,18 @@ import { ControlClient } from "llmentary";
 
 const control = new ControlClient({ controlUrl: "http://127.0.0.1:4011" });
 await control.health();
-await control.wait("session-id", { timeout: 30, quiet: 0.5 });
+await control.getConfig(); // includes proxy version
+await control.listSessions();
+await control.wait("session-id", { timeout: 30, quiet: 0.5, minCalls: 2 });
 // timeoutMs / idleMs still work (deprecated aliases of timeout / quiet)
 await control.wait("session-id", { timeoutMs: 5_000, idleMs: 100 });
-await control.getSession("session-id");
+await control.getSession("session-id"); // SessionNotFound on 404
 await control.getOtlp("session-id");
 await control.deleteSession("session-id");
 ```
 
+`lm.listSessions()`, `lm.config()`, and `lm.proxyVersion()` are the same control calls on a `Session`.
+
 The raw JSON returned by the proxy is preserved on `SessionTrace.raw` and `CallRecord.raw`. The client maps the Go control schema (`api_family`, base64 `raw_request`/`raw_response`, `normalized.model` / `tool_calls` / `output_text` / `usage` / `error.mid_stream`) plus common snake_case/camelCase envelopes for assertion convenience without mutating the raw shape.
 
-`wait` always sends `timeout` and `quiet` as Go duration strings (`30s`, `500ms`). Numbers on `timeout` / `quiet` are seconds. The deprecated `timeoutMs` / `idleMs` option names still work (milliseconds). Defaults and env names match the other clients: `30s` / `500ms`, `LLMENTARY_WAIT_TIMEOUT`, `LLMENTARY_WAIT_QUIET` (Go duration or bare seconds). The previous JS env names `LLMENTARY_WAIT_TIMEOUT_MS` / `LLMENTARY_WAIT_IDLE_MS` remain as deprecated aliases (milliseconds) and emit a one-time `DeprecationWarning`. A proxy 504 becomes `wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`. The client HTTP abort is `timeout + quiet + 5s` so it cannot fire before the proxy answers.
+`wait` always sends `timeout` and `quiet` as Go duration strings (`30s`, `500ms`). `minCalls` is sent as `min_calls` when set. Numbers on `timeout` / `quiet` are seconds. The deprecated `timeoutMs` / `idleMs` option names still work (milliseconds). Defaults and env names match the other clients: `30s` / `500ms`, `LLMENTARY_WAIT_TIMEOUT`, `LLMENTARY_WAIT_QUIET` (Go duration or bare seconds). The previous JS env names `LLMENTARY_WAIT_TIMEOUT_MS` / `LLMENTARY_WAIT_IDLE_MS` remain as deprecated aliases (milliseconds) and emit a one-time `DeprecationWarning`. A proxy 504 becomes `wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`. The client HTTP abort is `timeout + quiet + 5s` so it cannot fire before the proxy answers.

@@ -1,10 +1,14 @@
-import type { CallRecord, JsonValue, SessionTrace, WaitOptions } from "./types.js";
-import { normalizeSessionTrace } from "./normalize.js";
-import {
-  WAIT_HTTP_PADDING_MS,
-  formatWaitTimeoutError,
-  resolveWait,
-} from "./wait.js";
+import type {
+  CallRecord,
+  JsonValue,
+  ListSessionsOptions,
+  ProxyConfig,
+  SessionSummary,
+  SessionTrace,
+  WaitOptions,
+} from "./types.js";
+import { asArray, asObject, normalizeSessionTrace, numberAt, stringAt, valueAt } from "./normalize.js";
+import { WAIT_HTTP_PADDING_MS, WaitTimeoutError, resolveWait } from "./wait.js";
 
 export type ControlFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -38,6 +42,19 @@ export class ControlClient {
     return this.request("/healthz");
   }
 
+  async getConfig(): Promise<ProxyConfig> {
+    const body = await this.request("/config");
+    return normalizeProxyConfig(body);
+  }
+
+  async listSessions(options: ListSessionsOptions = {}): Promise<SessionSummary[]> {
+    const params = new URLSearchParams();
+    if (options.source) params.set("source", options.source);
+    const query = params.toString();
+    const body = await this.request(`/sessions${query ? `?${query}` : ""}`);
+    return normalizeSessionList(body);
+  }
+
   async getSession(sessionId: string): Promise<SessionTrace> {
     const body = await this.request(`/sessions/${encodeURIComponent(sessionId)}`);
     return normalizeSessionTrace(sessionId, body);
@@ -48,6 +65,7 @@ export class ControlClient {
     const params = new URLSearchParams();
     params.set("timeout", resolved.timeout);
     params.set("quiet", resolved.quiet);
+    if (resolved.minCalls !== undefined) params.set("min_calls", String(resolved.minCalls));
     const abortMs = resolved.timeoutMs + resolved.quietMs + WAIT_HTTP_PADDING_MS;
     const timeout = AbortSignal.timeout(abortMs);
     try {
@@ -58,7 +76,7 @@ export class ControlClient {
     } catch (error) {
       if (error instanceof ControlApiError && error.status === 504) {
         const stats = await this.waitTimeoutStats(sessionId, error.body);
-        throw new Error(formatWaitTimeoutError(sessionId, resolved.timeout, stats.calls, stats.stillActive));
+        throw new WaitTimeoutError(sessionId, resolved.timeout, stats.calls, stats.stillActive);
       }
       throw error;
     }
@@ -92,6 +110,14 @@ export class ControlClient {
     const response = await this.fetchImpl(`${this.controlUrl}${path}`, { ...init, headers, signal });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      const sessionId = sessionLookupId(path);
+      if (response.status === 404 && sessionId) {
+        throw new SessionNotFound(sessionId, {
+          status: response.status,
+          path,
+          body: text,
+        });
+      }
       throw new ControlApiError(
         `llmentary control API ${init.method ?? "GET"} ${path} failed: ${response.status} ${response.statusText}${text ? `\n${text}` : ""}`,
         { status: response.status, path, body: text },
@@ -143,17 +169,107 @@ export class ControlApiError extends Error {
   }
 }
 
+export class SessionNotFound extends ControlApiError {
+  readonly sessionId: string;
+
+  constructor(sessionId: string, options: { status: number; path: string; body: string }) {
+    const parsed = parseControlError(options.body);
+    const hint = parsed?.message?.trim() || `no calls recorded for session "${sessionId}"; known sessions: GET /sessions`;
+    super(hint, options);
+    this.name = "SessionNotFound";
+    this.sessionId = sessionId;
+  }
+}
+
+export function formatZeroCallsMessage(sessionId: string, knownSessionIds: string[]): string {
+  const known = knownSessionIds.length > 0 ? knownSessionIds.join(", ") : "(none)";
+  return `no calls recorded for session ${sessionId}; known sessions: ${known}`;
+}
+
+export function parseControlError(text: string): { type?: string; message?: string; callsSeen?: number; minCalls?: number } | undefined {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as JsonValue;
+    const object = asObject(parsed);
+    const error = asObject(valueAt(object, "error") ?? parsed);
+    const type = stringAt(error, "type");
+    const message = stringAt(error, "message");
+    const callsSeen = numberAt(error, "calls_seen") ?? numberAt(error, "callsSeen");
+    const minCalls = numberAt(error, "min_calls") ?? numberAt(error, "minCalls");
+    if (!type && !message && callsSeen === undefined) return undefined;
+    return {
+      ...(type ? { type } : {}),
+      ...(message ? { message } : {}),
+      ...(callsSeen !== undefined ? { callsSeen } : {}),
+      ...(minCalls !== undefined ? { minCalls } : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function normalizeSessionList(raw: JsonValue): SessionSummary[] {
+  const object = asObject(raw);
+  const values = asArray(valueAt(object, "sessions") ?? raw);
+  return values
+    .map((value) => normalizeSessionSummary(value))
+    .filter((session): session is SessionSummary => Boolean(session));
+}
+
+export function normalizeSessionSummary(raw: JsonValue): SessionSummary | undefined {
+  const object = asObject(raw);
+  const id = stringAt(object, "id") ?? stringAt(object, "session_id");
+  if (!id) return undefined;
+  const sources = asArray(valueAt(object, "sources")).filter((value): value is string => typeof value === "string");
+  const firstStartedAt = stringAt(object, "first_started_at") ?? stringAt(object, "firstStartedAt");
+  const lastEndedAt = stringAt(object, "last_ended_at") ?? stringAt(object, "lastEndedAt");
+  return {
+    id,
+    calls: numberAt(object, "calls") ?? 0,
+    active: numberAt(object, "active") ?? 0,
+    sources,
+    ...(firstStartedAt ? { firstStartedAt } : {}),
+    ...(lastEndedAt ? { lastEndedAt } : {}),
+    raw,
+  };
+}
+
+export function normalizeProxyConfig(raw: JsonValue): ProxyConfig {
+  const object = asObject(raw);
+  const version = stringAt(object, "version") ?? stringAt(object, "Version");
+  const upstreams = valueAt(object, "upstreams") ?? valueAt(object, "Upstreams");
+  return {
+    ...(version ? { version } : {}),
+    ...(upstreams !== undefined ? { upstreams } : {}),
+    raw,
+  };
+}
+
+function sessionLookupId(path: string): string | undefined {
+  const pathname = path.split("?")[0] ?? path;
+  const match = pathname.match(/^\/sessions\/([^/]+)(?:\/otlp)?$/);
+  if (!match?.[1]) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
 function trySessionCounts(sessionId: string, text: string): { calls: number; stillActive: number } | undefined {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{")) return undefined;
   try {
     const parsed = JSON.parse(trimmed) as JsonValue;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+    const error = parseControlError(trimmed);
     const hasCalls = ["calls", "records", "requests", "traces"].some((key) =>
       Array.isArray((parsed as Record<string, unknown>)[key]),
     );
-    if (!hasCalls) return undefined;
-    return sessionCounts(normalizeSessionTrace(sessionId, parsed));
+    if (hasCalls) return sessionCounts(normalizeSessionTrace(sessionId, parsed));
+    if (error?.callsSeen !== undefined) return { calls: error.callsSeen, stillActive: 0 };
+    return undefined;
   } catch {
     return undefined;
   }

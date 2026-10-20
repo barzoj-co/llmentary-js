@@ -1,4 +1,13 @@
-import type { ApiType, CallRecord, JsonObject, JsonValue, SessionTrace } from "./types.js";
+import type {
+  ApiType,
+  CallRecord,
+  IgnoredField,
+  JsonObject,
+  JsonValue,
+  SessionTrace,
+  SpecViolation,
+  Validation,
+} from "./types.js";
 
 export function normalizeSessionTrace(sessionId: string, raw: JsonValue): SessionTrace {
   const object = asObject(raw);
@@ -11,12 +20,19 @@ export function normalizeSessionTrace(sessionId: string, raw: JsonValue): Sessio
     [];
   const calls = callsValue.map((value) => normalizeCallRecord(value));
   const summary = stringAt(object, "summary") ?? stringAt(object, "trace_summary");
-  return {
+  const trace: SessionTrace = {
     id,
     calls,
     raw,
     ...(summary !== undefined ? { summary } : {}),
+    specViolations() {
+      return calls.flatMap((call) => call.specViolations ?? []);
+    },
+    ignoredFields() {
+      return calls.flatMap((call) => call.ignoredFields ?? []);
+    },
   };
+  return trace;
 }
 
 export function normalizeCallRecord(raw: JsonValue): CallRecord {
@@ -39,16 +55,22 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     objectAt(object, "usage") ??
     objectAt(asObject(response), "usage") ??
     objectAt(asObject(objectAt(object, "final_response")), "usage");
-  const apiType = normalizeApiType(
+  const apiFamily =
     stringAt(object, "api_family") ??
-      stringAt(object, "api_type") ??
-      stringAt(object, "apiType") ??
-      stringAt(object, "endpoint") ??
-      stringAt(metadata, "api_type") ??
+    stringAt(object, "apiFamily") ??
+    stringAt(object, "api_type") ??
+    stringAt(object, "apiType") ??
+    stringAt(object, "endpoint") ??
+    stringAt(metadata, "api_type");
+  const apiType = normalizeApiType(
+    apiFamily ??
       inferApiTypeFromRequestPath(
         stringAt(objectAt(object, "upstream"), "url") ?? stringAt(object, "path"),
       ),
   );
+  const validation = parseValidation(objectAt(normalized, "validation") ?? objectAt(object, "validation"));
+  const specViolations = parseSpecViolationList(normalized, object);
+  const ignoredFields = parseIgnoredFieldList(normalized, object);
   const model =
     modelFromNormalized(normalized) ??
     stringAt(object, "model") ??
@@ -68,7 +90,11 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     raw,
     ...(id ? { id } : {}),
     ...(apiType ? { apiType } : {}),
+    ...(apiFamily ? { apiFamily } : {}),
     ...(model ? { model } : {}),
+    ...(validation ? { validation } : {}),
+    ...(specViolations !== undefined ? { specViolations } : {}),
+    ...(ignoredFields !== undefined ? { ignoredFields } : {}),
     ...(request !== undefined ? { request } : {}),
     ...(response !== undefined ? { response } : {}),
     ...(error !== undefined ? { error } : {}),
@@ -271,4 +297,123 @@ function enrichUsageDetails(
 export function firstPositiveOrDefined(...values: Array<number | undefined>): number | undefined {
   const defined = values.filter((value): value is number => value !== undefined);
   return defined.find((value) => value > 0) ?? defined[0];
+}
+
+function hasOwn(object: JsonObject | undefined, key: string): boolean {
+  return Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
+}
+
+function parseValidation(raw: JsonObject | undefined): Validation | undefined {
+  if (!raw || Object.keys(raw).length === 0) return undefined;
+  const out: Validation = { raw };
+  const mode = stringAt(raw, "mode");
+  const profile = stringAt(raw, "profile");
+  const specSha = stringAt(raw, "spec_sha") ?? stringAt(raw, "specSha");
+  const skippedReason = stringAt(raw, "skipped_reason") ?? stringAt(raw, "skippedReason");
+  const schemaSubsetRetrieved = stringAt(raw, "schema_subset_retrieved") ?? stringAt(raw, "schemaSubsetRetrieved");
+  const durationUs = numberAt(raw, "duration_us") ?? numberAt(raw, "durationUs");
+  if (mode) out.mode = mode;
+  if (profile) out.profile = profile;
+  if (specSha) out.specSha = specSha;
+  if (typeof valueAt(raw, "request_checked") === "boolean" || typeof valueAt(raw, "requestChecked") === "boolean") {
+    out.requestChecked = Boolean(valueAt(raw, "request_checked") ?? valueAt(raw, "requestChecked"));
+  }
+  if (typeof valueAt(raw, "response_checked") === "boolean" || typeof valueAt(raw, "responseChecked") === "boolean") {
+    out.responseChecked = Boolean(valueAt(raw, "response_checked") ?? valueAt(raw, "responseChecked"));
+  }
+  if (skippedReason) out.skippedReason = skippedReason;
+  if (typeof valueAt(raw, "truncated") === "boolean") out.truncated = Boolean(valueAt(raw, "truncated"));
+  if (schemaSubsetRetrieved) out.schemaSubsetRetrieved = schemaSubsetRetrieved;
+  if (durationUs !== undefined) out.durationUs = durationUs;
+  return out;
+}
+
+function parseSpecViolationList(normalized: JsonObject | undefined, object: JsonObject): SpecViolation[] | undefined {
+  const source = hasOwn(normalized, "spec_violations")
+    ? normalized
+    : hasOwn(normalized, "specViolations")
+      ? normalized
+      : hasOwn(object, "spec_violations")
+        ? object
+        : hasOwn(object, "specViolations")
+          ? object
+          : undefined;
+  if (!source) return undefined;
+  const values = asArray(valueAt(source, "spec_violations") ?? valueAt(source, "specViolations"));
+  return values.map((value) => parseSpecViolation(value));
+}
+
+function parseIgnoredFieldList(normalized: JsonObject | undefined, object: JsonObject): IgnoredField[] | undefined {
+  const source = hasOwn(normalized, "ignored_fields")
+    ? normalized
+    : hasOwn(normalized, "ignoredFields")
+      ? normalized
+      : hasOwn(object, "ignored_fields")
+        ? object
+        : hasOwn(object, "ignoredFields")
+          ? object
+          : undefined;
+  if (!source) return undefined;
+  const values = asArray(valueAt(source, "ignored_fields") ?? valueAt(source, "ignoredFields"));
+  return values.map((value) => parseIgnoredField(value));
+}
+
+function parseSpecViolation(raw: JsonValue): SpecViolation {
+  const object = asObject(raw);
+  const out: SpecViolation = { raw };
+  const side = stringAt(object, "side");
+  const source = stringAt(object, "source");
+  const path = stringAt(object, "path");
+  const pointer = stringAt(object, "pointer");
+  const keyword = stringAt(object, "keyword");
+  const message = stringAt(object, "message");
+  const profile = stringAt(object, "profile");
+  const schemaRef = stringAt(object, "schema_ref") ?? stringAt(object, "schemaRef");
+  const offset = numberAt(object, "offset");
+  const eventIndex = numberAt(object, "event_index") ?? numberAt(object, "eventIndex");
+  if (side) out.side = side;
+  if (source) out.source = source;
+  if (path) out.path = path;
+  if (pointer) out.pointer = pointer;
+  if (keyword) out.keyword = keyword;
+  if (message) out.message = message;
+  if (profile) out.profile = profile;
+  if (schemaRef) out.schemaRef = schemaRef;
+  if (offset !== undefined) out.offset = offset;
+  if (eventIndex !== undefined) out.eventIndex = eventIndex;
+  return out;
+}
+
+function parseIgnoredField(raw: JsonValue): IgnoredField {
+  const object = asObject(raw);
+  const out: IgnoredField = { raw };
+  const side = stringAt(object, "side");
+  const path = stringAt(object, "path");
+  const pointer = stringAt(object, "pointer");
+  const kind = stringAt(object, "kind");
+  const severity = stringAt(object, "severity");
+  const message = stringAt(object, "message");
+  if (side) out.side = side;
+  if (path) out.path = path;
+  if (pointer) out.pointer = pointer;
+  if (kind) out.kind = kind;
+  if (severity) out.severity = severity;
+  if (message) out.message = message;
+  return out;
+}
+
+export function validationWasRun(record: CallRecord): boolean {
+  if (record.specViolations !== undefined) return true;
+  const validation = record.validation;
+  if (!validation) return false;
+  if (validation.skippedReason) return false;
+  if (validation.requestChecked === true || validation.responseChecked === true) return true;
+  if (validation.mode && validation.mode !== "off") return true;
+  return false;
+}
+
+export function specStatusForRecord(record: CallRecord): string {
+  if (!validationWasRun(record)) return "not checked";
+  const count = record.specViolations?.length ?? 0;
+  return count === 0 ? "clean" : `${count} violation${count === 1 ? "" : "s"}`;
 }

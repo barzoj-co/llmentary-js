@@ -87,6 +87,8 @@ describe("llmentary env fallbacks", () => {
     });
     await lm.wait();
     expect(urls[0]?.split("?")[1]).toBe("timeout=90s&quiet=200ms");
+    await lm.wait({ minCalls: 2 });
+    expect(urls[1]?.split("?")[1]).toBe("timeout=90s&quiet=200ms&min_calls=2");
   });
 
   it("names LLMENTARY_WAIT_TIMEOUT when the env value is invalid", () => {
