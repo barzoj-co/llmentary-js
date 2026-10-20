@@ -167,6 +167,9 @@ describe("finalResponseMentionsAny and toolResultInPrompt", () => {
 
   it("passes on a golden tool round-trip and fails on a mutated trace", async () => {
     await expect(scopeFor(clean).toolResultInPrompt("lookup_weather")).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(clean, { offersTool: "lookup_weather" }).toolResultInPrompt("lookup_weather")).resolves.toMatchObject({
+      pass: true,
+    });
     await expect(scopeFor(clean).toolResultInPrompt("lookup_weather", "SEED_X")).resolves.toMatchObject({ pass: true });
     await expect(scopeFor(clean).soft().toolResultInPrompt("lookup_weather", "SEED_Y")).resolves.toMatchObject({
       pass: false,

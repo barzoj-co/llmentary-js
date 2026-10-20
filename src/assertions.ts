@@ -497,16 +497,15 @@ export class AssertionScope {
 
   async toolResultInPrompt(name?: string, expected?: string | RegExp): Promise<AssertionResult> {
     return this.evaluate("expected tool result in the next prompt", (trace) => {
-      const records = recordsForTrace(trace, this.query);
+      const selected = recordsForTrace(trace, this.query);
       let sawCall = false;
-      for (let index = 0; index < records.length; index += 1) {
-        const record = records[index];
-        if (!record) continue;
+      for (const record of selected) {
         const called = toolCallsForPayload(record.response, record).filter((call) => (name ? call.name === name : true));
         if (called.length === 0) continue;
         sawCall = true;
         const ids = new Set(called.map((call) => call.id).filter((id): id is string => Boolean(id)));
-        const next = records[index + 1];
+        const origin = trace.calls.indexOf(record);
+        const next = origin >= 0 ? trace.calls[origin + 1] : undefined;
         if (!next || ids.size === 0) continue;
         const contents = toolResultContents(next.request, ids);
         if (
