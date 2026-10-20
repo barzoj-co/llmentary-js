@@ -151,7 +151,6 @@
     "tinypool": "2.1.2"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   }
 }
