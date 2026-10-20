@@ -1,4 +1,4 @@
-export { LabAssertionError, AssertionScope, formatTraceSummary } from "./assertions.js";
+export { LlmentaryAssertionError, AssertionScope, formatTraceSummary } from "./assertions.js";
 export {
   resolveBinary,
   assetNameCandidates,
@@ -9,7 +9,7 @@ export {
 } from "./binary.js";
 export { ControlClient, parseControlBody } from "./control.js";
 export type { ControlClientOptions, ControlFetch } from "./control.js";
-export { createLab, Lab, LabQuery, sessionHeaders } from "./lab.js";
+export { createLlmentary, llmentary, Llmentary, LlmentaryQuery, sessionHeaders } from "./llmentary.js";
 export { startProxy, waitForHealth, formatUpstreamSpec, resolveUpstreamSpec, originForGoUpstream } from "./proxy.js";
 export type {
   ApiType,
@@ -22,8 +22,8 @@ export type {
   JsonPrimitive,
   JsonSchemaAssertionOptions,
   JsonValue,
-  LabConfig,
-  LabGlobals,
+  LlmentaryGlobals,
+  LlmentaryOptions,
   NormalizedToolCall,
   ProxyHandle,
   ProxyLaunchOptions,

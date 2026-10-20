@@ -25,12 +25,12 @@ import type {
   WaitOptions,
 } from "./types.js";
 
-export class LabAssertionError extends Error {
+export class LlmentaryAssertionError extends Error {
   readonly trace: SessionTrace;
 
   constructor(message: string, trace: SessionTrace) {
     super(`${message}\n\n${formatTraceSummary(trace)}`);
-    this.name = "LabAssertionError";
+    this.name = "LlmentaryAssertionError";
     this.trace = trace;
   }
 }
@@ -494,7 +494,7 @@ export class AssertionScope {
     const result = await predicate(trace);
     const message = result.message ?? defaultMessage;
     if (result.pass) return { pass: true, message, trace };
-    const error = new LabAssertionError(message, trace);
+    const error = new LlmentaryAssertionError(message, trace);
     if (this.softMode) return { pass: false, message, trace, error };
     throw error;
   }

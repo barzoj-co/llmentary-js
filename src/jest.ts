@@ -1,17 +1,17 @@
-import { createLab, type Lab } from "./lab.js";
-import type { LabConfig } from "./types.js";
+import { createLlmentary, type Llmentary } from "./llmentary.js";
+import type { LlmentaryOptions } from "./types.js";
 
-let currentLab: Lab | undefined;
+let current: Llmentary | undefined;
 
-export function lab(config?: LabConfig): Lab {
-  if (config) return createLab(config);
-  if (!currentLab) currentLab = createLab();
-  return currentLab;
+export function llmentary(config?: LlmentaryOptions): Llmentary {
+  if (config) return createLlmentary(config);
+  if (!current) current = createLlmentary();
+  return current;
 }
 
-export async function cleanupLab(): Promise<void> {
-  await currentLab?.cleanup().catch(() => undefined);
-  currentLab = undefined;
+export async function cleanupLlmentary(): Promise<void> {
+  await current?.cleanup().catch(() => undefined);
+  current = undefined;
 }
 
-export { createLab };
+export { createLlmentary };
