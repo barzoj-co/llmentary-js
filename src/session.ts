@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AssertionScope, recordsForTrace } from "./assertions.js";
 import { ControlClient } from "./control.js";
+import { attachSessionTraceHelpers } from "./normalize.js";
 import { firstNonEmpty } from "./env.js";
 import type {
   ListSessionsOptions,
@@ -170,10 +171,7 @@ export class SessionQuery {
 
   async wait(options?: WaitOptions): Promise<SessionTrace> {
     const trace = await this.session.wait(options);
-    return {
-      ...trace,
-      calls: recordsForTrace(trace, this.queryOptions),
-    };
+    return attachSessionTraceHelpers(trace.id, recordsForTrace(trace, this.queryOptions), trace.raw, trace.summary);
   }
 }
 

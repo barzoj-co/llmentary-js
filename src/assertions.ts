@@ -502,7 +502,7 @@ export class AssertionScope {
       for (let index = 0; index < records.length; index += 1) {
         const record = records[index];
         if (!record) continue;
-        const called = toolCallsForRecords([record]).filter((call) => (name ? call.name === name : true));
+        const called = toolCallsForPayload(record.response, record).filter((call) => (name ? call.name === name : true));
         if (called.length === 0) continue;
         sawCall = true;
         const ids = new Set(called.map((call) => call.id).filter((id): id is string => Boolean(id)));

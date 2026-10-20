@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AssertionScope, formatTraceSummary, offeredToolNames, recordsForTrace } from "../src/assertions.js";
-import { llmentary, mentionsAny, mentionsAnyResult } from "../src/index.js";
+import { SessionQuery, llmentary, mentionsAny, mentionsAnyResult } from "../src/index.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { SessionTrace } from "../src/types.js";
 
@@ -115,6 +115,15 @@ describe("offersTool / withoutTools / since", () => {
     expect(trace.calls[0]?.promptText).toMatch(/route this/);
     expect(trace.calls[2]?.responseText).toMatch(/sunny/);
   });
+
+  it("keeps since() on the filtered SessionQuery.wait() calls", async () => {
+    const lm = llmentary({ proxyUrl: PROXY, controlUrl: PROXY, sessionId: "s1" });
+    const query = new SessionQuery({ ...lm, wait: async () => trace } as never, { withoutTools: true });
+    const filtered = await query.wait();
+    expect(filtered.calls).toHaveLength(2);
+    expect(filtered.since(1)).toHaveLength(1);
+    expect(filtered.since(1)[0]?.promptText).toMatch(/SEED_X|need tools|sunny/);
+  });
 });
 
 describe("mentionsAny", () => {
@@ -188,6 +197,34 @@ describe("finalResponseMentionsAny and toolResultInPrompt", () => {
     });
     expect(toolOnly.calls[0]?.responseText).toBeUndefined();
     await expect(scopeFor(toolOnly).soft().finalResponseMentionsAny(["20"])).resolves.toMatchObject({ pass: false });
+  });
+
+  it("does not treat prior request tool_calls as the current response call", async () => {
+    const replay = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          api_family: "openai.chat",
+          request: {
+            messages: [
+              {
+                role: "assistant",
+                tool_calls: [
+                  { id: "call_old", type: "function", function: { name: "lookup_weather", arguments: "{}" } },
+                ],
+              },
+            ],
+          },
+          response: { choices: [{ message: { content: "ok" }, finish_reason: "stop" }] },
+        },
+        {
+          api_family: "openai.chat",
+          request: { messages: [{ role: "tool", tool_call_id: "call_old", content: "SEED_X" }] },
+          response: { choices: [{ message: { content: "done" } }] },
+        },
+      ],
+    });
+    await expect(scopeFor(replay).soft().toolResultInPrompt("lookup_weather")).resolves.toMatchObject({ pass: false });
   });
 });
 
