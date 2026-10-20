@@ -84,7 +84,10 @@ describe("proxy owns upstream join (no client /v1 strip)", () => {
     delete process.env.LLMENTARY_UPSTREAM_BASE_URL;
     const proxy = await startProxy({ healthTimeoutMs: 15_000 });
     handles.push(proxy);
-    const config = await new ControlClient({ controlUrl: proxy.controlUrl }).getConfig();
+    const config = await new ControlClient({
+      controlUrl: proxy.controlUrl,
+      ...(proxy.bearerToken ? { bearerToken: proxy.bearerToken } : {}),
+    }).getConfig();
     const serialized = JSON.stringify(config.raw);
     expect(serialized).toMatch(/api\.openai\.com/);
     expect(serialized).toMatch(/\/v1/);
@@ -103,7 +106,10 @@ describe("proxy owns upstream join (no client /v1 strip)", () => {
     try {
       proxy = await startProxy({ healthTimeoutMs: 15_000 });
       handles.push(proxy);
-      const config = await new ControlClient({ controlUrl: proxy.controlUrl }).getConfig();
+      const config = await new ControlClient({
+        controlUrl: proxy.controlUrl,
+        ...(proxy.bearerToken ? { bearerToken: proxy.bearerToken } : {}),
+      }).getConfig();
       const serialized = JSON.stringify(config.raw);
       expect(serialized).toMatch(/api\.openai\.com/);
       expect(serialized).not.toMatch(/127\.0\.0\.1:9/);

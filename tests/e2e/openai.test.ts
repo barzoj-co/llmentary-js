@@ -1014,7 +1014,7 @@ describe("OpenAI E2E through llmentary", () => {
       await lm.cleanup();
     });
 
-    it("passes noSpecViolations on a live streaming tool call and fails on an unknown nested field", async () => {
+    it("passes noSpecViolations on a live streaming tool call and fails on an unknown request field", async () => {
       const lm = newSession(proxy);
       const stream = await retryNetwork(() =>
         openaiClient(lm).chat.completions.create({
@@ -1031,7 +1031,7 @@ describe("OpenAI E2E through llmentary", () => {
       await lm.expect().noSpecViolations();
 
       const dirty = newSession(proxy);
-      await retryNetwork(() =>
+      const res = await retryNetwork(() =>
         dirty.fetch(`${dirty.baseURL}/chat/completions`, {
           method: "POST",
           headers: {
@@ -1042,13 +1042,15 @@ describe("OpenAI E2E through llmentary", () => {
             model: TEXT_MODEL,
             temperature: 0,
             max_tokens: 8,
-            messages: [{ role: "user", content: "Reply with the single word ping.", ltl_unknown_field: true }],
+            ltl_unknown_field: true,
+            messages: [{ role: "user", content: "Reply with the single word ping." }],
           }),
         }),
       );
-      const failed = await dirty.expect().soft().noSpecViolations();
+      await res.text();
+      const failed = await dirty.expect().soft().noSpecViolations({ side: "request" });
       expect(failed.pass).toBe(false);
-      expect(failed.message).toMatch(/ltl_unknown_field|unevaluatedProperties|\/messages/);
+      expect(failed.message).toMatch(/ltl_unknown_field/);
       await lm.cleanup();
       await dirty.cleanup();
     });

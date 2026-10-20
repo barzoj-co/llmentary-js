@@ -120,7 +120,7 @@ await lm.expect().noSpecViolations();
 await lm.expect().noIgnoredFields({ ignorePaths: ["/foo"] });
 ```
 
-`noSpecViolations` / `noIgnoredFields` read `normalized.validation`, `normalized.spec_violations`, and `normalized.ignored_fields`. An empty `[]` is clean; a missing field means validation was not run (failure unless `allowUnvalidated: true`). Options: `side`, `calls` (0-based indices or call ids), `ignorePaths`, `ignoreKeywords`. Failure lines look like `<call#> <api_family> <side> <path>: <message> — <hint>`. Vitest/Jest matchers: `toHaveNoSpecViolations()`, `toHaveNoIgnoredFields()`. Per-call accessors are `call.validation`, `call.specViolations`, `call.ignoredFields`; the trace has `trace.specViolations()` / `trace.ignoredFields()`. The generated summary includes `spec: clean | N violations | not checked`.
+`noSpecViolations` / `noIgnoredFields` read `normalized.validation`, `normalized.spec_violations`, and `normalized.ignored_fields`. An empty `[]` is clean; a missing field means validation was not run (failure unless `allowUnvalidated: true`). Options: `side`, `calls` (0-based indices or call ids), `ignorePaths`, `ignoreKeywords`. Failure lines look like `<call#> <api_family> <side> <path>: <message> — <hint>`. Vitest/Jest matchers: `toHaveNoSpecViolations()`, `toHaveNoIgnoredFields()`. Per-call accessors are `call.validation`, `call.specViolations`, `call.ignoredFields`; the trace has `trace.specViolations()` / `trace.ignoredFields()`. Each line of the generated summary includes `spec=clean`, `spec=N violation(s)`, or `spec=not checked` (singular `spec=1 violation`).
 
 | Field | Meaning |
 |---|---|

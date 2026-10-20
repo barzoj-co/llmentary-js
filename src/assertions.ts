@@ -1015,7 +1015,7 @@ function evaluateSpecFindings(
   const findings: string[] = [];
   let anyChecked = false;
   let anyUnchecked = false;
-  records.forEach((record, index) => {
+  records.forEach(({ record, index }) => {
     const checked =
       kind === "violations" ? validationWasRun(record) : record.ignoredFields !== undefined || validationWasRun(record);
     if (!checked) {
@@ -1044,10 +1044,16 @@ function evaluateSpecFindings(
   };
 }
 
-function selectRecordsForSpec(trace: SessionTrace, query: QueryOptions, calls?: Array<number | string>): CallRecord[] {
-  const records = recordsForTrace(trace, query);
+function selectRecordsForSpec(
+  trace: SessionTrace,
+  query: QueryOptions,
+  calls?: Array<number | string>,
+): Array<{ record: CallRecord; index: number }> {
+  const records = recordsForTrace(trace, query).map((record, index) => ({ record, index }));
   if (!calls?.length) return records;
-  return records.filter((record, index) => calls.includes(index) || (record.id !== undefined && calls.includes(record.id)));
+  return records.filter(
+    ({ record, index }) => calls.includes(index) || (record.id !== undefined && calls.includes(record.id)),
+  );
 }
 
 function includeFinding(item: SpecViolation | IgnoredField, options: SpecAssertionOptions): boolean {
@@ -1059,7 +1065,12 @@ function includeFinding(item: SpecViolation | IgnoredField, options: SpecAsserti
 
 function findingMatchesPath(item: SpecViolation | IgnoredField, ignore: string): boolean {
   const candidates = [item.path, item.pointer].filter((value): value is string => Boolean(value));
-  return candidates.some((candidate) => candidate === ignore || candidate.endsWith(ignore) || candidate.includes(ignore));
+  const needle = ignore.replace(/^\/+|\/+$/g, "");
+  if (!needle) return false;
+  return candidates.some((candidate) => {
+    const hay = `/${candidate.replace(/^\/+|\/+$/g, "")}/`;
+    return hay.includes(`/${needle}/`);
+  });
 }
 
 function formatContractFinding(callNumber: number, record: CallRecord, item: SpecViolation | IgnoredField): string {

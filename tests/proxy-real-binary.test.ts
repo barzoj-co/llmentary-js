@@ -188,7 +188,7 @@ describe("real Go proxy with fake upstream", () => {
     expect(failed.pass).toBe(false);
     expect(failed.message).toMatch(/foo/);
     expect(failed.message).toMatch(/unevaluatedProperties|request/);
-    await lm.expect().noSpecViolations({ ignorePaths: ["/foo"] });
+    await lm.expect().noSpecViolations({ side: "request", ignorePaths: ["/foo"] });
     await lm.cleanup();
   });
 

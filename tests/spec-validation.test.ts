@@ -113,6 +113,7 @@ describe("spec validation accessors", () => {
 
     await expect(scopeFor(dirty).noSpecViolations({ side: "response" })).resolves.toMatchObject({ pass: true });
     await expect(scopeFor(dirty).noSpecViolations({ ignorePaths: ["/foo"] })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(dirty).soft().noSpecViolations({ ignorePaths: ["/fo"] })).resolves.toMatchObject({ pass: false });
     await expect(scopeFor(dirty).noSpecViolations({ ignoreKeywords: ["unevaluatedProperties"] })).resolves.toMatchObject({
       pass: true,
     });
