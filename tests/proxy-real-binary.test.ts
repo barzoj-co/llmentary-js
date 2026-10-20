@@ -1,9 +1,15 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
 import { ControlClient, SessionNotFound, llmentary, startProxy, type ProxyHandle, type Session } from "../src/index.js";
+
+const proxyPin = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "PROXY_VERSION"), "utf8").trim();
 
 describe("real Go proxy with fake upstream", () => {
   let upstream: Awaited<ReturnType<typeof startFakeUpstream>>;
@@ -12,7 +18,7 @@ describe("real Go proxy with fake upstream", () => {
   beforeAll(async () => {
     if (!process.env.LLMENTARY_BIN) {
       throw new Error(
-        "LLMENTARY_BIN is required. CI must build the Go proxy from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
+        "LLMENTARY_BIN is required. CI must install the released PROXY_VERSION binary from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
       );
     }
     upstream = await startFakeUpstream();
@@ -26,6 +32,12 @@ describe("real Go proxy with fake upstream", () => {
     await upstream?.stop();
     delete process.env.LLMENTARY_PROXY_URL;
     delete process.env.LLMENTARY_CONTROL_URL;
+  });
+
+  it("reports bundled proxy --version 0.2.0", () => {
+    expect(proxyPin).toBe("v0.2.0");
+    const out = execFileSync(process.env.LLMENTARY_BIN!, ["--version"], { encoding: "utf8" });
+    expect(out).toMatch(/^llmentary 0\.2\.0 \(d3698347/);
   });
 
   it("honours wait quiet=100ms after one finished call", async () => {

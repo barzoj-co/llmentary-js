@@ -16,7 +16,7 @@ The client starts or attaches to the Go proxy, creates a unique test session per
 npm install --save-dev llmentary
 ```
 
-Node 18 or newer is required. npm installs an optional `@llmentary/<platform>` package with the matching proxy binary; set `LLMENTARY_BIN` to use a different binary. See [docs/binaries.md](docs/binaries.md).
+Node 18 or newer is required. npm installs an optional `@llmentary/<platform>` package pinned to proxy **v0.2.0**; set `LLMENTARY_BIN` to use a different binary. See [docs/binaries.md](docs/binaries.md).
 
 ## Quickstart
 

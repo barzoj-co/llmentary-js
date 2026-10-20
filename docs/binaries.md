@@ -10,7 +10,7 @@ npm installs one optional platform package matching the current OS/CPU when it i
 - `@llmentary/darwin-arm64`
 - `@llmentary/win32-x64`
 
-Those packages are version-pinned to the bundled proxy release in `PROXY_VERSION`. This client has its own semver; `optionalDependencies` pins the matching platform packages. There is no `postinstall` download.
+Those packages are version-pinned to the bundled proxy release in `PROXY_VERSION` (currently `v0.2.0`). This client has its own semver; `optionalDependencies` pins the matching platform packages. There is no `postinstall` download.
 
 ## Resolution order
 
@@ -19,7 +19,7 @@ Those packages are version-pinned to the bundled proxy release in `PROXY_VERSION
 3. `llmentary` on `PATH`
 4. previously extracted cache under `~/.cache/llmentary`
 
-CI builds the proxy from `barzoj-co/llmentary` source. The release workflow copies GoReleaser artifacts into the optional packages after verifying `checksums.txt` SHA-256. See [releasing.md](releasing.md).
+CI installs the released `PROXY_VERSION` binary from `barzoj-co/llmentary` GitHub Releases (`scripts/install-proxy.sh`): it verifies `checksums.txt` SHA-256 and the Sigstore bundle with cosign identity `goreleaser.yml@refs/heads/main` (not the tag ref). The release workflow copies those same GoReleaser artifacts into the optional packages. See [releasing.md](releasing.md).
 
 ## Attach vs start
 

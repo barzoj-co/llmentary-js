@@ -40,6 +40,9 @@ jobs:
       - name: Check README badges
         run: scripts/check-readme.sh
 
+      - name: Self-test proxy install pin
+        run: scripts/install-proxy.sh --self-test
+
   pinned-actions:
     name: pinned-actions
     runs-on: ubuntu-latest
