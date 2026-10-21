@@ -574,9 +574,9 @@ export class AssertionScope {
   }
 
   private emptyMatchFailure(trace: SessionTrace): { pass: false; message: string } | undefined {
-    if (this.query.allowEmpty) return undefined;
     if (recordsForTrace(trace, this.query).length > 0) return undefined;
     if (hasQueryFilter(this.query)) {
+      if (this.query.allowEmpty) return undefined;
       return { pass: false, message: formatEmptyFilterMessage(this.query) };
     }
     if (trace.calls.length === 0) {

@@ -92,7 +92,7 @@ Use `lm.expect()` or a scoped query:
 await lm.expect().toolCalled("lookup_weather");
 await lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect().calledTimes("lookup_weather", 1);
 const mark = await lm.mark();
-// ... next LLM turn ...
+await openai.chat.completions.create({ /* next turn */ });
 await lm.expect({ since: mark }).callCount(1);
 await lm.expect({ since: mark }).toolCalled("lookup_weather");
 await lm.query({}).withoutTools().expect().callCount(1);
