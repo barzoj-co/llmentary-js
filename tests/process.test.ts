@@ -235,6 +235,26 @@ describe("process identity", () => {
   });
 });
 
+describe("Windows process lookups", () => {
+  it("reads start time from powershell through processLookups", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { configurable: true, value: "win32" });
+    processLookups.spawnSync = (command) => {
+      if (command === "powershell.exe") return { stdout: "1700000000123\n", stderr: "", status: 0 };
+      return { stdout: "", stderr: "", status: 1 };
+    };
+    try {
+      expect(readProcessStartMs(4242)).toBe(1_700_000_000_123);
+      processLookups.spawnSync = () => ({ stdout: "", stderr: "", status: 1 });
+      expect(readProcessStartMs(4242)).toBeUndefined();
+      processLookups.spawnSync = () => ({ stdout: "not-a-number\n", stderr: "", status: 0 });
+      expect(readProcessStartMs(4242)).toBeUndefined();
+    } finally {
+      if (descriptor) Object.defineProperty(process, "platform", descriptor);
+    }
+  });
+});
+
 describe("parsePsEtime", () => {
   it("parses GNU and Darwin [[dd-]hh:]mm:ss values", () => {
     expect(parsePsEtime("01:02")).toBe(62);
