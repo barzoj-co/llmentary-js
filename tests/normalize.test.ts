@@ -246,6 +246,60 @@ describe("sessionSource and upstreamUrl", () => {
     expect(record.upstreamUrl).not.toMatch(/\/s\//);
   });
 
+  it("reads typed clientAborted and abortPhase from the new Call shape and the old nested alias", () => {
+    const topLevel = normalizeCallRecord({
+      id: "call_1",
+      client_aborted: true,
+      abort_phase: "before_headers",
+      http_status: 0,
+      normalized: { finish_reason: "cancelled", client_aborted: true },
+    });
+    expect(topLevel.clientAborted).toBe(true);
+    expect(topLevel.abortPhase).toBe("before_headers");
+
+    const nested = normalizeCallRecord({
+      id: "call_2",
+      normalized: { client_aborted: true, finish_reason: "cancelled" },
+    });
+    expect(nested.clientAborted).toBe(true);
+    expect(nested.abortPhase).toBeUndefined();
+
+    const afterHeaders = normalizeCallRecord({
+      id: "call_3",
+      client_aborted: true,
+      abort_phase: "after_headers",
+      http_status: 200,
+    });
+    expect(afterHeaders.abortPhase).toBe("after_headers");
+
+    const normal = normalizeCallRecord({
+      id: "call_4",
+      client_aborted: false,
+      request: { model: "gpt-4.1-mini" },
+    });
+    expect(normal.clientAborted).toBe(false);
+    expect(normal.abortPhase).toBeUndefined();
+
+    const done = normalizeCallRecord({
+      id: "call_done",
+      streamed: true,
+      http_status: 200,
+      request: { model: "gpt-4.1-mini", stream: true },
+      response: { raw_text: "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n" },
+      normalized: { finish_reason: "stop" },
+    });
+    expect(done.clientAborted).toBeUndefined();
+    expect(done.abortPhase).toBeUndefined();
+
+    const strayPhase = normalizeCallRecord({
+      id: "call_stray",
+      client_aborted: false,
+      abort_phase: "after_headers",
+    });
+    expect(strayPhase.clientAborted).toBe(false);
+    expect(strayPhase.abortPhase).toBeUndefined();
+  });
+
   it("leaves the accessors undefined when the proxy omitted them", () => {
     const record = normalizeCallRecord({
       api_family: "openai.chat",

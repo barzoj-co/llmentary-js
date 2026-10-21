@@ -235,7 +235,7 @@ export class AssertionScope {
 
   async finishReason(expected: string | RegExp): Promise<AssertionResult> {
     return this.evaluate(`expected finish reason ${String(expected)}`, (trace) => {
-      const reasons = recordsForTrace(trace, this.query).flatMap((record) => finishReasons(record.response));
+      const reasons = recordsForTrace(trace, this.query).flatMap((record) => finishReasonsForRecord(record));
       const pass = reasons.some((reason) => (expected instanceof RegExp ? expected.test(reason) : reason === expected));
       return { pass, message: `expected finish reason ${String(expected)}, saw ${reasons.join(", ") || "<none>"}` };
     });
@@ -389,6 +389,19 @@ export class AssertionScope {
       return {
         pass,
         message: `expected streamed=${expected}, saw ${flags.map(String).join(", ") || "<none>"}`,
+      };
+    });
+  }
+
+  async aborted(expected = true): Promise<AssertionResult> {
+    return this.evaluate(`expected clientAborted=${expected}`, (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      const flags = records.map((record) => record.clientAborted === true);
+      const pass = expected ? flags.some(Boolean) : records.length > 0 && flags.every((flag) => !flag);
+      const phases = records.map((record) => record.abortPhase ?? "-").join(", ");
+      return {
+        pass,
+        message: `expected clientAborted=${expected}, saw ${flags.map(String).join(", ") || "<none>"} (phase ${phases || "<none>"})`,
       };
     });
   }
@@ -870,6 +883,12 @@ function finishReasons(value: JsonValue | undefined): string[] {
   return [...new Set(reasons)];
 }
 
+function finishReasonsForRecord(record: CallRecord): string[] {
+  const normalized = objectAt(asObject(record.raw), "normalized");
+  const fromNormalized = stringAt(normalized, "finish_reason") ?? stringAt(normalized, "finishReason");
+  return [...new Set([...finishReasons(record.response), ...(fromNormalized ? [fromNormalized] : [])])];
+}
+
 function usageNumbers(record: CallRecord): { prompt?: number; completion?: number; total?: number } | undefined {
   const usage = record.usage ?? objectAt(asObject(record.response), "usage");
   if (!usage) return undefined;
@@ -1193,7 +1212,9 @@ export function formatTraceSummary(trace: SessionTrace): string {
       record.apiFamily !== undefined ||
       record.apiType !== undefined ||
       record.model !== undefined ||
-      record.error !== undefined;
+      record.error !== undefined ||
+      record.clientAborted !== undefined ||
+      record.abortPhase !== undefined;
     if (!parsed) {
       const keys = Object.keys(asObject(record.raw)).join(",");
       lines.push(`${formatCallRef(record, index)} unparsed call, keys=[${keys}]`);
@@ -1206,7 +1227,7 @@ export function formatTraceSummary(trace: SessionTrace): string {
       `model=${record.model ?? "unknown"}`,
       `tools=${tools.join(",") || "-"}`,
     ];
-    const reasons = finishReasons(record.response).filter((reason) => reason !== "unknown" && reason !== "-");
+    const reasons = finishReasonsForRecord(record).filter((reason) => reason !== "unknown" && reason !== "-");
     if (reasons.length > 0) parts.push(`finish=${reasons.join(",")}`);
     if (record.httpStatus !== undefined && record.httpStatus !== 0) {
       parts.push(`http=${record.httpStatus}`);
@@ -1217,6 +1238,10 @@ export function formatTraceSummary(trace: SessionTrace): string {
       parts.push(`tokens=${usage.prompt ?? "-"}/${usage.completion ?? "-"}`);
     }
     parts.push(`error=${record.error ? "yes" : "no"}`);
+    if (record.clientAborted === true) {
+      parts.push("client_aborted");
+      if (record.abortPhase) parts.push(`phase=${record.abortPhase}`);
+    }
     parts.push(`spec=${specStatusForRecord(record)}`);
     lines.push(parts.join(" "));
   });

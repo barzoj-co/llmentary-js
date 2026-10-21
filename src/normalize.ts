@@ -1,4 +1,5 @@
 import type {
+  AbortPhase,
   ApiType,
   CallRecord,
   IgnoredField,
@@ -79,6 +80,8 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
   const finishedAt = stringAt(object, "ended_at") ?? stringAt(object, "finished_at") ?? stringAt(object, "finishedAt");
   const streamed = inferStreamed(request, normalized, object);
   const httpStatus = inferHttpStatus(object, error, metadata);
+  const clientAborted = inferClientAborted(object, normalized);
+  const abortPhase = inferAbortPhase(object, normalized);
   const usageWithDetails = enrichUsageDetails(usage, response, decodedResponse);
   const promptText = textFromPayload(request);
   const responseText = responseTextFromPayload(response, normalized);
@@ -115,6 +118,8 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     ...(finishedAt ? { finishedAt } : {}),
     ...(streamed !== undefined ? { streamed } : {}),
     ...(httpStatus !== undefined ? { httpStatus } : {}),
+    ...(clientAborted !== undefined ? { clientAborted } : {}),
+    ...(clientAborted === true && abortPhase ? { abortPhase } : {}),
     ...(promptText ? { promptText } : {}),
     ...(responseText ? { responseText } : {}),
     ...(sessionSource ? { sessionSource } : {}),
@@ -277,6 +282,30 @@ function inferStreamed(
   if (valueAt(normalized, "streamed") === true || valueAt(object, "streamed") === true) return true;
   if (valueAt(asObject(request), "stream") === false) return false;
   if (valueAt(normalized, "streamed") === false || valueAt(object, "streamed") === false) return false;
+  return undefined;
+}
+
+function booleanAt(object: JsonObject | undefined, key: string): boolean | undefined {
+  const value = valueAt(object, key);
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function inferClientAborted(object: JsonObject, normalized: JsonObject | undefined): boolean | undefined {
+  return (
+    booleanAt(object, "client_aborted") ??
+    booleanAt(object, "clientAborted") ??
+    booleanAt(normalized, "client_aborted") ??
+    booleanAt(normalized, "clientAborted")
+  );
+}
+
+function inferAbortPhase(object: JsonObject, normalized: JsonObject | undefined): AbortPhase | undefined {
+  const raw =
+    stringAt(object, "abort_phase") ??
+    stringAt(object, "abortPhase") ??
+    stringAt(normalized, "abort_phase") ??
+    stringAt(normalized, "abortPhase");
+  if (raw === "before_headers" || raw === "after_headers") return raw;
   return undefined;
 }
 
