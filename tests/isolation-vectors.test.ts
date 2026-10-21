@@ -98,13 +98,15 @@ function loadVectors(): IsolationVector[] {
 
 describe("isolation vectors (DOG-29 / DOG-32 / DOG-33)", () => {
   const vectors = loadVectors();
-  expect(vectors.length).toBeGreaterThanOrEqual(16);
+  expect(vectors.length).toBeGreaterThanOrEqual(24);
   const names = new Set(vectors.map((vector) => vector.name));
   expect(names).toContain("empty-other");
   expect(names).toContain("empty-other-allow");
   expect(names).toContain("missing-other-id");
+  expect(names).toContain("unknown-other-id");
   expect(names).toContain("later-call-two-new-user-messages");
-  expect(names).toContain("responses-later-call-two-new-user-messages");
+  expect(names).toContain("later-call-two-new-user-messages-responses");
+  expect(names).toContain("multi-turn-own-history");
   expect(names).toContain("history-replay");
   expect(names).toContain("first-call-history-repeat");
   expect(names).toContain("same-canned-question");

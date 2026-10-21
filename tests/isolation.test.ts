@@ -192,7 +192,7 @@ describe("isolatedFrom", () => {
       const result = isolationCheck(self, "iso-x", origin, "iso-a");
       expect(result.pass, result.message).toBe(false);
       expect(result.message).toContain("user text 'What is my biological age?'");
-      expect(result.message).toContain("from session iso-a #1 (call_y1)");
+      expect(result.message).toContain("also introduced by session iso-a #1 (call_y1)");
       expect(result.message).toContain("appears in session iso-x #1 (call_x1)");
     }
   });
