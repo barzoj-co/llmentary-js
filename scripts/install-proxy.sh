@@ -207,6 +207,12 @@ DEST="$DEST_DIR/$BIN_NAME"
 cp "$FOUND" "$DEST"
 chmod +x "$DEST"
 
+CONTRACT="$(find "$EXTRACT" -type f \( -name openapi.yaml -o -name openapi.yml \) | head -n 1)"
+if [[ -n "$CONTRACT" ]]; then
+  cp "$CONTRACT" "$DEST_DIR/openapi.yaml"
+  cp "$CONTRACT" "$ROOT/openapi.yaml"
+fi
+
 VERSION_OUT="$("$DEST" --version)"
 if [[ "$VERSION_OUT" != "llmentary ${VERSION}"* ]]; then
   echo "unexpected --version: $VERSION_OUT" >&2

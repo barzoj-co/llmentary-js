@@ -110,6 +110,10 @@ export class Session {
     return (await this.control.getConfig()).version;
   }
 
+  async openapi(): Promise<string> {
+    return this.control.openapi();
+  }
+
   async cleanup(): Promise<void> {
     await this.control.deleteSession(this.sessionId);
   }

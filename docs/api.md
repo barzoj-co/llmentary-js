@@ -4,7 +4,7 @@
 
 - A **proxy** is the separate `llmentary` Go binary. It accepts OpenAI-compatible traffic, forwards to an upstream, and records calls in memory.
 - A **session** is selected with `X-Test-Session`, W3C `baggage` key `llmentary.session.id`, or the path prefix `/s/{session}/` (see `lm.pathBaseURL()`).
-- The **control API** is read through `/sessions`, `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, `/healthz`, and `/config`. Machine-readable contract: [api/control/openapi.yaml](https://github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml) (also `GET /openapi.yaml` on the control listener in proxy releases that serve it).
+- The **control API** is read through `/sessions`, `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, `/healthz`, `/config`, and `GET /openapi.yaml`. Read the served contract with `lm.control.openapi()` (sends the control token). The same file is bundled next to the proxy binary; `contractPath()` resolves it when present. Do not link the private proxy repo path while that repo is private.
 - A **Session** is a per-test handle containing the session id, proxy base URL, headers, fetch helper, query scopes, cleanup, and assertions.
 
 ## Creating a session

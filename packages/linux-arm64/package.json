@@ -20,6 +20,7 @@
   "preferUnplugged": true,
   "files": [
     "bin",
+    "openapi.yaml",
     "README.md",
     "LICENSE",
     "LICENSE.AGPL-3.0"

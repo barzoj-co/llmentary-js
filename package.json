@@ -20,7 +20,8 @@
     "README.md",
     "docs",
     "LICENSE",
-    "licenses"
+    "licenses",
+    "openapi.yaml"
   ],
   "sideEffects": false,
   "exports": {
@@ -113,8 +114,8 @@
     "clean": "rm -rf dist coverage .llmentary",
     "lint": "eslint src tests --ignore-pattern 'tests/jest/*.cjs'",
     "test": "npm run test:unit && npm run test:proxy && npm run test:jest",
-    "test:unit": "vitest run tests/assertions.test.ts tests/binary.test.ts tests/control.test.ts tests/isolation.test.ts tests/normalize.test.ts tests/path-filters-mentions.test.ts tests/session.test.ts tests/process.test.ts tests/jest-state.test.ts tests/readme-api.test.ts tests/spec-validation.test.ts tests/wait.test.ts",
-    "test:coverage": "vitest run tests/assertions.test.ts tests/binary.test.ts tests/control.test.ts tests/isolation.test.ts tests/normalize.test.ts tests/path-filters-mentions.test.ts tests/session.test.ts tests/process.test.ts tests/jest-state.test.ts tests/proxy-real-binary.test.ts tests/proxy-upstream-join.test.ts tests/readme-api.test.ts tests/spec-validation.test.ts tests/wait.test.ts --coverage",
+    "test:unit": "vitest run tests/assertions.test.ts tests/binary.test.ts tests/contract.test.ts tests/control.test.ts tests/isolation.test.ts tests/normalize.test.ts tests/path-filters-mentions.test.ts tests/session.test.ts tests/process.test.ts tests/jest-state.test.ts tests/readme-api.test.ts tests/spec-validation.test.ts tests/wait.test.ts",
+    "test:coverage": "vitest run tests/assertions.test.ts tests/binary.test.ts tests/contract.test.ts tests/control.test.ts tests/isolation.test.ts tests/normalize.test.ts tests/path-filters-mentions.test.ts tests/session.test.ts tests/process.test.ts tests/jest-state.test.ts tests/proxy-real-binary.test.ts tests/proxy-upstream-join.test.ts tests/readme-api.test.ts tests/spec-validation.test.ts tests/wait.test.ts --coverage",
     "test:vitest": "vitest run",
     "test:proxy": "vitest run tests/proxy-real-binary.test.ts tests/proxy-upstream-join.test.ts",
     "test:jest": "npm run test:jest:unit && npm run test:jest:proxy",

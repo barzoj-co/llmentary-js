@@ -7,3 +7,5 @@ coverage/
 *.log
 packages/*/bin/*
 !packages/*/bin/.gitkeep
+/openapi.yaml
+packages/*/openapi.yaml

@@ -250,6 +250,22 @@ describe("ControlClient", () => {
     );
   });
 
+  it("sends the control token on GET /openapi.yaml and returns the document text", async () => {
+    const seen: string[] = [];
+    const fetchImpl: ControlFetch = async (input, init) => {
+      seen.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer tok-1");
+      return new Response("openapi: 3.1.0\ninfo:\n  title: llmentary control\n", { status: 200 });
+    };
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      bearerToken: "tok-1",
+      fetch: fetchImpl,
+    });
+    await expect(client.openapi()).resolves.toMatch(/^openapi: 3.1.0/);
+    expect(seen[0]).toBe("http://127.0.0.1:9/openapi.yaml");
+  });
+
   it("aborts hung requests after requestTimeoutMs and lets wait exceed it", async () => {
     const hungFetch: ControlFetch = async (input, init) => {
       void input;

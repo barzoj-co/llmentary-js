@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
 import {
   ControlClient,
   SessionNotFound,
+  contractPath,
   formatTraceSummary,
   llmentary,
   SessionAssertionError,
@@ -1275,6 +1277,36 @@ describe("OpenAI E2E through llmentary", () => {
       } finally {
         await lm.cleanup();
       }
+    });
+
+    it("matches the served openapi.yaml to the bundled contract after a live call", async () => {
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
+      await retryNetwork(() =>
+        client.chat.completions.create({
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 8,
+          stream: true,
+          messages: [{ role: "user", content: "Reply with the single word ping." }],
+        }).then(async (stream) => {
+          for await (const chunk of stream) {
+            void chunk;
+          }
+        }),
+      );
+      const served = await lm.control.openapi();
+      expect(served).toMatch(/openapi:\s*['"]?3\./);
+      expect(served).toMatch(/Session/);
+      const bundled = contractPath();
+      if (bundled) {
+        expect(readFileSync(bundled, "utf8")).toBe(served);
+      }
+      const trace = await lm.session();
+      expect(trace.id).toBe(lm.sessionId);
+      expect(trace.calls.length).toBeGreaterThanOrEqual(1);
+      expect(trace.raw).toMatchObject({ id: lm.sessionId });
+      await lm.cleanup();
     });
 
     it("reads per-session seq across two live path sessions on one proxy", async () => {

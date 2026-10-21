@@ -103,6 +103,25 @@ export class ControlClient {
     return this.request(`/sessions/${encodeURIComponent(sessionId)}/otlp`);
   }
 
+  /** Served control contract (`GET /openapi.yaml`), with the bearer token when set. */
+  async openapi(): Promise<string> {
+    const headers = new Headers();
+    if (this.bearerToken) headers.set("authorization", `Bearer ${this.bearerToken}`);
+    const path = "/openapi.yaml";
+    const response = await this.fetchImpl(`${this.controlUrl}${path}`, {
+      headers,
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
+    });
+    const text = await response.text().catch(() => "");
+    if (!response.ok) {
+      throw new ControlApiError(
+        `llmentary control API GET ${path} failed: ${response.status} ${response.statusText}${text ? `\n${text}` : ""}`,
+        { status: response.status, path, body: text },
+      );
+    }
+    return text;
+  }
+
   private async request(path: string, init: RequestInit = {}): Promise<JsonValue> {
     const headers = new Headers(init.headers);
     if (this.bearerToken) headers.set("authorization", `Bearer ${this.bearerToken}`);
