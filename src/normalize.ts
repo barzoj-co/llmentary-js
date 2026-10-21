@@ -287,18 +287,18 @@ function inferHttpStatus(
 ): number | undefined {
   const errorObject = asObject(error);
   const nestedError = objectAt(errorObject, "error") ?? asObject(valueAt(asObject(objectAt(object, "response")), "error"));
-  const status =
-    numberAt(object, "status") ??
-    numberAt(object, "status_code") ??
-    numberAt(object, "http_status") ??
-    numberAt(errorObject, "status") ??
-    numberAt(errorObject, "http_status") ??
-    numberAt(nestedError, "status") ??
-    numberAt(nestedError, "http_status") ??
-    numberAt(metadata, "status") ??
-    numberAt(metadata, "http_status");
-  if (status === 0) return undefined;
-  return status;
+  const candidates = [
+    numberAt(object, "status"),
+    numberAt(object, "status_code"),
+    numberAt(object, "http_status"),
+    numberAt(errorObject, "status"),
+    numberAt(errorObject, "http_status"),
+    numberAt(nestedError, "status"),
+    numberAt(nestedError, "http_status"),
+    numberAt(metadata, "status"),
+    numberAt(metadata, "http_status"),
+  ];
+  return candidates.find((status) => status !== undefined && status !== 0);
 }
 
 function enrichUsageDetails(

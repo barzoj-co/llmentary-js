@@ -345,22 +345,25 @@ describe("OpenAI E2E through llmentary", () => {
       const abortLm = newSession(proxy);
       const abortClient = openaiClient(abortLm);
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 50);
+      const pending = abortClient.chat.completions.create(
+        {
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "Count slowly from 1 to 40 in words." }],
+        },
+        { signal: controller.signal },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      controller.abort();
       try {
-        await abortClient.chat.completions.create(
-          {
-            model: TEXT_MODEL,
-            temperature: 0,
-            max_tokens: 64,
-            stream: true,
-            messages: [{ role: "user", content: "Count slowly from 1 to 40 in words." }],
-          },
-          { signal: controller.signal },
-        );
+        const stream = await pending;
+        for await (const chunk of stream) {
+          void chunk;
+        }
       } catch (error) {
         if (!controller.signal.aborted && !isAbortError(error)) throw error;
-      } finally {
-        clearTimeout(timer);
       }
       const abortTrace = await abortLm.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
       const abortSummary = formatTraceSummary(abortTrace);

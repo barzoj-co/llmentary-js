@@ -204,6 +204,16 @@ describe("spec validation accessors", () => {
     expect(summary).toMatch(/spec=request_only/);
     expect(summary).toMatch(/http=401/);
     expect(summary).not.toMatch(/http=0/);
+
+    const zeroThen401 = normalizeCallRecord({
+      id: "call_z",
+      api_family: "openai.chat",
+      http_status: 0,
+      error: { status: 401, type: "invalid_request_error" },
+      request: { model: "gpt-4.1-mini" },
+    });
+    expect(zeroThen401.httpStatus).toBe(401);
+    expect(formatTraceSummary(normalizeSessionTrace("s2", { id: "s2", calls: [zeroThen401.raw] }))).toMatch(/http=401/);
   });
 });
 
