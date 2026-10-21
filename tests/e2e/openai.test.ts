@@ -2,7 +2,16 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
-import { ControlClient, llmentary, SessionAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
+import {
+  ControlClient,
+  SessionNotFound,
+  WaitTimeoutError,
+  formatTraceSummary,
+  llmentary,
+  SessionAssertionError,
+  startProxy,
+  type ProxyHandle,
+} from "../../src/index.js";
 import {
   CACHE_SECOND_CALL_ATTEMPTS,
   CITY_SCHEMA,
@@ -1126,6 +1135,140 @@ describe("OpenAI E2E through llmentary", () => {
         if (previous === undefined) delete process.env.OPENAI_BASE_URL;
         else process.env.OPENAI_BASE_URL = previous;
         await lm.cleanup();
+      }
+    });
+
+    it("maps wait minCalls=0 on a never-created session to SessionNotFound, then records a real call", async () => {
+      const lm = newSession(proxy);
+      try {
+        try {
+          await lm.wait({ minCalls: 0, timeout: 3, quiet: "200ms" });
+          throw new Error("wait on a never-created session succeeded");
+        } catch (error) {
+          if (error instanceof SessionNotFound) {
+            expect(error.sessionId).toBe(lm.sessionId);
+            expect(error.status).toBe(404);
+          } else if (!(error instanceof WaitTimeoutError)) {
+            throw error;
+          }
+          // Bundled proxy 0.2.1 still returns 504 wait_timeout for min_calls=0.
+          // The 404 mapping is covered by unit fixtures until the next proxy release.
+        }
+        await retryNetwork(() =>
+          openaiClient(lm).chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word ping." }],
+          }),
+        );
+        const trace = await lm.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
+        expect(trace.calls.length).toBeGreaterThanOrEqual(1);
+      } finally {
+        await lm.cleanup();
+      }
+    });
+
+    it("reads per-session seq across two live path sessions on one proxy", async () => {
+      const a = llmentary({
+        sessionId: `seq-a-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const b = llmentary({
+        sessionId: `seq-b-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const clientA = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: a.pathBaseURL() });
+      const clientB = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: b.pathBaseURL() });
+      try {
+        await retryNetwork(() =>
+          clientA.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word alpha." }],
+          }),
+        );
+        await retryNetwork(() =>
+          clientB.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word bravo." }],
+          }),
+        );
+        await retryNetwork(() =>
+          clientA.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word alpha-two." }],
+          }),
+        );
+        const traceA = await a.wait({ minCalls: 2, timeout: 25, quiet: "200ms" });
+        const traceB = await b.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
+        expect(traceB.calls).toHaveLength(1);
+        expect(traceB.calls[0]?.seq).toBe(1);
+        expect(traceB.calls[0]?.sessionId).toBe(b.sessionId);
+        expect(traceB.calls[0]?.id).toBeTruthy();
+        expect(traceB.calls[0]?.id).not.toBe("call_1");
+        expect(traceA.calls[0]?.seq).toBe(1);
+        expect(traceA.calls[1]?.seq).toBe(2);
+        expect(formatTraceSummary(traceB)).toMatch(new RegExp(`#1 \\(${traceB.calls[0]?.id}\\)`));
+      } finally {
+        await a.cleanup();
+        await b.cleanup();
+      }
+    });
+
+    it("keeps two path-prefix conversations isolatedFrom each other", async () => {
+      const weather = llmentary({
+        sessionId: `weather-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const barge = llmentary({
+        sessionId: `barge-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const weatherClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: weather.pathBaseURL() });
+      const bargeClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: barge.pathBaseURL() });
+      const system = "You are a test assistant. The other conversation may mention ZURICH_QUAYZE or LISBON_FERRY. Reply with one short sentence.";
+      try {
+        await retryNetwork(() =>
+          weatherClient.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 16,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: "Ask only for the ZURICH_QUAYZE weather token." },
+            ],
+          }),
+        );
+        await retryNetwork(() =>
+          bargeClient.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 16,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: "Ask only for the LISBON_FERRY story token." },
+            ],
+          }),
+        );
+        await weather.expect().isolatedFrom(barge);
+        await barge.expect().isolatedFrom(weather);
+      } finally {
+        await weather.cleanup();
+        await barge.cleanup();
       }
     });
 

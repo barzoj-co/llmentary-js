@@ -105,9 +105,9 @@ describe("offersTool / withoutTools / since", () => {
 
   it("scopes assertions with mark/since and shows seq in the summary", async () => {
     expect(trace.since(1)).toHaveLength(2);
-    expect(formatTraceSummary(trace)).toMatch(/seq=0/);
-    expect(formatTraceSummary(trace)).toMatch(/seq=1/);
-    expect(formatTraceSummary(trace)).toMatch(/seq=2/);
+    expect(formatTraceSummary(trace)).toMatch(/#1 /);
+    expect(formatTraceSummary(trace)).toMatch(/#2 /);
+    expect(formatTraceSummary(trace)).toMatch(/#3 /);
 
     await expect(scopeFor(trace, { since: 1 }).callCount(2)).resolves.toMatchObject({ pass: true });
     await expect(scopeFor(trace, { since: 1 }).toolCalled("lookup_weather")).resolves.toMatchObject({ pass: true });
@@ -300,6 +300,25 @@ describe("soft collect-then-fail", () => {
 });
 
 describe("trace summary attribution", () => {
+  it("prints #seq (id) from the wire, including when the first call is call_3", () => {
+    const trace = normalizeSessionTrace("weather", {
+      id: "weather",
+      calls: [
+        {
+          id: "call_3",
+          seq: 1,
+          session_id: "weather",
+          api_family: "openai.chat",
+          request: { model: "gpt-4.1-mini", messages: [{ role: "user", content: "weather" }] },
+          response: { choices: [{ finish_reason: "stop", message: { content: "ok" } }] },
+        },
+      ],
+    });
+    expect(formatTraceSummary(trace)).toMatch(/#1 \(call_3\)/);
+    expect(trace.calls[0]?.seq).toBe(1);
+    expect(trace.calls[0]?.sessionId).toBe("weather");
+  });
+
   it("omits empty finish, skips call-keys noise, and shows src/tokens", () => {
     const trace = normalizeSessionTrace("s1", {
       id: "s1",

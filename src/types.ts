@@ -122,8 +122,23 @@ export interface SpecAssertionOptions {
   allowUnvalidated?: boolean;
 }
 
+export interface IsolatedFromOptions {
+  /** Require every call's `sessionSource` to be `path`. */
+  requirePathSource?: boolean;
+  /**
+   * Allow isolation to pass when either session has zero calls.
+   * Prefer `allowEmpty()` on the expectation. Default is to fail with
+   * `no calls recorded for session <id>`.
+   */
+  allowEmpty?: boolean;
+}
+
 export interface CallRecord {
   id?: string;
+  /** 1-based index within this session. Process-global `id` is not this. */
+  seq?: number;
+  /** Session this call was recorded on (`session_id` on the wire). */
+  sessionId?: string;
   apiType?: ApiType;
   apiFamily?: string;
   model?: string;
@@ -150,6 +165,8 @@ export interface CallRecord {
   sessionSource?: string;
   /** Upstream URL the proxy forwarded to (the `/s/{session}` prefix is not forwarded). */
   upstreamUrl?: string;
+  /** User-role message texts only (Chat `messages`, Responses `input`). */
+  userTexts?: string[];
   raw: JsonValue;
 }
 

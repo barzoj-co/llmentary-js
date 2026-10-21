@@ -82,7 +82,7 @@ process.env.OPENAI_BASE_URL = lm.pathBaseURL();
 const { app } = await import("./app.js");
 ```
 
-Black-box and sidecar recipes: [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md). When to assert on the trace vs the model's free text: [docs/assertions-guide.md](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
+Black-box and sidecar recipes: [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md). Control API contract: [api/control/openapi.yaml](https://github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml). When to assert on the trace vs the model's free text: [docs/assertions-guide.md](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
 
 ## Assertions
 
@@ -99,9 +99,10 @@ await lm.query({}).withoutTools().expect().callCount(1);
 await lm.query({}).offersTool("lookup_weather").expect().toolCalled("lookup_weather");
 // Empty filters fail noErrors()/notCalled() unless you opt out:
 await lm.expect({ since: mark }).allowEmpty().noErrors();
+await lm.expect().isolatedFrom(other);
 ```
 
-Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). A filter that matches zero calls fails `noErrors()` / `notCalled()` unless you call `allowEmpty()`; use `callCount(n)` for the turn size. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure. `listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` read the proxy attribution fields.
+Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`), session isolation (`isolatedFrom`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). A filter that matches zero calls fails `noErrors()` / `notCalled()` unless you call `allowEmpty()`; use `callCount(n)` for the turn size. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure. `listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` / `seq` / `sessionId` / `userTexts` read the proxy fields. Call `id`s are process-global; `seq` is 1-based per session. The generated summary prints `#seq (id)`.
 
 See [docs/api.md](docs/api.md) for the full API, including Jest setup.
 
@@ -123,6 +124,52 @@ See [docs/api.md](docs/api.md) for the full API, including Jest setup.
 A wait timeout is an error:
 
 `wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`
+
+`wait` on a session that was never created (or was `DELETE`d) is not a 200 empty trace:
+
+| `minCalls` | Never-created session | Client error |
+|---|---|---|
+| `0` (default) | `404 session_not_found` immediately | `SessionNotFound` (same type as `GET /sessions/{id}`) |
+| `>= 1` | wait until `timeout`, then `504 wait_timeout` | `WaitTimeoutError` |
+
+```ts
+import { SessionNotFound, WaitTimeoutError } from "llmentary";
+
+try {
+  await lm.wait({ minCalls: 0, quiet: "200ms" });
+} catch (error) {
+  if (error instanceof SessionNotFound) {
+    // this session id was never created
+  }
+}
+
+try {
+  await lm.wait({ minCalls: 1, timeout: 3, quiet: "50ms" });
+} catch (error) {
+  if (error instanceof WaitTimeoutError) {
+    // no call arrived in time (the session may still appear later)
+  }
+}
+```
+
+`callCount(0)` treats `SessionNotFound` from wait as zero calls. Bundled proxy **v0.2.1** still returns `504` for `min_calls=0` on a never-created session; the client already maps `404` for the next proxy release.
+
+## Isolating conversations
+
+A path prefix (`lm.pathBaseURL()`) is chosen by whoever builds the SDK client. One process with one env-configured client is one session. For N parallel conversations use one of: (a) one worker process per session; (b) construct the SDK client per conversation with `baseURL=lm.pathBaseURL()`; (c) headers or baggage from the app; (d) run conversations sequentially with `DELETE` between them. A second bus worker needs its own topic or partition; two consumer groups on one topic both get every event.
+
+Prove isolation with the helper, not substring search over request JSON (system prompts and tool names will false-positive):
+
+```ts
+const weather = llmentary({ sessionId: "weather" });
+const barge = llmentary({ sessionId: "barge" });
+const weatherClient = new OpenAI({ apiKey, baseURL: weather.pathBaseURL() });
+const bargeClient = new OpenAI({ apiKey, baseURL: barge.pathBaseURL() });
+// …two different user prompts, even if they share a system prompt…
+await weather.expect().isolatedFrom(barge);
+```
+
+`isolatedFrom` checks session ids, overlapping call ids, and **user-role** texts only. Empty sessions fail unless you call `allowEmpty()`. See [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
 
 <!-- llmentary-repos:start -->
 ## llmentary repositories

@@ -17,6 +17,7 @@ import type {
   AssertionResult,
   Bounds,
   CallRecord,
+  IsolatedFromOptions,
   IgnoredField,
   JsonObject,
   JsonSchemaAssertionOptions,
@@ -321,6 +322,35 @@ export class AssertionScope {
     });
   }
 
+  /**
+   * Prove this session stayed isolated from another: matching session ids,
+   * no shared call ids, and no shared user-role texts. System prompts and
+   * tool names are not compared. `other` is a session id or a `Session`.
+   */
+  async isolatedFrom(other: IsolatedFromOther, options: IsolatedFromOptions = {}): Promise<AssertionResult> {
+    const otherId = typeof other === "string" ? other : other.sessionId;
+    return this.evaluate(`expected session ${this.sessionId} to stay isolated from ${otherId}`, async (trace) => {
+      const otherTrace = await this.waitOtherTrace(other, otherId);
+      const allowEmpty = options.allowEmpty ?? this.query.allowEmpty;
+      return isolationCheck(trace, this.sessionId, otherTrace, otherId, {
+        ...options,
+        ...(allowEmpty ? { allowEmpty: true } : {}),
+      });
+    });
+  }
+
+  private async waitOtherTrace(other: IsolatedFromOther, otherId: string): Promise<SessionTrace> {
+    const control = typeof other === "string" ? this.control : (other.control ?? this.control);
+    try {
+      return await control.wait(otherId, this.defaultWait);
+    } catch (error) {
+      if (error instanceof SessionNotFound || (error instanceof WaitTimeoutError && error.calls === 0)) {
+        return emptyTrace(otherId);
+      }
+      throw error;
+    }
+  }
+
   async streamed(expected = true): Promise<AssertionResult> {
     return this.evaluate(`expected streamed=${expected}`, (trace) => {
       const records = recordsForTrace(trace, this.query);
@@ -594,9 +624,10 @@ export class AssertionScope {
       trace = await this.control.wait(this.sessionId, this.defaultWait);
     } catch (error) {
       if (error instanceof SessionNotFound || (error instanceof WaitTimeoutError && error.calls === 0)) {
-        return this.failZeroCalls(emptyTrace(this.sessionId), defaultMessage);
+        trace = emptyTrace(this.sessionId);
+      } else {
+        throw error;
       }
-      throw error;
     }
     const result = await predicate(trace);
     const message = result.message ?? defaultMessage;
@@ -1130,12 +1161,12 @@ export function formatTraceSummary(trace: SessionTrace): string {
       record.error !== undefined;
     if (!parsed) {
       const keys = Object.keys(asObject(record.raw)).join(",");
-      lines.push(`${index + 1}. seq=${index} unparsed call, keys=[${keys}]`);
+      lines.push(`${formatCallRef(record, index)} unparsed call, keys=[${keys}]`);
       return;
     }
     const tools = toolCallsForRecords([record]).map((tool) => tool.name);
     const parts = [
-      `${index + 1}. seq=${index}`,
+      formatCallRef(record, index),
       `${record.apiFamily ?? record.apiType ?? "unknown"}`,
       `model=${record.model ?? "unknown"}`,
       `tools=${tools.join(",") || "-"}`,
@@ -1152,6 +1183,60 @@ export function formatTraceSummary(trace: SessionTrace): string {
     lines.push(parts.join(" "));
   });
   return lines.join("\n");
+}
+
+export type IsolatedFromOther = string | { sessionId: string; control?: ControlClient };
+
+export function isolationCheck(
+  self: SessionTrace,
+  selfId: string,
+  other: SessionTrace,
+  otherId: string,
+  options: IsolatedFromOptions = {},
+): { pass: boolean; message: string } {
+  if (self.calls.length === 0 && !options.allowEmpty) {
+    return { pass: false, message: `no calls recorded for session ${selfId}` };
+  }
+  if (other.calls.length === 0 && !options.allowEmpty) {
+    return { pass: false, message: `no calls recorded for session ${otherId}` };
+  }
+  const failures: string[] = [];
+  for (const record of self.calls) {
+    if (record.sessionId !== undefined && record.sessionId !== selfId) {
+      failures.push(`${formatCallRef(record)} has sessionId=${record.sessionId}, expected ${selfId}`);
+    }
+    if (options.requirePathSource && record.sessionSource !== "path") {
+      failures.push(
+        `${formatCallRef(record)} has sessionSource=${record.sessionSource ?? "<none>"}, expected path`,
+      );
+    }
+  }
+  const selfIds = new Set(self.calls.map((record) => record.id).filter((id): id is string => Boolean(id)));
+  for (const record of other.calls) {
+    if (record.id && selfIds.has(record.id)) {
+      failures.push(`call id ${record.id} appears in sessions ${selfId} and ${otherId}`);
+    }
+  }
+  for (const record of self.calls) {
+    for (const text of record.userTexts ?? []) {
+      for (const otherRecord of other.calls) {
+        if ((otherRecord.userTexts ?? []).includes(text)) {
+          failures.push(
+            `user text ${JSON.stringify(text)} from session ${selfId} ${formatCallRef(record)} also appears in session ${otherId} ${formatCallRef(otherRecord)}`,
+          );
+        }
+      }
+    }
+  }
+  if (failures.length === 0) {
+    return { pass: true, message: `session ${selfId} is isolated from ${otherId}` };
+  }
+  return { pass: false, message: failures.join("\n") };
+}
+
+function formatCallRef(record: CallRecord, index = 0): string {
+  const seq = record.seq ?? index + 1;
+  return record.id ? `#${seq} (${record.id})` : `#${seq}`;
 }
 
 function emptyTrace(sessionId: string): SessionTrace {
