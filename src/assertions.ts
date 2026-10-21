@@ -87,7 +87,8 @@ export class AssertionScope {
 
   /**
    * Pass when wait(`minCalls=0`) returns 404 (`SessionNotFound`) or an empty
-   * trace. Fail when the session recorded any calls, with the trace summary.
+   * scoped trace. Fail when the selected records include any calls, with the
+   * trace summary. A wait timeout is not treated as zero calls.
    */
   async expectNoCalls(options: WaitOptions = {}): Promise<AssertionResult> {
     const waitOptions = { ...this.defaultWait, ...options, minCalls: 0 };
@@ -95,7 +96,7 @@ export class AssertionScope {
     try {
       trace = await this.control.wait(this.sessionId, waitOptions);
     } catch (error) {
-      if (error instanceof SessionNotFound || (error instanceof WaitTimeoutError && error.calls === 0)) {
+      if (error instanceof SessionNotFound) {
         return this.finish({
           pass: true,
           message: "expected 0 LLM calls, got 0",
@@ -104,10 +105,11 @@ export class AssertionScope {
       }
       throw error;
     }
-    if (trace.calls.length === 0) {
+    const count = recordsForTrace(trace, this.query).length;
+    if (count === 0) {
       return this.finish({ pass: true, message: "expected 0 LLM calls, got 0", trace });
     }
-    const message = `expected 0 LLM calls, got ${trace.calls.length}`;
+    const message = `expected 0 LLM calls, got ${count}`;
     const error = new SessionAssertionError(message, trace);
     if (this.softMode) return this.finish({ pass: false, message, trace, error });
     throw error;

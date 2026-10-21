@@ -3,6 +3,7 @@ import { AssertionScope, SessionAssertionError, recordsForTrace } from "../src/a
 import { SessionNotFound } from "../src/control.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { QueryOptions, SessionTrace } from "../src/types.js";
+import { WaitTimeoutError } from "../src/wait.js";
 
 describe("AssertionScope", () => {
   it("matches chat-completions tool calls and argument subsets", async () => {
@@ -454,6 +455,31 @@ describe("AssertionScope", () => {
       expect((error as Error).message).toContain("llmentary trace summary");
       expect((error as Error).message).toContain("#1 (call_1)");
     }
+  });
+
+  it("expectNoCalls counts only the scoped records", async () => {
+    const trace = normalizeSessionTrace("busy", {
+      id: "busy",
+      calls: [
+        { id: "call_1", seq: 1, api_family: "openai.chat", request: { model: "gpt-4.1-mini" } },
+        { id: "call_2", seq: 2, api_family: "openai.chat", request: { model: "gpt-4.1-mini" } },
+      ],
+    });
+    const scoped = scopeFor(trace, { since: 2 });
+    await expect(scoped.expectNoCalls()).resolves.toMatchObject({ pass: true, message: "expected 0 LLM calls, got 0" });
+    await expect(scopeFor(trace, { since: 1 }).expectNoCalls()).rejects.toThrow(/expected 0 LLM calls, got 1/);
+  });
+
+  it("expectNoCalls does not treat a wait timeout as zero calls", async () => {
+    const scope = new AssertionScope({
+      control: {
+        wait: async () => {
+          throw new WaitTimeoutError("pending", "2s", 0, 1);
+        },
+      } as never,
+      sessionId: "pending",
+    });
+    await expect(scope.expectNoCalls()).rejects.toBeInstanceOf(WaitTimeoutError);
   });
 });
 
