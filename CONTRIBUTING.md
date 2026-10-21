@@ -53,10 +53,27 @@ npm run test:proxy
 npm run test:jest:proxy
 ```
 
-Coverage (informational, same Vitest file list as `test:unit` + `test:proxy`):
+Coverage is enforced by `vitest` `coverage.thresholds` in the existing
+required **Node 22** job (`npm run test:coverage` when `LLMENTARY_BIN` is
+set, otherwise `npm run test:unit -- --coverage`). Job names stay
+`Node 18` / `Node 20` / `Node 22`. Codecov uploads stay informational
+and do not gate the PR.
+
+Adapter files (`src/jest.ts`, `src/vitest.ts`, `src/matchers.ts`,
+`src/jest/setup.ts`, `src/jest/globalSetup.ts`, `src/jest/globalTeardown.ts`)
+are covered from Vitest (`tests/adapters.test.ts`) so they land in the
+same `coverage/lcov.info` as the rest of `src/**`. Do not run Jest
+coverage as a second report.
+
+Thresholds start at the floored Node 22 numbers from main @ 353f9e5
+(77% lines/statements, 81% branches, 82% functions) and ratchet up as
+real tests land. Release-please PRs (`release-please--*` head ref, or
+`COVERAGE_RELEASE_PLEASE=1`) require **≥90%** lines, statements, and
+functions (and branches). Denis requires ≥90% before a release.
 
 ```sh
 npm run test:coverage
+COVERAGE_RELEASE_PLEASE=1 npm run test:coverage
 ```
 
 Live OpenAI e2e (must not skip; needs `OPENAI_API_KEY`):
@@ -160,5 +177,7 @@ actionlint -color
 
 - Use a conventional-commit PR title (`feat:`, `fix:`, `docs:`, `ci:`, …).
 - Renovate opens grouped dependency PRs on a Monday Europe/Amsterdam schedule.
-- Coverage uploads are informational and do not fail the PR.
+- Vitest `coverage.thresholds` fail the required Node 22 job when the
+  report is below the floors (90% on release-please PRs). Codecov
+  uploads stay informational.
 - Release process is documented in [docs/releasing.md](docs/releasing.md).
