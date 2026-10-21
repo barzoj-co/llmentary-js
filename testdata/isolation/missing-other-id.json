@@ -1,0 +1,33 @@
+{
+  "id": "missing-other-id",
+  "description": "An unknown or mistyped other session id is an empty Y and fails unless allow_empty is set.",
+  "allow_empty": false,
+  "min_chars": 8,
+  "ignore_texts": [],
+  "x": {
+    "id": "sess-x",
+    "calls": [
+      {
+        "id": "call_x1",
+        "session_id": "sess-x",
+        "seq": 1,
+        "raw_request": {
+          "model": "gpt-4.1-nano",
+          "messages": [
+            {"role": "user", "content": "What is my biological age?"}
+          ]
+        }
+      }
+    ]
+  },
+  "y": {
+    "id": "sess-missing",
+    "calls": []
+  },
+  "expect": {
+    "isolated": false,
+    "message_contains": [
+      "no calls recorded for session sess-missing (isolated_from needs calls on both sides)"
+    ]
+  }
+}
