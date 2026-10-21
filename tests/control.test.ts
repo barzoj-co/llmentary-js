@@ -122,6 +122,35 @@ describe("ControlClient", () => {
     );
   });
 
+  it("maps wait 404 session_not_found to SessionNotFound", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/sessions/ghost/wait")) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              type: "session_not_found",
+              message: 'no calls recorded for session "ghost"; known sessions: GET /sessions',
+              waited_ms: 0,
+            },
+          }),
+          { status: 404, statusText: "Not Found" },
+        );
+      }
+      return new Response("ok", { status: 200 });
+    };
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    await expect(client.wait("ghost", { minCalls: 0, timeout: 3, quiet: "200ms" })).rejects.toBeInstanceOf(
+      SessionNotFound,
+    );
+    await expect(client.wait("ghost", { minCalls: 0 })).rejects.toMatchObject({
+      sessionId: "ghost",
+      status: 404,
+    });
+    await expect(client.wait("ghost")).rejects.toThrow(/no calls recorded for session "ghost"/);
+  });
+
   it("turns a wait 504 into a timeout error with session counts", async () => {
     const fetchImpl: ControlFetch = async (input) => {
       const url = requestUrl(input);

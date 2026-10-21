@@ -175,6 +175,59 @@ describe("normalizeSessionTrace", () => {
   });
 });
 
+describe("seq, sessionId, and userTexts", () => {
+  it("reads seq and sessionId from the wire", () => {
+    const record = normalizeCallRecord({
+      id: "call_3",
+      seq: 1,
+      session_id: "weather",
+      api_family: "openai.chat",
+      request: { model: "gpt-4.1-mini", messages: [{ role: "user", content: "Amsterdam weather" }] },
+    });
+    expect(record.seq).toBe(1);
+    expect(record.sessionId).toBe("weather");
+    expect(record.userTexts).toEqual(["Amsterdam weather"]);
+  });
+
+  it("fills sessionId from the parent session when the call omitted it", () => {
+    const trace = normalizeSessionTrace("weather", {
+      id: "weather",
+      calls: [{ id: "call_3", seq: 1, api_family: "openai.chat" }],
+    });
+    expect(trace.calls[0]?.sessionId).toBe("weather");
+    expect(trace.calls[0]?.seq).toBe(1);
+  });
+
+  it("extracts Chat and Responses user turns and skips system/tool text", () => {
+    const chat = normalizeCallRecord({
+      request: {
+        messages: [
+          { role: "system", content: "Never mention Amsterdam weather or get_current_weather." },
+          { role: "user", content: "Tell a story" },
+          { role: "assistant", content: "Once upon a time" },
+          { role: "user", content: [{ type: "text", text: "Continue" }] },
+        ],
+      },
+    });
+    expect(chat.userTexts).toEqual(["Tell a story", "Continue"]);
+
+    const responses = normalizeCallRecord({
+      request: {
+        instructions: "Never mention Amsterdam weather or get_current_weather.",
+        tools: [{ name: "get_current_weather" }],
+        input: [
+          { role: "developer", content: "hidden" },
+          { role: "user", content: [{ type: "input_text", text: "Lisbon ferry" }] },
+        ],
+      },
+    });
+    expect(responses.userTexts).toEqual(["Lisbon ferry"]);
+
+    const stringInput = normalizeCallRecord({ request: { input: "plain user turn" } });
+    expect(stringInput.userTexts).toEqual(["plain user turn"]);
+  });
+});
+
 describe("sessionSource and upstreamUrl", () => {
   it.each([
     ["path", "https://api.openai.com/v1/chat/completions"],

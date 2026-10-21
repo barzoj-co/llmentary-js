@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AssertionScope, SessionAssertionError, recordsForTrace } from "../src/assertions.js";
+import { SessionNotFound } from "../src/control.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { QueryOptions, SessionTrace } from "../src/types.js";
 
@@ -415,6 +416,24 @@ describe("AssertionScope", () => {
     await expect(scopeFor(trace).usageDetails({ cachedTokens: { min: 1 }, reasoningTokens: { min: 1 } })).resolves.toMatchObject({
       pass: true,
     });
+  });
+
+  it("treats wait SessionNotFound as zero calls for callCount(0)", async () => {
+    const scope = new AssertionScope({
+      control: {
+        wait: async () => {
+          throw new SessionNotFound("ghost", {
+            status: 404,
+            path: "/sessions/ghost/wait",
+            body: JSON.stringify({ error: { type: "session_not_found", message: "missing" } }),
+          });
+        },
+        listSessions: async () => [],
+      } as never,
+      sessionId: "ghost",
+    });
+    await expect(scope.callCount(0)).resolves.toMatchObject({ pass: true });
+    await expect(scope.noErrors()).rejects.toThrow(/no calls recorded for session ghost/);
   });
 });
 

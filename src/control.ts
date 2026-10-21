@@ -248,7 +248,7 @@ export function normalizeProxyConfig(raw: JsonValue): ProxyConfig {
 
 function sessionLookupId(path: string): string | undefined {
   const pathname = path.split("?")[0] ?? path;
-  const match = pathname.match(/^\/sessions\/([^/]+)(?:\/otlp)?$/);
+  const match = pathname.match(/^\/sessions\/([^/]+)(?:\/(?:otlp|wait))?$/);
   if (!match?.[1]) return undefined;
   try {
     return decodeURIComponent(match[1]);

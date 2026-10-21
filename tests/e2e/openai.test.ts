@@ -2,7 +2,15 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
-import { ControlClient, llmentary, SessionAssertionError, startProxy, type ProxyHandle } from "../../src/index.js";
+import {
+  ControlClient,
+  SessionNotFound,
+  formatTraceSummary,
+  llmentary,
+  SessionAssertionError,
+  startProxy,
+  type ProxyHandle,
+} from "../../src/index.js";
 import {
   CACHE_SECOND_CALL_ATTEMPTS,
   CITY_SCHEMA,
@@ -1080,18 +1088,32 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("parses reasoning tokens from one reasoning-model call", async () => {
+      // o4-mini sometimes bills reasoning_tokens=0 even with encrypted reasoning.
+      // Retry the live call; a hit is still required.
       const lm = newSession(proxy);
-      await retryNetwork(() =>
-        openaiClient(lm).responses.create({
-          model: REASONING_MODEL,
-          max_output_tokens: 256,
-          reasoning: { effort: "medium" },
-          input:
-            "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How many cents does the ball cost? Reply with only the integer.",
-        }),
-      );
-      await lm.expect().model(REASONING_MODEL);
-      await lm.expect().usageDetails({ reasoningTokens: { min: 1 } });
+      const client = openaiClient(lm);
+      let hitIndex: number | undefined;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (attempt > 0) await delay(250 * 2 ** (attempt - 1));
+        await retryNetwork(() =>
+          client.responses.create({
+            model: REASONING_MODEL,
+            max_output_tokens: 256,
+            reasoning: { effort: "medium" },
+            input:
+              "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How many cents does the ball cost? Reply with only the integer.",
+          }),
+        );
+        try {
+          await lm.query({ index: attempt }).expect().usageDetails({ reasoningTokens: { min: 1 } });
+          hitIndex = attempt;
+          break;
+        } catch (error) {
+          if (!(error instanceof SessionAssertionError) || attempt === 2) throw error;
+        }
+      }
+      expect(hitIndex).toBeDefined();
+      await lm.query({ index: hitIndex ?? 0 }).expect().model(REASONING_MODEL);
       await lm.cleanup();
     });
 
@@ -1126,6 +1148,136 @@ describe("OpenAI E2E through llmentary", () => {
         if (previous === undefined) delete process.env.OPENAI_BASE_URL;
         else process.env.OPENAI_BASE_URL = previous;
         await lm.cleanup();
+      }
+    });
+
+    it("maps wait minCalls=0 on a never-created session to SessionNotFound, then records a real call", async () => {
+      const lm = newSession(proxy);
+      try {
+        try {
+          await lm.wait({ minCalls: 0, timeout: 3, quiet: "200ms" });
+          throw new Error("wait on a never-created session succeeded");
+        } catch (error) {
+          expect(error).toBeInstanceOf(SessionNotFound);
+          if (!(error instanceof SessionNotFound)) throw error;
+          expect(error.sessionId).toBe(lm.sessionId);
+          expect(error.status).toBe(404);
+        }
+        await retryNetwork(() =>
+          openaiClient(lm).chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word ping." }],
+          }),
+        );
+        const trace = await lm.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
+        expect(trace.calls.length).toBeGreaterThanOrEqual(1);
+      } finally {
+        await lm.cleanup();
+      }
+    });
+
+    it("reads per-session seq across two live path sessions on one proxy", async () => {
+      const a = llmentary({
+        sessionId: `seq-a-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const b = llmentary({
+        sessionId: `seq-b-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const clientA = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: a.pathBaseURL() });
+      const clientB = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: b.pathBaseURL() });
+      try {
+        await retryNetwork(() =>
+          clientA.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word alpha." }],
+          }),
+        );
+        await retryNetwork(() =>
+          clientB.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word bravo." }],
+          }),
+        );
+        await retryNetwork(() =>
+          clientA.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word alpha-two." }],
+          }),
+        );
+        const traceA = await a.wait({ minCalls: 2, timeout: 25, quiet: "200ms" });
+        const traceB = await b.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
+        expect(traceB.calls).toHaveLength(1);
+        expect(traceB.calls[0]?.seq).toBe(1);
+        expect(traceB.calls[0]?.sessionId).toBe(b.sessionId);
+        expect(traceB.calls[0]?.id).toBeTruthy();
+        expect(traceB.calls[0]?.id).not.toBe("call_1");
+        expect(traceA.calls[0]?.seq).toBe(1);
+        expect(traceA.calls[1]?.seq).toBe(2);
+        expect(formatTraceSummary(traceB)).toContain(`#1 (${traceB.calls[0]?.id})`);
+      } finally {
+        await a.cleanup();
+        await b.cleanup();
+      }
+    });
+
+    it("keeps two path-prefix conversations isolatedFrom each other", async () => {
+      const weather = llmentary({
+        sessionId: `weather-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const barge = llmentary({
+        sessionId: `barge-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const weatherClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: weather.pathBaseURL() });
+      const bargeClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: barge.pathBaseURL() });
+      const system = "You are a test assistant. The other conversation may mention ZURICH_QUAYZE or LISBON_FERRY. Reply with one short sentence.";
+      try {
+        await retryNetwork(() =>
+          weatherClient.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 16,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: "Ask only for the ZURICH_QUAYZE weather token." },
+            ],
+          }),
+        );
+        await retryNetwork(() =>
+          bargeClient.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 16,
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: "Ask only for the LISBON_FERRY story token." },
+            ],
+          }),
+        );
+        await weather.expect().isolatedFrom(barge);
+        await barge.expect().isolatedFrom(weather);
+      } finally {
+        await weather.cleanup();
+        await barge.cleanup();
       }
     });
 

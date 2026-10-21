@@ -4,7 +4,7 @@
 
 - A **proxy** is the separate `llmentary` Go binary. It accepts OpenAI-compatible traffic, forwards to an upstream, and records calls in memory.
 - A **session** is selected with `X-Test-Session`, W3C `baggage` key `llmentary.session.id`, or the path prefix `/s/{session}/` (see `lm.pathBaseURL()`).
-- The **control API** is read through `/sessions`, `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, `/healthz`, and `/config`.
+- The **control API** is read through `/sessions`, `/sessions/{id}`, `/sessions/{id}/wait`, `DELETE /sessions/{id}`, `/sessions/{id}/otlp`, `/healthz`, and `/config`. Machine-readable contract: [api/control/openapi.yaml](https://github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml) (also `GET /openapi.yaml` on the control listener in proxy releases that serve it).
 - A **Session** is a per-test handle containing the session id, proxy base URL, headers, fetch helper, query scopes, cleanup, and assertions.
 
 ## Creating a session
@@ -74,7 +74,7 @@ lm.expect({ since: mark });
 lm.query({}).since(mark).expect();
 ```
 
-`offersTool(name)` keeps calls whose **request** offered that tool. `withoutTools()` keeps calls that offered none (structured-output routers). `await lm.mark()` is the current call count (`seq`). `since: mark` keeps calls with `seq >= mark`. The generated summary prints `seq=N` using those numbers. Per-call `promptText` / `responseText` fill the same role as Python `prompt_text` / `response_text`. `sessionSource` and `upstreamUrl` are typed accessors for the proxy's `session_source` and `upstream.url` (absent when the proxy omitted them).
+`offersTool(name)` keeps calls whose **request** offered that tool. `withoutTools()` keeps calls that offered none (structured-output routers). `await lm.mark()` is the current call count. `since: mark` keeps calls with `seq >= mark` (`mark()` is 0-based into the session list; wire `seq` is 1-based). Call `id`s (`call_3`) are unique within one proxy process and are **not** per-session order. Use `CallRecord.seq` for "nth call of this session". The generated summary prints `#seq (id)` (for example `#1 (call_3)`). Per-call `promptText` / `responseText` fill the same role as Python `prompt_text` / `response_text`. `sessionSource`, `upstreamUrl`, `sessionId`, and `userTexts` are typed accessors for the proxy's `session_source`, `upstream.url`, `session_id`, and user-role message texts (absent when the proxy omitted them).
 
 ### Filters and empty traces
 
@@ -124,6 +124,7 @@ await lm.expect().promptContains("weather");
 await lm.expect().responseContains(/rain|sun/i);
 await lm.expect().responseJsonValid({ schema: { type: "object" } });
 await lm.expect().callCount(2);
+await lm.expect().isolatedFrom(other);
 await lm.expect().streamed(true);
 await lm.expect().outputText();
 await lm.expect().outputMatchesDeltas();
@@ -151,7 +152,28 @@ await lm.expect().toolResultInPrompt("lookup_weather");
 | `spec_violations` | Findings. `[]` is clean; omitted means not checked. |
 | `ignored_fields` | Vendor extensions / dropped fields with `severity:"warning"`. Same empty-vs-absent rule. |
 
-Expect helpers on a session with zero calls fail with `no calls recorded for session <id>; known sessions: …` plus the trace summary. `GET /sessions/{id}` 404 raises `SessionNotFound`.
+Expect helpers on a session with zero calls fail with `no calls recorded for session <id>; known sessions: …` plus the trace summary. `GET /sessions/{id}` 404 raises `SessionNotFound`. `wait` on a never-created session with `minCalls=0` also raises `SessionNotFound` (`404 session_not_found`). `wait` with `minCalls>=1` on a session that never appears raises `WaitTimeoutError` (`504 wait_timeout`) after `timeout`. `callCount(0)` treats `SessionNotFound` as zero calls.
+
+```ts
+import { SessionNotFound, WaitTimeoutError } from "llmentary";
+
+try {
+  await lm.wait({ minCalls: 0, quiet: "200ms" });
+} catch (error) {
+  if (error instanceof SessionNotFound) {
+    // never created (or DELETE'd)
+  }
+}
+try {
+  await lm.wait({ minCalls: 1, timeout: 3, quiet: "50ms" });
+} catch (error) {
+  if (error instanceof WaitTimeoutError) {
+    // no call arrived in time
+  }
+}
+```
+
+`isolatedFrom(other)` (`other`: a `Session` or session id) fails unless every call in this session has `sessionId == lm.sessionId`, no call id appears in both sessions, and no user-role text is shared. System / developer prompts, instructions, and tool definitions are not compared. Empty sessions fail unless `allowEmpty()` (or `{ allowEmpty: true }`). `allowEmpty()` also hides a mistyped `other` session id (wait then sees zero calls). Optional `{ requirePathSource: true }` requires `sessionSource === "path"`. Per-call user texts are `call.userTexts`. A path prefix isolates client processes, not conversations: one env-configured SDK client is one session. For N conversations, use one process per session, construct a client with `lm.pathBaseURL()`, set headers/baggage, or `DELETE` between sequential runs. See [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
 
 Failures throw `SessionAssertionError`; its message appends the proxy trace summary when present, or a generated summary with call count, API type, model, tools, optional `finish=` (omitted when there is no finish reason), optional `src=` / `tokens=`, and error markers. Unparsed calls (no request and no response) print `unparsed call, keys=[…]` instead of a key dump on every plain answer.
 
@@ -238,6 +260,8 @@ await control.wait("session-id", { timeout: 30, quiet: 0.5, minCalls: 2 });
 // timeoutMs / idleMs still work (deprecated aliases of timeout / quiet)
 await control.wait("session-id", { timeoutMs: 5_000, idleMs: 100 });
 await control.getSession("session-id"); // SessionNotFound on 404
+await control.wait("ghost", { minCalls: 0 }); // SessionNotFound on 404
+await control.wait("ghost", { minCalls: 1, timeout: 3 }); // WaitTimeoutError on 504
 await control.getOtlp("session-id");
 await control.deleteSession("session-id");
 ```
@@ -246,4 +270,4 @@ await control.deleteSession("session-id");
 
 The raw JSON returned by the proxy is preserved on `SessionTrace.raw` and `CallRecord.raw`. The client maps the Go control schema (`api_family`, base64 `raw_request`/`raw_response`, `normalized.model` / `tool_calls` / `output_text` / `usage` / `error.mid_stream`) plus common snake_case/camelCase envelopes for assertion convenience without mutating the raw shape.
 
-`wait` always sends `timeout` and `quiet` as Go duration strings (`30s`, `500ms`). `minCalls` is sent as `min_calls` when set. Numbers on `timeout` / `quiet` are seconds. The deprecated `timeoutMs` / `idleMs` option names still work (milliseconds). Defaults and env names match the other clients: `30s` / `500ms`, `LLMENTARY_WAIT_TIMEOUT`, `LLMENTARY_WAIT_QUIET` (Go duration or bare seconds). The previous JS env names `LLMENTARY_WAIT_TIMEOUT_MS` / `LLMENTARY_WAIT_IDLE_MS` remain as deprecated aliases (milliseconds) and emit a one-time `DeprecationWarning`. A proxy 504 becomes `wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`. The client HTTP abort is `timeout + quiet + 5s` so it cannot fire before the proxy answers.
+`wait` always sends `timeout` and `quiet` as Go duration strings (`30s`, `500ms`). `minCalls` is sent as `min_calls` when set. Numbers on `timeout` / `quiet` are seconds. The deprecated `timeoutMs` / `idleMs` option names still work (milliseconds). Defaults and env names match the other clients: `30s` / `500ms`, `LLMENTARY_WAIT_TIMEOUT`, `LLMENTARY_WAIT_QUIET` (Go duration or bare seconds). The previous JS env names `LLMENTARY_WAIT_TIMEOUT_MS` / `LLMENTARY_WAIT_IDLE_MS` remain as deprecated aliases (milliseconds) and emit a one-time `DeprecationWarning`. A proxy 504 becomes `WaitTimeoutError`: `wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`. A proxy 404 on `/sessions/{id}` or `/sessions/{id}/wait` becomes `SessionNotFound` (`session_not_found`). The client HTTP abort is `timeout + quiet + 5s` so it cannot fire before the proxy answers.
