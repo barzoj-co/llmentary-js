@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   forgetSpawnedProcess,
   linuxStartMsFromProc,
@@ -221,14 +221,34 @@ describe("process identity", () => {
 
   it("escalates to SIGKILL when a matching process ignores SIGTERM", async () => {
     const instanceId = randomUUID();
-    const child = spawn(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'], {
-      env: { ...process.env, LLMENTARY_INSTANCE_ID: instanceId },
-      stdio: "ignore",
-    });
+    const child = spawn(
+      process.execPath,
+      ["-e", 'process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000)'],
+      {
+        env: { ...process.env, LLMENTARY_INSTANCE_ID: instanceId },
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
     children.push(child);
     const pid = child.pid!;
-    await delay(50);
-    await expect(stopProcessIfMatches(pid, { pid, instanceId })).resolves.toBe(true);
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("child never signaled ready")), 5_000);
+      child.stdout!.once("data", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      child.once("exit", (code, signal) => {
+        clearTimeout(timer);
+        reject(new Error(`child exited before ready: ${code} ${signal}`));
+      });
+    });
+    const kill = vi.spyOn(process, "kill");
+    try {
+      await expect(stopProcessIfMatches(pid, { pid, instanceId })).resolves.toBe(true);
+      expect(kill).toHaveBeenCalledWith(pid, "SIGKILL");
+    } finally {
+      kill.mockRestore();
+    }
     const deadline = Date.now() + 2_000;
     while (Date.now() < deadline && pidExists(pid)) await delay(50);
     expect(pidExists(pid)).toBe(false);

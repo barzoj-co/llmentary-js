@@ -94,7 +94,7 @@ describe("startProxy attach and launch failures", () => {
         args: ["-e", "process.exit(2)"],
         healthTimeoutMs: 1_000,
       }),
-    ).rejects.toThrow(/Failed to start llmentary proxy/);
+    ).rejects.toThrow(/Failed to start llmentary proxy[\s\S]*exited before becoming healthy/);
   });
 });
 
