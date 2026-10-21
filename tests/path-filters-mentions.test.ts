@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { AssertionScope, formatTraceSummary, offeredToolNames, recordsForTrace } from "../src/assertions.js";
+import {
+  AssertionScope,
+  SessionAssertionError,
+  formatEmptyFilterMessage,
+  formatTraceSummary,
+  offeredToolNames,
+  recordsForTrace,
+} from "../src/assertions.js";
 import { SessionQuery, llmentary, mentionsAny, mentionsAnyResult } from "../src/index.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
-import type { SessionTrace } from "../src/types.js";
+import type { QueryOptions, SessionTrace } from "../src/types.js";
 
 const PROXY = "http://127.0.0.1:7777";
 
@@ -124,6 +131,27 @@ describe("offersTool / withoutTools / since", () => {
     expect(filtered.since(1)).toHaveLength(1);
     expect(filtered.since(1)[0]?.promptText).toMatch(/SEED_X|need tools|sunny/);
   });
+
+  it("fails noErrors and notCalled on empty filters unless allowEmpty", async () => {
+    const last = trace.calls.length;
+    await expect(scopeFor(trace, { withoutTools: true, offersTool: "missing" }).soft().noErrors()).resolves.toMatchObject({
+      pass: false,
+    });
+    await expect(scopeFor(trace, { offersTool: "missing" }).noErrors()).rejects.toThrow(/no calls matched query/);
+    await expect(scopeFor(trace, { offersTool: "missing" }).notCalled("x")).rejects.toThrow(
+      /no calls matched query \(offersTool=missing\); session has 3 calls/,
+    );
+    await expect(scopeFor(trace, { since: last }).noErrors()).rejects.toThrow(/no calls matched query \(since=3\)/);
+    await expect(scopeFor(trace, { since: last, allowEmpty: true }).noErrors()).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace, { since: last, allowEmpty: true }).notCalled("x")).resolves.toMatchObject({
+      pass: true,
+    });
+    await expect(scopeFor(trace, { since: last }).callCount(0)).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace, { withoutTools: true }).noErrors()).resolves.toMatchObject({ pass: true });
+    expect(formatEmptyFilterMessage({ withoutTools: true, since: 3 }, 8)).toBe(
+      "no calls matched query (withoutTools, since=3); session has 8 calls",
+    );
+  });
 });
 
 describe("mentionsAny", () => {
@@ -240,9 +268,76 @@ describe("soft collect-then-fail", () => {
     await soft.callCount(99);
     await expect(soft.check()).rejects.toThrow(/missing_one[\s\S]*missing_two[\s\S]*99/);
   });
+
+  it("appends the trace summary once for a soft failure set", async () => {
+    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [ROUTER] });
+    const soft = scopeFor(trace).soft();
+    await soft.toolCalled("missing_one");
+    await soft.toolCalled("missing_two");
+    await soft.callCount(99);
+    const error = await soft.check().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SessionAssertionError);
+    const message = (error as SessionAssertionError).message;
+    expect(message.match(/llmentary trace summary/g)).toHaveLength(1);
+    expect(message).toMatch(/missing_one/);
+    expect(message).toMatch(/missing_two/);
+    expect(message).toMatch(/99/);
+  });
 });
 
-function scopeFor(trace: SessionTrace, query?: { since?: number; offersTool?: string; withoutTools?: boolean }): AssertionScope {
+describe("trace summary attribution", () => {
+  it("omits empty finish, skips call-keys noise, and shows src/tokens", () => {
+    const trace = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [
+        {
+          ...ROUTER,
+          session_source: "path",
+          upstream: { url: "https://api.openai.com/v1/chat/completions" },
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        },
+        {
+          ...SPECIALIST,
+          session_source: "header",
+          upstream: { url: "https://api.openai.com/v1/chat/completions" },
+        },
+        {
+          ...FOLLOW_UP,
+          session_source: "baggage",
+        },
+        {
+          api_family: "openai.chat",
+          session_source: "default",
+          status: 401,
+          error: { message: "invalid_api_key", type: "invalid_request_error", code: "invalid_api_key" },
+          request: { model: "gpt-4.1-mini", messages: [{ role: "user", content: "ping" }] },
+          response: { error: { message: "invalid_api_key" } },
+        },
+        {
+          api_family: "openai.chat",
+          session_source: "path",
+          request: { model: "gpt-4.1-mini", messages: [{ role: "user", content: "stream" }] },
+          response: { finish_reason: "unknown", output_text: "partial" },
+        },
+        { leftover: true, debug: ["noise"] },
+      ],
+    });
+    const summary = formatTraceSummary(trace);
+    expect(summary).not.toMatch(/call keys=/);
+    expect(summary).not.toMatch(/finish=unknown/);
+    expect(summary).not.toMatch(/finish=-/);
+    expect(summary).toMatch(/src=path/);
+    expect(summary).toMatch(/src=header/);
+    expect(summary).toMatch(/src=baggage/);
+    expect(summary).toMatch(/src=default/);
+    expect(summary).toMatch(/tokens=8\/3/);
+    expect(summary).toMatch(/unparsed call, keys=\[leftover,debug\]/);
+    expect(summary).toMatch(/finish=stop/);
+    expect(summary).toMatch(/finish=tool_calls/);
+  });
+});
+
+function scopeFor(trace: SessionTrace, query?: QueryOptions): AssertionScope {
   return new AssertionScope({
     control: {
       wait: async () => trace,

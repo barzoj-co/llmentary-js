@@ -302,13 +302,17 @@ export class AssertionScope {
   }
 
   async callCount(expected: number): Promise<AssertionResult> {
-    return this.evaluate(`expected ${expected} recorded call(s)`, (trace) => {
-      const records = recordsForTrace(trace, this.query);
-      return {
-        pass: records.length === expected,
-        message: `expected ${expected} recorded call(s), got ${records.length}`,
-      };
-    });
+    return this.evaluate(
+      `expected ${expected} recorded call(s)`,
+      (trace) => {
+        const records = recordsForTrace(trace, this.query);
+        return {
+          pass: records.length === expected,
+          message: `expected ${expected} recorded call(s), got ${records.length}`,
+        };
+      },
+      { allowEmptyMatch: true },
+    );
   }
 
   async streamed(expected = true): Promise<AssertionResult> {
@@ -566,6 +570,7 @@ export class AssertionScope {
   private async evaluate(
     defaultMessage: string,
     predicate: (trace: SessionTrace) => { pass: boolean; message?: string } | Promise<{ pass: boolean; message?: string }>,
+    options: { allowEmptyMatch?: boolean } = {},
   ): Promise<AssertionResult> {
     let trace: SessionTrace;
     try {
@@ -576,12 +581,30 @@ export class AssertionScope {
       }
       throw error;
     }
+    if (!options.allowEmptyMatch && !this.query.allowEmpty) {
+      const matched = recordsForTrace(trace, this.query);
+      if (matched.length === 0) {
+        if (trace.calls.length === 0) {
+          return this.failZeroCalls(trace, defaultMessage);
+        }
+        if (hasQueryFilter(this.query)) {
+          return this.failEmptyFilter(trace);
+        }
+      }
+    }
     const result = await predicate(trace);
     const message = result.message ?? defaultMessage;
     if (result.pass) return this.finish({ pass: true, message, trace });
     if (trace.calls.length === 0) {
       return this.failZeroCalls(trace, message);
     }
+    const error = new SessionAssertionError(message, trace);
+    if (this.softMode) return this.finish({ pass: false, message, trace, error });
+    throw error;
+  }
+
+  private failEmptyFilter(trace: SessionTrace): AssertionResult {
+    const message = formatEmptyFilterMessage(this.query, trace.calls.length);
     const error = new SessionAssertionError(message, trace);
     if (this.softMode) return this.finish({ pass: false, message, trace, error });
     throw error;
@@ -1069,14 +1092,65 @@ function hasRawPayload(record: CallRecord): boolean {
   return Boolean(stringAt(raw, "raw_request") || stringAt(raw, "raw_response"));
 }
 
+export function formatEmptyFilterMessage(query: QueryOptions, sessionCallCount: number): string {
+  return `no calls matched query (${describeQueryFilters(query)}); session has ${sessionCallCount} calls`;
+}
+
+export function hasQueryFilter(query: QueryOptions): boolean {
+  return (
+    query.since !== undefined ||
+    query.withoutTools === true ||
+    query.offersTool !== undefined ||
+    query.apiType !== undefined ||
+    query.model !== undefined ||
+    query.index !== undefined
+  );
+}
+
+function describeQueryFilters(query: QueryOptions): string {
+  const parts: string[] = [];
+  if (query.withoutTools) parts.push("withoutTools");
+  if (query.offersTool) parts.push(`offersTool=${query.offersTool}`);
+  if (query.since !== undefined) parts.push(`since=${query.since}`);
+  if (query.apiType) parts.push(`apiType=${query.apiType}`);
+  if (query.model) parts.push(`model=${String(query.model)}`);
+  if (query.index !== undefined) parts.push(`index=${query.index}`);
+  return parts.join(", ") || "empty";
+}
+
 export function formatTraceSummary(trace: SessionTrace): string {
   const lines = [`llmentary trace summary for session ${trace.id}: ${trace.calls.length} call(s)`];
   if (trace.summary) lines.push(trace.summary);
   trace.calls.forEach((record, index) => {
+    const parsed =
+      record.request !== undefined ||
+      record.response !== undefined ||
+      record.apiFamily !== undefined ||
+      record.apiType !== undefined ||
+      record.model !== undefined ||
+      record.error !== undefined;
+    if (!parsed) {
+      const keys = Object.keys(asObject(record.raw)).join(",");
+      lines.push(`${index + 1}. seq=${index} unparsed call, keys=[${keys}]`);
+      return;
+    }
     const tools = toolCallsForRecords([record]).map((tool) => tool.name);
-    lines.push(
-      `${index + 1}. seq=${index} ${record.apiFamily ?? record.apiType ?? "unknown"} model=${record.model ?? "unknown"} tools=${tools.join(",") || "-"} finish=${finishReasons(record.response).join(",") || "-"} error=${record.error ? "yes" : "no"} spec=${specStatusForRecord(record)}`,
-    );
+    const parts = [
+      `${index + 1}. seq=${index}`,
+      `${record.apiFamily ?? record.apiType ?? "unknown"}`,
+      `model=${record.model ?? "unknown"}`,
+      `tools=${tools.join(",") || "-"}`,
+    ];
+    const reasons = finishReasons(record.response).filter((reason) => reason !== "unknown" && reason !== "-");
+    if (reasons.length > 0) parts.push(`finish=${reasons.join(",")}`);
+    if (record.sessionSource) parts.push(`src=${record.sessionSource}`);
+    const usage = usageNumbers(record);
+    if (usage && (usage.prompt !== undefined || usage.completion !== undefined)) {
+      parts.push(`tokens=${usage.prompt ?? "-"}/${usage.completion ?? "-"}`);
+    }
+    parts.push(`error=${record.error ? "yes" : "no"}`);
+    parts.push(`spec=${specStatusForRecord(record)}`);
+    lines.push(parts.join(" "));
   });
   return lines.join("\n");
 }

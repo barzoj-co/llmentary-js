@@ -32,6 +32,11 @@ export interface QueryOptions {
   withoutTools?: boolean;
   /** Keep calls after this mark (0-based seq / call count from `mark()`). */
   since?: SessionMark;
+  /**
+   * Allow `noErrors()` / `notCalled()` (and other empty-match assertions) to pass
+   * when the filter matches zero calls. Default is to fail with "no calls matched query".
+   */
+  allowEmpty?: boolean;
 }
 
 export interface SessionOptions {
@@ -140,6 +145,10 @@ export interface CallRecord {
   ignoredFields?: IgnoredField[];
   promptText?: string;
   responseText?: string;
+  /** How the proxy attributed the call (`path`, `header`, `baggage`, `default`). */
+  sessionSource?: string;
+  /** Upstream URL the proxy forwarded to (the `/s/{session}` prefix is not forwarded). */
+  upstreamUrl?: string;
   raw: JsonValue;
 }
 

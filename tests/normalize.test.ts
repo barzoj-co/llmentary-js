@@ -174,3 +174,31 @@ describe("normalizeSessionTrace", () => {
     expect(trace.calls[0]?.request).toEqual({ model: "gpt-4.1-mini" });
   });
 });
+
+describe("sessionSource and upstreamUrl", () => {
+  it.each([
+    ["path", "https://api.openai.com/v1/chat/completions"],
+    ["header", "https://openrouter.ai/api/v1/chat/completions"],
+    ["baggage", "https://api.openai.com/v1/responses"],
+    ["default", "http://127.0.0.1:9/v1/chat/completions"],
+  ] as const)("maps %s attribution and upstream url", (source, url) => {
+    const record = normalizeCallRecord({
+      api_family: "openai.chat",
+      session_source: source,
+      upstream: { method: "POST", url },
+      request: { model: "gpt-4.1-mini" },
+    });
+    expect(record.sessionSource).toBe(source);
+    expect(record.upstreamUrl).toBe(url);
+    expect(record.upstreamUrl).not.toMatch(/\/s\//);
+  });
+
+  it("leaves the accessors undefined when the proxy omitted them", () => {
+    const record = normalizeCallRecord({
+      api_family: "openai.chat",
+      request: { model: "gpt-4.1-mini" },
+    });
+    expect(record.sessionSource).toBeUndefined();
+    expect(record.upstreamUrl).toBeUndefined();
+  });
+});

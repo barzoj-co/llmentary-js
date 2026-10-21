@@ -115,6 +115,7 @@ describe("AssertionScope", () => {
     expect(soft.pass).toBe(false);
     expect(soft.error?.message).toContain("llmentary trace summary");
     await expect(scopeFor(trace).toolCalled("missing")).rejects.toBeInstanceOf(SessionAssertionError);
+    await expect(scopeFor(trace).noErrors()).rejects.toThrow(/no calls recorded/);
   });
 
   it("requires every matching record to satisfy bounds", async () => {

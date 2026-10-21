@@ -25,6 +25,8 @@ describe("README public API snippets", () => {
     expect(readme).toContain("offersTool");
     expect(readme).toContain("withoutTools");
     expect(readme).toContain("since");
+    expect(readme).toContain("callCount");
+    expect(readme).toContain("allowEmpty");
     expect(readme).toContain("v0.2.0");
   });
 
