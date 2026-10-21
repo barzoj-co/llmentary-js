@@ -287,7 +287,7 @@ function inferHttpStatus(
 ): number | undefined {
   const errorObject = asObject(error);
   const nestedError = objectAt(errorObject, "error") ?? asObject(valueAt(asObject(objectAt(object, "response")), "error"));
-  return (
+  const status =
     numberAt(object, "status") ??
     numberAt(object, "status_code") ??
     numberAt(object, "http_status") ??
@@ -296,8 +296,9 @@ function inferHttpStatus(
     numberAt(nestedError, "status") ??
     numberAt(nestedError, "http_status") ??
     numberAt(metadata, "status") ??
-    numberAt(metadata, "http_status")
-  );
+    numberAt(metadata, "http_status");
+  if (status === 0) return undefined;
+  return status;
 }
 
 function enrichUsageDetails(
@@ -538,7 +539,13 @@ function collectText(value: JsonValue | undefined): string {
 }
 
 export function specStatusForRecord(record: CallRecord): string {
+  const skipped = record.validation?.skippedReason;
+  if (skipped) return `skipped:${skipped}`;
   if (!validationWasRun(record)) return "not checked";
   const count = record.specViolations?.length ?? 0;
-  return count === 0 ? "clean" : `${count} violation${count === 1 ? "" : "s"}`;
+  if (count > 0) return `${count} violation${count === 1 ? "" : "s"}`;
+  if (record.validation?.requestChecked === true && record.validation.responseChecked !== true) {
+    return "request_only";
+  }
+  return "clean";
 }
