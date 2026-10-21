@@ -266,6 +266,20 @@ describe("ControlClient", () => {
     expect(seen[0]).toBe("http://127.0.0.1:9/openapi.yaml");
   });
 
+  it("propagates a body read failure on a successful openapi response", async () => {
+    const fetchImpl: ControlFetch = async () =>
+      ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: async () => {
+          throw new Error("body closed");
+        },
+      }) as unknown as Response;
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    await expect(client.openapi()).rejects.toThrow(/body closed/);
+  });
+
   it("aborts hung requests after requestTimeoutMs and lets wait exceed it", async () => {
     const hungFetch: ControlFetch = async (input, init) => {
       void input;

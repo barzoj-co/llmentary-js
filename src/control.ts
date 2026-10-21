@@ -112,14 +112,14 @@ export class ControlClient {
       headers,
       signal: AbortSignal.timeout(this.requestTimeoutMs),
     });
-    const text = await response.text().catch(() => "");
     if (!response.ok) {
+      const text = await response.text().catch(() => "");
       throw new ControlApiError(
         `llmentary control API GET ${path} failed: ${response.status} ${response.statusText}${text ? `\n${text}` : ""}`,
         { status: response.status, path, body: text },
       );
     }
-    return text;
+    return response.text();
   }
 
   private async request(path: string, init: RequestInit = {}): Promise<JsonValue> {

@@ -166,10 +166,11 @@ async function main() {
       await mkdir(destDir, { recursive: true });
       await rename(binary, join(destDir, spec.bin));
       const contract = await findOpenApi(extractDir);
-      if (contract) {
-        await writeFile(join(ROOT, "packages", spec.dir, "openapi.yaml"), await readFile(contract));
-        await writeFile(join(ROOT, "openapi.yaml"), await readFile(contract));
+      if (!contract) {
+        throw new Error(`No openapi.yaml or openapi.yml in ${asset}`);
       }
+      await writeFile(join(ROOT, "packages", spec.dir, "openapi.yaml"), await readFile(contract));
+      await writeFile(join(ROOT, "openapi.yaml"), await readFile(contract));
       await writeFile(join(ROOT, "packages", spec.dir, "LICENSE"), await readFile(join(ROOT, "LICENSE")));
       await writeFile(
         join(ROOT, "packages", spec.dir, "LICENSE.AGPL-3.0"),
