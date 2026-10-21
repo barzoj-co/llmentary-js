@@ -1,11 +1,11 @@
 import { defineConfig } from "vitest/config";
 
-/** Floored from Node 22 `test:coverage` on main @ 353f9e5 (77.66 / 81.72 / 82.45). */
+/** Floored from Node 22 `test:coverage` after binary download/resolve tests (88.44 / 82.7 / 89.88). */
 const MEASURED_FLOORS = {
-  lines: 77,
-  statements: 77,
-  functions: 82,
-  branches: 81,
+  lines: 88,
+  statements: 88,
+  functions: 89,
+  branches: 82,
 } as const;
 
 const RELEASE_FLOORS = {

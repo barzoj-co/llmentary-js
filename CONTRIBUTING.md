@@ -66,8 +66,9 @@ same `coverage/lcov.info` as the rest of `src/**`. Do not run Jest
 coverage as a second report.
 
 Thresholds start at the floored Node 22 numbers from main @ 353f9e5
-(77% lines/statements, 81% branches, 82% functions) and ratchet up as
-real tests land. Release-please PRs (`release-please--*` head ref, or
+and ratchet up as real tests land. Current floors (after binary
+download/resolve tests): 88% lines/statements, 82% branches, 89%
+functions. Release-please PRs (`release-please--*` head ref, or
 `COVERAGE_RELEASE_PLEASE=1`) require **≥90%** lines, statements, and
 functions (and branches). Denis requires ≥90% before a release.
 
