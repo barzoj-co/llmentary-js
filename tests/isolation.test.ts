@@ -192,7 +192,7 @@ describe("isolatedFrom", () => {
       const result = isolationCheck(self, "iso-x", origin, "iso-a");
       expect(result.pass, result.message).toBe(false);
       expect(result.message).toContain("user text 'What is my biological age?'");
-      expect(result.message).toContain("from session iso-a #1 (call_y1)");
+      expect(result.message).toContain("also introduced by session iso-a #1 (call_y1)");
       expect(result.message).toContain("appears in session iso-x #1 (call_x1)");
     }
   });
@@ -210,15 +210,25 @@ describe("isolatedFrom", () => {
     expect(result.message).toMatch(/#1 \(call_3\)/);
   });
 
-  it("fails an empty self session unless allowEmpty; empty other is not a leak", async () => {
+  it("fails an empty self or empty other session unless allowEmpty", async () => {
     const weather = sessionTrace("weather", [
       chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
     ]);
     const empty = sessionTrace("barge", []);
-    expect(isolationCheck(weather, "weather", empty, "barge").pass).toBe(true);
+    expect(isolationCheck(weather, "weather", empty, "barge").pass).toBe(false);
+    expect(isolationCheck(weather, "weather", empty, "barge").message).toBe(
+      "no calls recorded for session barge (isolated_from needs calls on both sides)",
+    );
+    expect(isolationCheck(weather, "weather", empty, "barge", { allowEmpty: true }).pass).toBe(true);
     expect(isolationCheck(empty, "barge", weather, "weather").message).toBe("no calls recorded for session barge");
     expect(isolationCheck(empty, "barge", weather, "weather", { allowEmpty: true }).pass).toBe(true);
-    await expect(scopeFor(weather, empty).isolatedFrom("barge")).resolves.toMatchObject({ pass: true });
+    expect(isolationCheck(empty, "barge", empty, "barge", { allowEmpty: true }).pass).toBe(true);
+    await expect(scopeFor(weather, empty).isolatedFrom("barge")).rejects.toThrow(
+      /no calls recorded for session barge \(isolated_from needs calls on both sides\)/,
+    );
+    await expect(scopeFor(weather, empty).allowEmpty().isolatedFrom("barge")).resolves.toMatchObject({
+      pass: true,
+    });
     await expect(scopeFor(empty, weather).isolatedFrom("weather")).rejects.toThrow(
       /no calls recorded for session barge/,
     );
@@ -227,7 +237,7 @@ describe("isolatedFrom", () => {
     });
   });
 
-  it("maps a never-created other session to an empty other, not SessionNotFound", async () => {
+  it("fails isolatedFrom on a never-created or mistyped other unless allowEmpty (DOG-32)", async () => {
     const weather = sessionTrace("weather", [
       chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
     ]);
@@ -250,9 +260,127 @@ describe("isolatedFrom", () => {
       } as never,
       sessionId: weather.id,
     });
-    await expect(scope.isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
-    await expect(scope.isolatedFrom("never-created")).resolves.not.toBeInstanceOf(SessionNotFound);
+    await expect(scope.isolatedFrom("never-created")).rejects.toThrow(
+      /no calls recorded for session never-created \(isolated_from needs calls on both sides\)/,
+    );
+    await expect(scope.isolatedFrom("never-created")).rejects.not.toBeInstanceOf(SessionNotFound);
+    await expect(scope.isolatedFrom("weather-typo")).rejects.toThrow(
+      /no calls recorded for session weather-typo \(isolated_from needs calls on both sides\)/,
+    );
     await expect(scope.allowEmpty().isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
+    await expect(scope.isolatedFrom("never-created", { allowEmpty: true })).resolves.toMatchObject({
+      pass: true,
+    });
+  });
+
+  it("introduces every new user-role message on a later call (DOG-33)", () => {
+    const self = sessionTrace("sess-p", [
+      chatCall({ id: "call_p1", seq: 1, sessionId: "sess-p", user: "Opening question number one" }),
+      {
+        id: "call_p2",
+        seq: 2,
+        session_id: "sess-p",
+        request: {
+          messages: [
+            { role: "user", content: "Opening question number one" },
+            { role: "user", content: "Second message sent by P itself" },
+            { role: "user", content: "Third message sent by P itself" },
+          ],
+        },
+      },
+    ]);
+    const other = sessionTrace("sess-q", [
+      chatCall({ id: "call_q1", seq: 1, sessionId: "sess-q", user: "Second message sent by P itself" }),
+    ]);
+    const result = isolationCheck(self, "sess-p", other, "sess-q");
+    expect(result.pass, result.message).toBe(true);
+    expect(isolationCheck(other, "sess-q", self, "sess-p").pass).toBe(true);
+  });
+
+  it("treats a later call as later even when the first call has no user messages", () => {
+    const self = sessionTrace("sess-p", [
+      {
+        id: "call_p1",
+        seq: 1,
+        session_id: "sess-p",
+        request: { messages: [{ role: "system", content: "No user text on the first call." }] },
+      },
+      {
+        id: "call_p2",
+        seq: 2,
+        session_id: "sess-p",
+        request: {
+          messages: [
+            { role: "user", content: "Second message sent by P itself" },
+            { role: "user", content: "Third message sent by P itself" },
+          ],
+        },
+      },
+    ]);
+    const other = sessionTrace("sess-q", [
+      chatCall({ id: "call_q1", seq: 1, sessionId: "sess-q", user: "Second message sent by P itself" }),
+    ]);
+    const result = isolationCheck(self, "sess-p", other, "sess-q");
+    expect(result.pass, result.message).toBe(true);
+  });
+
+  it("introduces the first call's last user message even when it repeats inbound history", () => {
+    const self = sessionTrace("sess-p", [
+      {
+        id: "call_p1",
+        seq: 1,
+        session_id: "sess-p",
+        request: {
+          messages: [
+            { role: "user", content: "Please summarize the visit notes" },
+            { role: "user", content: "Please summarize the visit notes" },
+          ],
+        },
+      },
+    ]);
+    const other = sessionTrace("sess-q", [
+      chatCall({ id: "call_q1", seq: 1, sessionId: "sess-q", user: "Please summarize the visit notes" }),
+    ]);
+    const result = isolationCheck(self, "sess-p", other, "sess-q");
+    expect(result.pass, result.message).toBe(true);
+  });
+
+  it("honours isolatedFrom({ allowEmpty: true }) on an empty self without mutating the scope", async () => {
+    const weather = sessionTrace("weather", [
+      chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
+    ]);
+    const empty = sessionTrace("barge", []);
+    const scope = scopeFor(empty, weather);
+    const [isolated, errors] = await Promise.allSettled([
+      scope.isolatedFrom("weather", { allowEmpty: true }),
+      scope.noErrors(),
+    ]);
+    expect(isolated.status).toBe("fulfilled");
+    if (isolated.status === "fulfilled") expect(isolated.value).toMatchObject({ pass: true });
+    expect(errors.status).toBe("rejected");
+    await expect(scope.isolatedFrom("weather")).rejects.toThrow(/no calls recorded for session barge/);
+  });
+
+  it("still treats first-call inbound history as seen, not introduced", () => {
+    const self = sessionTrace("sess-p", [
+      {
+        id: "call_p1",
+        seq: 1,
+        session_id: "sess-p",
+        request: {
+          messages: [
+            { role: "user", content: "Second message sent by P itself" },
+            { role: "user", content: "Third message sent by P itself" },
+          ],
+        },
+      },
+    ]);
+    const other = sessionTrace("sess-q", [
+      chatCall({ id: "call_q1", seq: 1, sessionId: "sess-q", user: "Second message sent by P itself" }),
+    ]);
+    const result = isolationCheck(self, "sess-p", other, "sess-q");
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("user text 'Second message sent by P itself'");
   });
 
   it("does not treat a failed comparison-session lookup as an empty other", async () => {

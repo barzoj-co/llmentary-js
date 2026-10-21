@@ -81,7 +81,7 @@ export class AssertionScope {
     });
   }
 
-  /** Opt out of the empty-session / empty-filter failure on zero-call assertions. */
+  /** Opt out of empty-session, empty-other, and empty-filter failures. */
   allowEmpty(): AssertionScope {
     this.query = { ...this.query, allowEmpty: true };
     return this;
@@ -359,17 +359,22 @@ export class AssertionScope {
    * no shared call ids, and no foreign user-role turns (exact normalized
    * match; see docs/isolation-spec semantics). System prompts and tool
    * names are not compared. `other` is a session id or a `Session`.
+   * An unknown or empty other session fails unless `allowEmpty()`.
    */
   async isolatedFrom(other: IsolatedFromOther, options: IsolatedFromOptions = {}): Promise<AssertionResult> {
     const otherId = typeof other === "string" ? other : other.sessionId;
-    return this.evaluate(`expected session ${this.sessionId} to stay isolated from ${otherId}`, async (trace) => {
-      const otherTrace = await this.waitOtherTrace(other, otherId);
-      const allowEmpty = options.allowEmpty ?? this.query.allowEmpty;
-      return isolationCheck(trace, this.sessionId, otherTrace, otherId, {
-        ...options,
-        ...(allowEmpty ? { allowEmpty: true } : {}),
-      });
-    });
+    const allowEmpty = options.allowEmpty ?? this.query.allowEmpty;
+    return this.evaluate(
+      `expected session ${this.sessionId} to stay isolated from ${otherId}`,
+      async (trace) => {
+        const otherTrace = await this.waitOtherTrace(other, otherId);
+        return isolationCheck(trace, this.sessionId, otherTrace, otherId, {
+          ...options,
+          ...(allowEmpty ? { allowEmpty: true } : {}),
+        });
+      },
+      allowEmpty ? { allowEmpty: true } : {},
+    );
   }
 
   private async waitOtherTrace(other: IsolatedFromOther, otherId: string): Promise<SessionTrace> {
@@ -665,6 +670,7 @@ export class AssertionScope {
   private async evaluate(
     defaultMessage: string,
     predicate: (trace: SessionTrace) => { pass: boolean; message?: string } | Promise<{ pass: boolean; message?: string }>,
+    override: { allowEmpty?: boolean } = {},
   ): Promise<AssertionResult> {
     let trace: SessionTrace;
     try {
@@ -676,8 +682,9 @@ export class AssertionScope {
         throw error;
       }
     }
+    const allowEmpty = override.allowEmpty ?? this.query.allowEmpty;
     const emptyUnfiltered = trace.calls.length === 0 && !hasQueryFilter(this.query);
-    if (emptyUnfiltered && !this.query.allowEmpty) {
+    if (emptyUnfiltered && !allowEmpty) {
       return this.failZeroCalls(trace, defaultMessage);
     }
     const result = await predicate(trace);
@@ -1264,6 +1271,9 @@ export function isolationCheck(
     return { pass: false, message: `no calls recorded for session ${selfId}` };
   }
   const failures: string[] = [];
+  if (other.calls.length === 0 && !options.allowEmpty) {
+    failures.push(`no calls recorded for session ${otherId} (isolated_from needs calls on both sides)`);
+  }
   for (const { record, index } of orderedCalls(self)) {
     if (record.sessionId !== undefined && record.sessionId !== selfId) {
       failures.push(`${formatCallRef(record, index)} has session_id=${record.sessionId}, expected ${selfId}`);
@@ -1290,7 +1300,7 @@ export function isolationCheck(
       const otherHit = otherIntroduced.get(key);
       if (!otherHit || ignoreIsolationText(otherHit.display, options)) continue;
       failures.push(
-        `user text '${text}' from session ${otherId} ${formatCallRef(otherHit.record, otherHit.index)} appears in session ${selfId} ${formatCallRef(record, index)}`,
+        `user text '${text}' also introduced by session ${otherId} ${formatCallRef(otherHit.record, otherHit.index)} appears in session ${selfId} ${formatCallRef(record, index)}`,
       );
     }
   }
@@ -1317,27 +1327,41 @@ function promptUserMessages(record: CallRecord): string[] {
 }
 
 /**
- * Last user-role message of each call, walked in `seq` order.
- * Inbound history (every user message before the last on that call) is seen,
- * not introduced — repeating it later still does not count as this session's turn.
+ * First call (in `seq` order) introduces only its last user-role message.
+ * Later calls introduce each user-role message whose normalized form was
+ * not already present in an earlier call of the same session.
+ * Inbound history on the first call is seen, not introduced.
  */
 function introducedUserTurns(
   trace: SessionTrace,
 ): Map<string, { record: CallRecord; index: number; display: string }> {
   const introduced = new Map<string, { record: CallRecord; index: number; display: string }>();
   const seen = new Set<string>();
+  let firstCall = true;
   for (const { record, index } of orderedCalls(trace)) {
     const messages = promptUserMessages(record);
-    if (messages.length === 0) continue;
-    const last = messages[messages.length - 1]!;
-    for (const text of messages.slice(0, -1)) {
-      seen.add(normalizeIsolationText(text));
+    if (messages.length === 0) {
+      firstCall = false;
+      continue;
     }
-    const key = normalizeIsolationText(last);
-    if (!seen.has(key) && !introduced.has(key)) {
+    if (firstCall) {
+      firstCall = false;
+      for (const text of messages.slice(0, -1)) {
+        seen.add(normalizeIsolationText(text));
+      }
+      const last = messages[messages.length - 1]!;
+      const key = normalizeIsolationText(last);
       introduced.set(key, { record, index, display: last });
+      seen.add(key);
+      continue;
     }
-    seen.add(key);
+    for (const text of messages) {
+      const key = normalizeIsolationText(text);
+      if (!seen.has(key) && !introduced.has(key)) {
+        introduced.set(key, { record, index, display: text });
+      }
+      seen.add(key);
+    }
   }
   return introduced;
 }
