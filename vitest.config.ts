@@ -1,11 +1,11 @@
 import { defineConfig } from "vitest/config";
 
-/** Floored from the lower of local (90.04 / 83.96 / 92.97) and CI Node 22 (89.98 / 83.93 / 93.25). */
+/** Floored from local Node 22 `test:coverage` after proxy start/health tests (91.84 / 84.83 / 94.66). */
 export const MEASURED_FLOORS = {
-  lines: 89,
-  statements: 89,
-  functions: 92,
-  branches: 83,
+  lines: 91,
+  statements: 91,
+  functions: 94,
+  branches: 84,
 } as const;
 
 export const RELEASE_FLOORS = {
