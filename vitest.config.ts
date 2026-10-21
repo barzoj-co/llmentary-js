@@ -1,14 +1,14 @@
 import { defineConfig } from "vitest/config";
 
 /** Floored from local Node 22 `test:coverage` after proxy start/health tests (91.84 / 84.83 / 94.66). */
-const MEASURED_FLOORS = {
+export const MEASURED_FLOORS = {
   lines: 91,
   statements: 91,
   functions: 94,
   branches: 84,
 } as const;
 
-const RELEASE_FLOORS = {
+export const RELEASE_FLOORS = {
   lines: 90,
   statements: 90,
   functions: 90,

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { coverageThresholds } from "../vitest.config.js";
+import { coverageThresholds, MEASURED_FLOORS, RELEASE_FLOORS } from "../vitest.config.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -39,16 +39,15 @@ describe("coverage gate wiring", () => {
     expect(contributing).not.toMatch(/test:unit -- --coverage/);
   });
 
-  it("selects 90% floors for release-please heads and the explicit override", () => {
+  it("selects release floors for release-please heads and measured floors otherwise", () => {
     stash("COVERAGE_RELEASE_PLEASE", undefined);
     stash("GITHUB_HEAD_REF", "release-please--branches--main--components--llmentary");
-    expect(coverageThresholds()).toEqual({ lines: 90, statements: 90, functions: 90, branches: 90 });
+    expect(coverageThresholds()).toEqual(RELEASE_FLOORS);
 
     stash("GITHUB_HEAD_REF", "cursor/coverage-measure-a722");
-    const regular = coverageThresholds();
-    expect(regular).not.toEqual({ lines: 90, statements: 90, functions: 90, branches: 90 });
+    expect(coverageThresholds()).toEqual(MEASURED_FLOORS);
 
     stash("COVERAGE_RELEASE_PLEASE", "1");
-    expect(coverageThresholds()).toEqual({ lines: 90, statements: 90, functions: 90, branches: 90 });
+    expect(coverageThresholds()).toEqual(RELEASE_FLOORS);
   });
 });
