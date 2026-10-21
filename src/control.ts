@@ -174,16 +174,40 @@ export class SessionNotFound extends ControlApiError {
 
   constructor(sessionId: string, options: { status: number; path: string; body: string }) {
     const parsed = parseControlError(options.body);
-    const hint = parsed?.message?.trim() || `no calls recorded for session "${sessionId}"; known sessions: GET /sessions`;
+    const hint =
+      rewriteSessionNotFoundHint(parsed?.message?.trim()) ||
+      `no calls recorded for session "${sessionId}"; list sessions with GET /sessions`;
     super(hint, options);
     this.name = "SessionNotFound";
     this.sessionId = sessionId;
   }
 }
 
+/** Proxy 404 used to say `known sessions: GET /sessions` (a hint, not a list). */
+export function rewriteSessionNotFoundHint(message: string | undefined): string {
+  if (!message) return "";
+  return message.replace(/known sessions:\s*GET \/sessions/gi, "list sessions with GET /sessions");
+}
+
 export function formatZeroCallsMessage(sessionId: string, knownSessionIds: string[]): string {
   const known = knownSessionIds.length > 0 ? knownSessionIds.join(", ") : "(none)";
   return `no calls recorded for session ${sessionId}; known sessions: ${known}`;
+}
+
+/** Combine a 404 hint with a known-session list so `known sessions:` appears at most once. */
+export function formatEmptySessionMessage(
+  sessionId: string,
+  knownSessionIds: string[],
+  proxyMessage?: string,
+): string {
+  const rewritten = rewriteSessionNotFoundHint(proxyMessage?.trim());
+  const known = knownSessionIds.length > 0 ? knownSessionIds.join(", ") : "(none)";
+  const list = `known sessions: ${known}`;
+  if (!rewritten) return `no calls recorded for session ${sessionId}; ${list}`;
+  if (/known sessions:/i.test(rewritten)) {
+    return rewritten;
+  }
+  return `${rewritten.replace(/;?\s*$/, "")}; ${list}`;
 }
 
 export function parseControlError(text: string): { type?: string; message?: string; callsSeen?: number; minCalls?: number } | undefined {

@@ -4,6 +4,7 @@ import { ControlClient } from "./control.js";
 import { attachSessionTraceHelpers } from "./normalize.js";
 import { firstNonEmpty } from "./env.js";
 import type {
+  AssertionResult,
   ListSessionsOptions,
   ProxyConfig,
   QueryOptions,
@@ -69,6 +70,16 @@ export class Session {
       ...(query ? { query } : {}),
       defaultWait: this.defaultWait,
     });
+  }
+
+  /**
+   * Assert this session recorded zero LLM calls. `SessionNotFound` (never
+   * created / DELETE'd) passes. A session with calls fails with the trace
+   * summary. Whole-session `expect().callCount(0)` stays strict (DOG-2)
+   * unless you pass `{ allowEmpty: true }` or call `allowEmpty()`.
+   */
+  async expectNoCalls(options?: WaitOptions): Promise<AssertionResult> {
+    return this.expect().expectNoCalls(options);
   }
 
   async mark(options?: WaitOptions): Promise<SessionMark> {
@@ -156,7 +167,7 @@ export class SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, since: mark });
   }
 
-  /** Opt out of the empty-filter failure on `noErrors()` / `notCalled()`. */
+  /** Opt out of the empty-session / empty-filter failure on zero-call assertions. */
   allowEmpty(): SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, allowEmpty: true });
   }

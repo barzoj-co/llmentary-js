@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AssertionScope, isolationCheck } from "../src/assertions.js";
+import { AssertionScope, SessionAssertionError, isolationCheck } from "../src/assertions.js";
 import { SessionNotFound } from "../src/control.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { JsonValue, SessionTrace } from "../src/types.js";
@@ -138,6 +138,37 @@ describe("isolatedFrom", () => {
     await expect(scopeFor(weather, empty).allowEmpty().isolatedFrom("barge")).resolves.toMatchObject({
       pass: true,
     });
+  });
+
+  it("maps a never-created other session to an assertion error, not SessionNotFound", async () => {
+    const weather = sessionTrace("weather", [
+      chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
+    ]);
+    const scope = new AssertionScope({
+      control: {
+        wait: async (sessionId: string) => {
+          if (sessionId === weather.id) return weather;
+          throw new SessionNotFound(sessionId, {
+            status: 404,
+            path: `/sessions/${sessionId}/wait`,
+            body: JSON.stringify({
+              error: {
+                type: "session_not_found",
+                message: `no calls recorded for session "${sessionId}"; known sessions: GET /sessions`,
+              },
+            }),
+          });
+        },
+        listSessions: async () => [{ id: weather.id }],
+      } as never,
+      sessionId: weather.id,
+    });
+    await expect(scope.isolatedFrom("never-created")).rejects.toBeInstanceOf(SessionAssertionError);
+    await expect(scope.isolatedFrom("never-created")).rejects.not.toBeInstanceOf(SessionNotFound);
+    await expect(scope.isolatedFrom("never-created")).rejects.toThrow(
+      /no calls recorded for session never-created/,
+    );
+    await expect(scope.allowEmpty().isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
   });
 
   it("fails overlapping call ids and optional path-source mismatches", () => {

@@ -3,7 +3,9 @@ import {
   ControlClient,
   SessionNotFound,
   combineAbortSignals,
+  formatEmptySessionMessage,
   formatZeroCallsMessage,
+  rewriteSessionNotFoundHint,
   parseControlBody,
   type ControlFetch,
 } from "../src/control.js";
@@ -120,6 +122,30 @@ describe("ControlClient", () => {
     expect(formatZeroCallsMessage("abc", ["default", "other"])).toBe(
       "no calls recorded for session abc; known sessions: default, other",
     );
+    const missing = await client.getSession("missing").catch((error: unknown) => error);
+    expect(missing).toBeInstanceOf(SessionNotFound);
+    expect(String((missing as Error).message).match(/known sessions:/gi)?.length ?? 0).toBeLessThanOrEqual(1);
+    expect((missing as Error).message).toMatch(/list sessions with GET \/sessions/);
+    expect((missing as Error).message).not.toMatch(/known sessions:\s*GET \/sessions/i);
+  });
+
+  it("rewrites the proxy 404 hint and keeps known sessions: at most once", () => {
+    expect(rewriteSessionNotFoundHint('no calls recorded for session "empty"; known sessions: GET /sessions')).toBe(
+      'no calls recorded for session "empty"; list sessions with GET /sessions',
+    );
+    const rewrittenWithList = formatEmptySessionMessage(
+      "empty",
+      ["iso-a", "iso-b"],
+      'no calls recorded for session "empty"; known sessions: GET /sessions',
+    );
+    expect(rewrittenWithList).toBe(
+      'no calls recorded for session "empty"; list sessions with GET /sessions; known sessions: iso-a, iso-b',
+    );
+    expect(rewrittenWithList.match(/known sessions:/g)?.length).toBe(1);
+    const combined = formatEmptySessionMessage("empty", ["iso-a", "iso-b"]);
+    expect(combined).toBe("no calls recorded for session empty; known sessions: iso-a, iso-b");
+    expect(combined.match(/known sessions:/g)?.length).toBe(1);
+    expect(formatEmptySessionMessage("empty", []).match(/known sessions:/g)?.length).toBe(1);
   });
 
   it("maps wait 404 session_not_found to SessionNotFound", async () => {
