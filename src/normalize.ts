@@ -30,8 +30,8 @@ export function normalizeSessionTrace(sessionId: string, raw: JsonValue): Sessio
 export function normalizeCallRecord(raw: JsonValue): CallRecord {
   const object = asObject(raw);
   const normalized = objectAt(object, "normalized");
-  const decodedRequest = decodeRawPayload(stringAt(object, "raw_request"));
-  const decodedResponse = decodeRawPayload(stringAt(object, "raw_response"));
+  const decodedRequest = decodeRecordPayload(valueAt(object, "raw_request") ?? valueAt(object, "rawRequest"));
+  const decodedResponse = decodeRecordPayload(valueAt(object, "raw_response") ?? valueAt(object, "rawResponse"));
   const headerRequest = valueAt(object, "request") ?? valueAt(object, "request_body") ?? valueAt(object, "requestBody");
   const headerResponse = valueAt(object, "response") ?? valueAt(object, "response_body") ?? valueAt(object, "responseBody");
   const request = preferBody(decodedRequest, headerRequest);
@@ -244,6 +244,12 @@ function isHeadersOnly(value: JsonValue): boolean {
   const object = asObject(value);
   const keys = Object.keys(object);
   return keys.includes("headers") && keys.every((key) => key === "headers");
+}
+
+function decodeRecordPayload(value: JsonValue | undefined): JsonValue | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return decodeRawPayload(value);
+  return value;
 }
 
 function decodeRawPayload(value: string | undefined): JsonValue | undefined {

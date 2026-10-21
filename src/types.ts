@@ -130,9 +130,10 @@ export interface IsolatedFromOptions {
   /** Require every call's `sessionSource` to be `path`. */
   requirePathSource?: boolean;
   /**
-   * Allow isolation to pass when either session has zero calls.
+   * Allow isolation to pass when this session has zero calls.
    * Prefer `allowEmpty()` on the expectation. Default is to fail with
-   * `no calls recorded for session <id>`.
+   * `no calls recorded for session <id>`. An empty *other* session is not
+   * a leak (it introduced nothing).
    */
   allowEmpty?: boolean;
   /**

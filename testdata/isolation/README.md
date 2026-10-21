@@ -8,10 +8,12 @@ Vendored copy of the proxy's `testdata/isolation` from
 1. Every call in X has `session_id == X`.
 2. No call id appears in both sessions.
 3. No foreign user turn: a user-role message in X that X never introduced
-   (last user-role message of each call) but Y did. Comparison is exact after
-   trim / collapse whitespace / casefold; never substring. `min_chars` default 8.
-   System / developer / tools are not compared.
-4. Empty X or Y fails unless `allowEmpty`.
+   (last user-role message of each call, walked in `seq` order) but Y did.
+   Inbound history on a call is seen, not introduced; repeating it later
+   is still a leak. Comparison is exact after trim / collapse whitespace /
+   casefold; never substring. `min_chars` default 8. System / developer /
+   tools are not compared.
+4. Empty X fails unless `allowEmpty`. Empty Y is not a leak.
 
 `scripts/check-isolation-vectors.mjs` diffs this directory against that proxy
 path. Set `LLMENTARY_ISOLATION_VECTORS_DIR` to a checkout of
