@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AssertionScope, SessionAssertionError, recordsForTrace } from "../src/assertions.js";
+import { AssertionScope, SessionAssertionError, formatTraceSummary, recordsForTrace } from "../src/assertions.js";
 import { SessionNotFound } from "../src/control.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { QueryOptions, SessionTrace } from "../src/types.js";
@@ -291,6 +291,14 @@ describe("AssertionScope", () => {
         }),
       ).aborted(),
     ).resolves.toMatchObject({ pass: true });
+    const abortOnly = normalizeSessionTrace("abort-only", {
+      id: "abort-only",
+      calls: [{ id: "call_a", client_aborted: true, abort_phase: "before_headers" }],
+    });
+    const abortSummary = formatTraceSummary(abortOnly);
+    expect(abortSummary).toMatch(/client_aborted/);
+    expect(abortSummary).toMatch(/phase=before_headers/);
+    expect(abortSummary).not.toMatch(/unparsed call/);
     await expect(scope.outputText("hello")).resolves.toMatchObject({ pass: true });
     await expect(scope.outputMatchesDeltas()).resolves.toMatchObject({ pass: true });
     await expect(scope.soft().callCount(2)).resolves.toMatchObject({ pass: false });

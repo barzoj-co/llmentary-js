@@ -279,6 +279,25 @@ describe("sessionSource and upstreamUrl", () => {
     });
     expect(normal.clientAborted).toBe(false);
     expect(normal.abortPhase).toBeUndefined();
+
+    const done = normalizeCallRecord({
+      id: "call_done",
+      streamed: true,
+      http_status: 200,
+      request: { model: "gpt-4.1-mini", stream: true },
+      response: { raw_text: "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n" },
+      normalized: { finish_reason: "stop" },
+    });
+    expect(done.clientAborted).toBeUndefined();
+    expect(done.abortPhase).toBeUndefined();
+
+    const strayPhase = normalizeCallRecord({
+      id: "call_stray",
+      client_aborted: false,
+      abort_phase: "after_headers",
+    });
+    expect(strayPhase.clientAborted).toBe(false);
+    expect(strayPhase.abortPhase).toBeUndefined();
   });
 
   it("leaves the accessors undefined when the proxy omitted them", () => {

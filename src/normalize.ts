@@ -119,7 +119,7 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     ...(streamed !== undefined ? { streamed } : {}),
     ...(httpStatus !== undefined ? { httpStatus } : {}),
     ...(clientAborted !== undefined ? { clientAborted } : {}),
-    ...(abortPhase ? { abortPhase } : {}),
+    ...(clientAborted === true && abortPhase ? { abortPhase } : {}),
     ...(promptText ? { promptText } : {}),
     ...(responseText ? { responseText } : {}),
     ...(sessionSource ? { sessionSource } : {}),

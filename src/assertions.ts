@@ -1206,7 +1206,9 @@ export function formatTraceSummary(trace: SessionTrace): string {
       record.apiFamily !== undefined ||
       record.apiType !== undefined ||
       record.model !== undefined ||
-      record.error !== undefined;
+      record.error !== undefined ||
+      record.clientAborted !== undefined ||
+      record.abortPhase !== undefined;
     if (!parsed) {
       const keys = Object.keys(asObject(record.raw)).join(",");
       lines.push(`${formatCallRef(record, index)} unparsed call, keys=[${keys}]`);

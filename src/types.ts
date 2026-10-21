@@ -1,6 +1,6 @@
 export type ApiType = "chat_completions" | "responses" | (string & {});
 
-/** When the client cancelled: before upstream headers, or after they arrived. */
+/** `before_headers` | `after_headers`. Omitted when the call is not aborted. */
 export type AbortPhase = "before_headers" | "after_headers";
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -160,7 +160,11 @@ export interface CallRecord {
   httpStatus?: number;
   /** Top-level `client_aborted`, falling back to `normalized.client_aborted`. */
   clientAborted?: boolean;
-  /** `before_headers` | `after_headers` when the client cancelled. */
+  /**
+   * `before_headers` | `after_headers` when the client cancelled.
+   * Omitted when the call is not aborted. A close after `[DONE]` or a
+   * terminal Responses event is not an abort.
+   */
   abortPhase?: AbortPhase;
   validation?: Validation;
   /** `[]` means checked and clean; omitted means validation was not run. */
