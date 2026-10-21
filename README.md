@@ -152,7 +152,7 @@ try {
 }
 ```
 
-`callCount(0)` treats `SessionNotFound` from wait as zero calls. Bundled proxy **v0.2.2** returns `404 session_not_found` immediately for `min_calls=0` on a never-created session.
+`callCount(0)` treats `SessionNotFound` from wait as zero calls. Bundled proxy **v0.2.2** still returns `504` for `min_calls=0` on a never-created session; the client already maps `404` for proxy **v0.2.3**.
 
 ## Isolating conversations
 
