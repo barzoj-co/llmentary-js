@@ -1106,9 +1106,10 @@ describe("OpenAI E2E through llmentary", () => {
               "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How many cents does the ball cost? Reply with only the integer.",
           }),
         );
+        const callIndex = (await lm.wait()).calls.length - 1;
         try {
-          await lm.query({ index: attempt }).expect().usageDetails({ reasoningTokens: { min: 1 } });
-          await lm.query({ index: attempt }).expect().model(REASONING_MODEL);
+          await lm.query({ index: callIndex }).expect().usageDetails({ reasoningTokens: { min: 1 } });
+          await lm.query({ index: callIndex }).expect().model(REASONING_MODEL);
           await lm.cleanup();
           return;
         } catch (error) {
