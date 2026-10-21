@@ -7,6 +7,7 @@ import {
   formatZeroCallsMessage,
   rewriteSessionNotFoundHint,
   parseControlBody,
+  parseControlError,
   normalizeSessionList,
   type ControlFetch,
 } from "../src/control.js";
@@ -430,6 +431,111 @@ describe("ControlClient", () => {
     const combined = combineAbortSignals(controller.signal, AbortSignal.timeout(5_000));
     controller.abort();
     expect(combined.aborted).toBe(true);
+  });
+
+  it("aborts immediately when either input signal is already aborted", () => {
+    const left = new AbortController();
+    left.abort();
+    const combined = combineAbortSignals(left.signal, new AbortController().signal);
+    expect(combined.aborted).toBe(true);
+  });
+
+  it("surfaces control errors, empty bodies, and openapi failures", async () => {
+    const fetchImpl: ControlFetch = async (input, init) => {
+      const url = requestUrl(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.endsWith("/healthz")) {
+        return {
+          ok: true,
+          status: 204,
+          statusText: "No Content",
+          headers: new Headers(),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      if (url.endsWith("/config")) return new Response("   ", { status: 200 });
+      if (url.includes("/sessions/s1/otlp")) return new Response('"otlp"', { status: 200 });
+      if (url.includes("/sessions/s1") && method === "DELETE") return new Response(null, { status: 204 });
+      if (url.includes("/openapi.yaml")) {
+        return new Response("missing", { status: 404, statusText: "Not Found" });
+      }
+      if (url.includes("/sessions/%E0%A4%A")) {
+        return new Response("nope", { status: 404, statusText: "Not Found" });
+      }
+      if (url.includes("/sessions/s1")) {
+        return new Response("broken", { status: 500, statusText: "Internal Server Error" });
+      }
+      return new Response("nope", { status: 404, statusText: "Not Found" });
+    };
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9/",
+      bearerToken: "tok",
+      fetch: fetchImpl,
+    });
+    await expect(client.health()).resolves.toBeNull();
+    await expect(client.getConfig()).resolves.toMatchObject({ raw: null });
+    await expect(client.getOtlp("s1")).resolves.toBe("otlp");
+    await expect(client.deleteSession("s1")).resolves.toBeUndefined();
+    await expect(client.openapi()).rejects.toMatchObject({ status: 404, path: "/openapi.yaml" });
+    await expect(client.getSession("s1")).rejects.toMatchObject({ status: 500 });
+    await expect(client.getSession("%E0%A4%A")).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("throws when fetch is missing", () => {
+    const previous = globalThis.fetch;
+    // @ts-expect-error -- exercise the runtime guard
+    globalThis.fetch = undefined;
+    try {
+      expect(() => new ControlClient({ controlUrl: "http://127.0.0.1:9" })).toThrow(/requires a fetch implementation/);
+    } finally {
+      globalThis.fetch = previous;
+    }
+  });
+
+  it("reads openapi error text and swallows a failed error-body read", async () => {
+    const failingText = {
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      text: async () => {
+        throw new Error("closed");
+      },
+    } as unknown as Response;
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      bearerToken: "tok",
+      fetch: async () => failingText,
+    });
+    await expect(client.openapi()).rejects.toMatchObject({ status: 503, body: "" });
+  });
+});
+
+describe("control parsers", () => {
+  it("parses empty, quoted, and invalid control error bodies", () => {
+    expect(parseControlBody("")).toBeNull();
+    expect(parseControlBody('"ok"')).toBe("ok");
+    expect(parseControlError("not-json")).toBeUndefined();
+    expect(parseControlError("{")).toBeUndefined();
+    expect(parseControlError("{}")).toBeUndefined();
+    expect(parseControlError(JSON.stringify({ error: { minCalls: 2 } }))).toBeUndefined();
+    expect(parseControlError(JSON.stringify({ error: { type: "wait_timeout", callsSeen: 4, minCalls: 2 } }))).toEqual({
+      type: "wait_timeout",
+      callsSeen: 4,
+      minCalls: 2,
+    });
+  });
+
+  it("normalizes config/list fallbacks and keeps rewritten 404 hints", () => {
+    expect(normalizeSessionList([{ SessionId: "s1" }])).toEqual([expect.objectContaining({ id: "s1", calls: 0, active: 0 })]);
+    expect(normalizeSessionList([{ calls: 1 }])).toEqual([]);
+    expect(rewriteSessionNotFoundHint(undefined)).toBe("");
+    expect(formatZeroCallsMessage("s1", [])).toBe("no calls recorded for session s1; known sessions: (none)");
+    expect(formatEmptySessionMessage("s1", ["a"], "already lists known sessions: x")).toBe(
+      "already lists known sessions: x",
+    );
+    expect(formatEmptySessionMessage("s1", ["a"], "proxy said nope")).toBe(
+      "proxy said nope; known sessions: a",
+    );
   });
 });
 

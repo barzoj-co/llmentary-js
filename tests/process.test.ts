@@ -170,6 +170,7 @@ describe("process identity", () => {
   it("ignores rememberSpawnedProcess without a pid or instance id", () => {
     rememberSpawnedProcess({ pid: 0, instanceId: "x" });
     rememberSpawnedProcess({ pid: 99 });
+    forgetSpawnedProcess(2_147_000_001);
   });
 
   it("falls back to /proc/uptime when btime is missing", async () => {
@@ -287,6 +288,7 @@ describe("parsePsEtime", () => {
     expect(parsePsEtime("-2-01:00:00")).toBeUndefined();
     expect(parsePsEtime("01:02:03:04")).toBeUndefined();
     expect(parsePsEtime("01:-2")).toBeUndefined();
+    expect(parsePsEtime("xx-01:00:00")).toBeUndefined();
   });
 });
 

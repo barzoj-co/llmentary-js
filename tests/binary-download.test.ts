@@ -248,6 +248,13 @@ describe("extractArchive", () => {
     await expect(extractArchive(archive, dirname(dest), dest)).rejects.toThrow(/no llmentary binary/);
   });
 
+  it("treats a missing extract directory as an empty snapshot before tar fails", async () => {
+    const dir = await scratch("llmentary-missing-snap-");
+    const archive = await makeTarGz(dir, "bundle.tar.gz", { llmentary: "#!/bin/sh\n" });
+    const dest = join(dir, "missing", "llmentary");
+    await expect(extractArchive(archive, join(dir, "missing"), dest)).rejects.toThrow(/tar .* exited with/);
+  });
+
   it("rejects a corrupt archive", async () => {
     const dir = await scratch("llmentary-bad-tar-");
     const archive = join(dir, "broken.tar.gz");
@@ -387,6 +394,46 @@ describe("downloadBinary", () => {
     });
     expect(hrefOf(fetchMock.mock.calls[0]?.[0])).toContain("/releases/latest");
     expect(authHeader(fetchMock.mock.calls[0])).toBe("Bearer explicit-token");
+  });
+
+  it("fails when the archive download has no body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = hrefOf(input);
+        if (url.includes("api.github.com")) {
+          return jsonResponse({
+            tag_name: "v0.4.0",
+            assets: [
+              {
+                name: "llmentary_0.4.0_linux_amd64.tar.gz",
+                browser_download_url: "https://example.test/llmentary_0.4.0_linux_amd64.tar.gz",
+              },
+              { name: "checksums.txt", browser_download_url: "https://example.test/checksums.txt" },
+            ],
+          });
+        }
+        return new Response(null, { status: 200 });
+      }),
+    );
+    const dir = await scratch("llmentary-nobody-");
+    await expect(downloadBinary({ cacheDir: dir, platform: "linux", arch: "x64" })).rejects.toThrow(
+      /Could not download/,
+    );
+  });
+
+  it("uses PowerShell on win32 zip extracts and reports the failure", async () => {
+    const dir = await scratch("llmentary-winzip-");
+    const archive = await makeZip(dir, "llmentary_0.4.0_windows_amd64.zip", { "llmentary.exe": "MZ" });
+    const dest = join(dir, "out", "llmentary.exe");
+    await mkdir(dirname(dest), { recursive: true });
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { configurable: true, value: "win32" });
+    try {
+      await expect(extractArchive(archive, dirname(dest), dest)).rejects.toThrow(/powershell|exited with|ENOENT/i);
+    } finally {
+      if (descriptor) Object.defineProperty(process, "platform", descriptor);
+    }
   });
 
   it("fails when the archive download is not ok", async () => {

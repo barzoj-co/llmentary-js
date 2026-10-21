@@ -8,8 +8,10 @@ import { pidExists } from "../src/process.js";
 import {
   allocateRun,
   applyState,
+  currentRunId,
   deleteState,
   identityFromState,
+  jestOwnerPid,
   pointerPath,
   readState,
   resolveRunId,
@@ -213,9 +215,50 @@ describe("Jest state hardening", () => {
 
   it("does not invent an identity without pid and instance id", async () => {
     expect(identityFromState({ runId: "r", proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" })).toBeUndefined();
+    expect(
+      identityFromState({
+        runId: "r",
+        proxyUrl: "http://127.0.0.1:1",
+        controlUrl: "http://127.0.0.1:2",
+        pid: 9,
+        instanceId: "only-id",
+      }),
+    ).toEqual({ pid: 9, instanceId: "only-id" });
     await expect(
       stopOwnedProxy({ runId: "r", proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }),
     ).resolves.toBe(false);
+  });
+
+  it("resolves the owner pid from env, worker id, and argv", () => {
+    stashEnv();
+    process.env.LLMENTARY_JEST_OWNER_PID = "91";
+    expect(jestOwnerPid()).toBe(91);
+    delete process.env.LLMENTARY_JEST_OWNER_PID;
+    const previousWorker = process.env.JEST_WORKER_ID;
+    process.env.JEST_WORKER_ID = "1";
+    expect(jestOwnerPid()).toBe(process.ppid);
+    delete process.env.JEST_WORKER_ID;
+    const argv = process.argv.slice();
+    process.argv.push("jest");
+    try {
+      expect(jestOwnerPid()).toBe(process.pid);
+    } finally {
+      process.argv.length = 0;
+      process.argv.push(...argv);
+      if (previousWorker === undefined) delete process.env.JEST_WORKER_ID;
+      else process.env.JEST_WORKER_ID = previousWorker;
+    }
+  });
+
+  it("reads currentRunId from the owner pointer and throws when missing", async () => {
+    stashEnv();
+    const { runId } = await allocateRun(process.pid);
+    allocatedOwnerPids.push(process.pid);
+    delete process.env.LLMENTARY_JEST_RUN_ID;
+    expect(currentRunId()).toBe(runId);
+    await deleteState();
+    delete process.env.LLMENTARY_JEST_RUN_ID;
+    expect(() => currentRunId()).toThrow(/Jest run id is missing/);
   });
 
   it("chmod 0600 wins even if the file previously existed world-readable", async () => {

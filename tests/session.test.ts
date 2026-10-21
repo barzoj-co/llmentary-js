@@ -97,4 +97,14 @@ describe("llmentary env fallbacks", () => {
       /invalid LLMENTARY_WAIT_TIMEOUT value "fast"/,
     );
   });
+
+  it("defaults the proxy URL and builds expect() without a query", () => {
+    stash("LLMENTARY_PROXY_URL", undefined);
+    stash("LLMENTARY_CONTROL_URL", undefined);
+    const lm = llmentary({ sessionId: "defaulted" });
+    expect(lm.proxyUrl).toBe("http://127.0.0.1:4010");
+    expect(lm.controlUrl).toBe("http://127.0.0.1:4010");
+    expect(lm.expect().constructor.name).toBe("AssertionScope");
+    expect(lm.expect({ model: "gpt-4.1-mini" }).constructor.name).toBe("AssertionScope");
+  });
 });

@@ -173,6 +173,64 @@ describe("normalizeSessionTrace", () => {
     expect(trace.calls[0]?.model).toBe("gpt-4.1-mini");
     expect(trace.calls[0]?.request).toEqual({ model: "gpt-4.1-mini" });
   });
+
+  it("accepts records/requests/traces aliases and a trace_summary", () => {
+    for (const key of ["records", "Records", "requests", "Requests", "traces", "Traces"] as const) {
+      const trace = normalizeSessionTrace("s1", { [key]: [{ request: { model: "m" } }], trace_summary: "sum" });
+      expect(trace.calls).toHaveLength(1);
+      expect(trace.summary).toBe("sum");
+    }
+  });
+
+  it("decodes invalid JSON, empty payloads, and refuses NUL base64", () => {
+    const invalid = normalizeCallRecord({
+      raw_request: "{not-json",
+      raw_response: "   ",
+      request: { stream: false },
+      streamed: false,
+      normalized: { streamed: false },
+    });
+    expect(invalid.request).toBe("{not-json");
+    expect(invalid.streamed).toBe(false);
+
+    const nul = Buffer.from("\u0000secret").toString("base64");
+    const binary = normalizeCallRecord({ raw_request: nul });
+    expect(binary.request).toBe(nul);
+
+    const noPath = normalizeCallRecord({ path: "/v1/models" });
+    expect(noPath.apiType).toBeUndefined();
+  });
+
+  it("reads camelCase validation flags and output message parts", () => {
+    const record = normalizeCallRecord({
+      normalized: {
+        validation: { requestChecked: true, responseChecked: false, truncated: true },
+        spec_violations: [
+          { schema_ref: "ref", event_index: 2, offset: 1, profile: "strict", source: "schema" },
+        ],
+      },
+      response: {
+        output: [
+          { type: "message", content: [{ text: "hello parts" }, "plain"] },
+          { type: "function_call", name: "x" },
+        ],
+      },
+    });
+    expect(record.validation).toMatchObject({ requestChecked: true, responseChecked: false, truncated: true });
+    expect(record.responseText).toMatch(/hello parts/);
+    expect(record.specViolations?.[0]).toMatchObject({ schemaRef: "ref", eventIndex: 2, offset: 1 });
+  });
+
+  it("joins string content parts and treats mode=off as not checked", () => {
+    const record = normalizeCallRecord({
+      request: {
+        messages: [{ role: "user", content: ["Hello", { text: " there" }, { input_text: " again" }] }],
+      },
+      normalized: { validation: { mode: "off" } },
+    });
+    expect(record.userTexts).toEqual(["Hello there again"]);
+    expect(record.validation?.mode).toBe("off");
+  });
 });
 
 describe("seq, sessionId, and userTexts", () => {
