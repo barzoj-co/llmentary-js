@@ -1,4 +1,4 @@
-const { mkdtempSync, rmSync, writeFileSync } = require("node:fs");
+const { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { llmentary, Session, sessionHeaders, contractPath } = require("../../dist/cjs/index.js");
@@ -28,6 +28,7 @@ describe("CJS export", () => {
   test("contractPath finds the package contract from CJS when cwd is empty", () => {
     const cwd = mkdtempSync(join(tmpdir(), "llmentary-cjs-contract-"));
     const packaged = join(PACKAGE_ROOT, "openapi.yaml");
+    const original = existsSync(packaged) ? readFileSync(packaged) : undefined;
     const prevCwd = process.cwd();
     const prevPath = process.env.LLMENTARY_OPENAPI_PATH;
     const prevBin = process.env.LLMENTARY_BIN;
@@ -43,7 +44,8 @@ describe("CJS export", () => {
       else process.env.LLMENTARY_OPENAPI_PATH = prevPath;
       if (prevBin === undefined) delete process.env.LLMENTARY_BIN;
       else process.env.LLMENTARY_BIN = prevBin;
-      rmSync(packaged, { force: true });
+      if (original !== undefined) writeFileSync(packaged, original);
+      else rmSync(packaged, { force: true });
       rmSync(cwd, { recursive: true, force: true });
     }
   });

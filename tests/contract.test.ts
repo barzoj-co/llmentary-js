@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,6 +59,7 @@ describe("contractPath", () => {
   it("finds the package contract when cwd is empty and env is unset", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "llmentary-contract-empty-"));
     const packaged = join(PACKAGE_ROOT, "openapi.yaml");
+    const original = existsSync(packaged) ? await readFile(packaged) : undefined;
     const prevCwd = process.cwd();
     try {
       await writeFile(packaged, "from-package: true\n");
@@ -67,7 +69,8 @@ describe("contractPath", () => {
       expect(contractPath()).toBe(packaged);
     } finally {
       process.chdir(prevCwd);
-      await rm(packaged, { force: true });
+      if (original !== undefined) await writeFile(packaged, original);
+      else await rm(packaged, { force: true });
       await rm(cwd, { recursive: true, force: true });
     }
   });
