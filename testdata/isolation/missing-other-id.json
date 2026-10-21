@@ -1,6 +1,6 @@
 {
   "id": "missing-other-id",
-  "description": "An unknown or mistyped other session id is an empty Y and fails unless allow_empty is set.",
+  "description": "A mistyped Y id with no calls fails and names the typo.",
   "allow_empty": false,
   "min_chars": 8,
   "ignore_texts": [],
@@ -21,13 +21,14 @@
     ]
   },
   "y": {
-    "id": "sess-missing",
+    "id": "sess-x-typo",
     "calls": []
   },
   "expect": {
     "isolated": false,
     "message_contains": [
-      "no calls recorded for session sess-missing (isolated_from needs calls on both sides)"
+      "no calls recorded for session sess-x-typo",
+      "isolated_from needs calls on both sides"
     ]
   }
 }

@@ -17,7 +17,11 @@ Vendored copy of the proxy's `testdata/isolation` from
    developer / tools are not compared.
 4. Empty X fails unless `allowEmpty`. Empty or unknown Y fails unless
    `allowEmpty` (`no calls recorded for session <Y> (isolated_from needs
-   calls on both sides)`).
+   calls on both sides)`). New cases include `empty-other`,
+   `empty-other-allow`, `missing-other-id`, `unknown-other-id`,
+   `later-call-two-new-user-messages`,
+   `later-call-two-new-user-messages-responses`, and
+   `multi-turn-own-history`.
 
 `scripts/check-isolation-vectors.mjs` diffs this directory against that proxy
 path. Set `LLMENTARY_ISOLATION_VECTORS_DIR` to a checkout of
