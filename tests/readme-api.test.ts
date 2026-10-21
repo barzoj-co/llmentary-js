@@ -27,6 +27,10 @@ describe("README public API snippets", () => {
     expect(readme).toContain("since");
     expect(readme).toContain("callCount");
     expect(readme).toContain("allowEmpty");
+    expect(readme).toContain("isolatedFrom");
+    expect(readme).toContain("SessionNotFound");
+    expect(readme).toContain("WaitTimeoutError");
+    expect(readme).toContain("openapi.yaml");
     expect(readme).toContain("v0.2.1");
   });
 
@@ -58,6 +62,7 @@ describe("README public API snippets", () => {
     expect(typeof lm.query({}).withoutTools).toBe("function");
     expect(typeof lm.query({}).allowEmpty).toBe("function");
     expect(typeof lm.expect().allowEmpty).toBe("function");
+    expect(typeof lm.expect().isolatedFrom).toBe("function");
     expect(typeof lm.expect().finalResponseMentionsAny).toBe("function");
     expect(typeof lm.expect().toolResultInPrompt).toBe("function");
     expect(typeof lm.expect().soft().check).toBe("function");

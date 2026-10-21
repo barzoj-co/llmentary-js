@@ -3,8 +3,10 @@ export {
   AssertionScope,
   formatEmptyFilterMessage,
   formatTraceSummary,
+  isolationCheck,
 } from "./assertions.js";
-export { specStatusForRecord, validationWasRun } from "./normalize.js";
+export type { IsolatedFromOther } from "./assertions.js";
+export { extractUserTexts, specStatusForRecord, validationWasRun } from "./normalize.js";
 export {
   resolveBinary,
   assetNameCandidates,
@@ -52,6 +54,7 @@ export type {
   BinaryResolutionOptions,
   Bounds,
   CallRecord,
+  IsolatedFromOptions,
   IgnoredField,
   JsonObject,
   JsonPrimitive,

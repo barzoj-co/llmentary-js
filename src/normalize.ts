@@ -18,7 +18,10 @@ export function normalizeSessionTrace(sessionId: string, raw: JsonValue): Sessio
     arrayAt(object, "requests") ??
     arrayAt(object, "traces") ??
     [];
-  const calls = callsValue.map((value) => normalizeCallRecord(value));
+  const calls = callsValue.map((value) => {
+    const record = normalizeCallRecord(value);
+    return record.sessionId ? record : { ...record, sessionId: id };
+  });
   const summary = stringAt(object, "summary") ?? stringAt(object, "trace_summary");
   return attachTraceHelpers(id, calls, raw, summary);
 }
@@ -66,6 +69,9 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     stringAt(asObject(response), "model") ??
     stringAt(metadata, "model");
   const id = stringAt(object, "id");
+  const seq = numberAt(object, "seq") ?? numberAt(object, "sequence") ?? numberAt(object, "sequence_number");
+  const sessionId = stringAt(object, "session_id") ?? stringAt(object, "sessionId");
+  const userTexts = extractUserTexts(request);
   const latencyMs = numberAt(object, "latency_ms") ?? numberAt(object, "latencyMs") ?? numberAt(metadata, "latency_ms");
   const ttftMs = numberAt(object, "ttft_ms") ?? numberAt(object, "ttftMs") ?? numberAt(metadata, "ttft_ms");
   const retries = numberAt(object, "retries") ?? numberAt(metadata, "retries");
@@ -88,6 +94,9 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
   return {
     raw,
     ...(id ? { id } : {}),
+    ...(seq !== undefined ? { seq } : {}),
+    ...(sessionId ? { sessionId } : {}),
+    ...(userTexts.length > 0 ? { userTexts } : {}),
     ...(apiType ? { apiType } : {}),
     ...(apiFamily ? { apiFamily } : {}),
     ...(model ? { model } : {}),
@@ -445,6 +454,48 @@ export function attachSessionTraceHelpers(
   summary?: string,
 ): SessionTrace {
   return attachTraceHelpers(id, calls, raw, summary);
+}
+
+export function extractUserTexts(request: JsonValue | undefined): string[] {
+  const texts: string[] = [];
+  const object = asObject(request);
+  for (const message of asArray(valueAt(object, "messages"))) {
+    collectUserRoleText(message, texts);
+  }
+  const input = valueAt(object, "input");
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (trimmed) texts.push(trimmed);
+  } else {
+    for (const item of asArray(input)) {
+      collectUserRoleText(item, texts);
+    }
+  }
+  return texts;
+}
+
+function collectUserRoleText(value: JsonValue, texts: string[]): void {
+  const object = asObject(value);
+  if (stringAt(object, "role") !== "user") return;
+  pushContentTexts(valueAt(object, "content"), texts);
+}
+
+function pushContentTexts(content: JsonValue | undefined, texts: string[]): void {
+  if (typeof content === "string") {
+    const trimmed = content.trim();
+    if (trimmed) texts.push(trimmed);
+    return;
+  }
+  for (const part of asArray(content)) {
+    if (typeof part === "string") {
+      const trimmed = part.trim();
+      if (trimmed) texts.push(trimmed);
+      continue;
+    }
+    const object = asObject(part);
+    const text = stringAt(object, "text") ?? stringAt(object, "input_text");
+    if (text?.trim()) texts.push(text.trim());
+  }
 }
 
 function textFromPayload(value: JsonValue | undefined): string | undefined {
