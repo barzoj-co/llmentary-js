@@ -138,14 +138,24 @@ describe("fileExists", () => {
 });
 
 describe("resolveBinary fallbacks", () => {
-  it("prefers the optional platform package over PATH", async () => {
+  it("prefers a cwd-installed optional platform package over PATH", async () => {
+    const pkg = nativePackageName("linux", "x64");
+    expect(pkg).toBe("@llmentary/linux-x64");
+    if (!pkg) throw new Error("expected linux-x64 native package name");
     stash("LLMENTARY_BIN", undefined);
-    const dir = await scratch("llmentary-path-");
-    const decoy = await writeExecutable(join(dir, "llmentary"));
-    stash("PATH", dir);
-    const resolved = await resolveBinary({ platform: process.platform, arch: process.arch });
-    expect(resolved).toContain(join("node_modules", "@llmentary"));
-    expect(resolved).not.toBe(decoy);
+    const root = await scratch("llmentary-native-");
+    const decoy = await writeExecutable(join(root, "path", "llmentary"));
+    const native = await writeExecutable(join(root, "node_modules", pkg, "bin", "llmentary"), "#!/bin/sh\necho native\n");
+    stash("PATH", dirname(decoy));
+    const previousCwd = process.cwd();
+    process.chdir(root);
+    try {
+      await expect(resolveBinary({ platform: "linux", arch: "x64", cacheDir: join(root, "empty-cache") })).resolves.toBe(
+        native,
+      );
+    } finally {
+      process.chdir(previousCwd);
+    }
   });
 
   it("uses PATH when no native package exists for the platform", async () => {

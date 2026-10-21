@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AssertionScope } from "../src/assertions.js";
 import { cleanupSession, llmentary as jestLlmentary } from "../src/jest.js";
 import {
@@ -87,11 +87,35 @@ describe("assertion matchers", () => {
   });
 });
 
+const LIFECYCLE_ENV_KEYS = [
+  "LLMENTARY_JEST_RUN_ID",
+  "LLMENTARY_JEST_STATE_FILE",
+  "LLMENTARY_JEST_OWNER_PID",
+  "LLMENTARY_PROXY_URL",
+  "LLMENTARY_CONTROL_URL",
+  "LLMENTARY_BEARER_TOKEN",
+  "LLMENTARY_CONTROL_TOKEN",
+] as const;
+
 describe("jest setup and lifecycle modules", () => {
+  let previousEnv = new Map<string, string | undefined>();
+
+  beforeEach(() => {
+    previousEnv = new Map(LIFECYCLE_ENV_KEYS.map((key) => [key, process.env[key]]));
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.doUnmock("../src/proxy.js");
+    vi.doUnmock("../src/index.js");
+    vi.doUnmock("../src/process.js");
     vi.resetModules();
     vi.restoreAllMocks();
+    for (const key of LIFECYCLE_ENV_KEYS) {
+      const value = previousEnv.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   });
 
   it("extends expect and cleans the session from jest/setup", async () => {
@@ -111,33 +135,43 @@ describe("jest setup and lifecycle modules", () => {
   });
 
   it("jest globalSetup writes state and globalTeardown stops an owned proxy", async () => {
-    const stop = vi.fn(async () => undefined);
     vi.resetModules();
+    const processMatchesIdentity = vi.fn(async () => true);
+    const stopProcessIfMatches = vi.fn(async () => true);
+    vi.doMock("../src/process.js", async () => {
+      const actual = await vi.importActual<typeof import("../src/process.js")>("../src/process.js");
+      return { ...actual, processMatchesIdentity, stopProcessIfMatches };
+    });
     vi.doMock("../src/proxy.js", () => ({
       startProxy: vi.fn(async () => ({
         proxyUrl: "http://127.0.0.1:4010",
         controlUrl: "http://127.0.0.1:4011",
-        pid: process.pid,
+        pid: 64_321,
         instanceId: "adapter-instance",
         exePath: process.execPath,
-        stop,
+        stop: vi.fn(async () => undefined),
       })),
     }));
     const { default: globalSetup } = await import("../src/jest/globalSetup.js");
-    await globalSetup();
-    expect(process.env.LLMENTARY_PROXY_URL).toBe("http://127.0.0.1:4010");
-    const runId = process.env.LLMENTARY_JEST_RUN_ID;
-    expect(runId).toBeTruthy();
     const { default: globalTeardown } = await import("../src/jest/globalTeardown.js");
-    await globalTeardown();
-    const { access } = await import("node:fs/promises");
-    const { stateFilePath } = await import("../src/jest/state.js");
-    await expect(access(stateFilePath(runId!))).rejects.toThrow();
-    delete process.env.LLMENTARY_JEST_RUN_ID;
-    delete process.env.LLMENTARY_JEST_STATE_FILE;
-    delete process.env.LLMENTARY_JEST_OWNER_PID;
-    delete process.env.LLMENTARY_PROXY_URL;
-    delete process.env.LLMENTARY_CONTROL_URL;
+    let teardownCompleted = false;
+    try {
+      await globalSetup();
+      expect(process.env.LLMENTARY_PROXY_URL).toBe("http://127.0.0.1:4010");
+      const runId = process.env.LLMENTARY_JEST_RUN_ID;
+      expect(runId).toBeTruthy();
+      await globalTeardown();
+      teardownCompleted = true;
+      expect(stopProcessIfMatches).toHaveBeenCalledWith(
+        64_321,
+        expect.objectContaining({ instanceId: "adapter-instance" }),
+      );
+      const { access } = await import("node:fs/promises");
+      const { stateFilePath } = await import("../src/jest/state.js");
+      await expect(access(stateFilePath(runId!))).rejects.toThrow();
+    } finally {
+      if (!teardownCompleted) await globalTeardown().catch(() => undefined);
+    }
   });
 
   it("vitest globalSetup applies proxy env and teardown clears it", async () => {
@@ -156,13 +190,19 @@ describe("jest setup and lifecycle modules", () => {
       };
     });
     const { globalSetup } = await import("../src/vitest.js");
-    const teardown = await globalSetup();
-    expect(process.env.LLMENTARY_PROXY_URL).toBe("http://127.0.0.1:4010");
-    expect(process.env.LLMENTARY_BEARER_TOKEN).toBe("adapter-token");
-    await teardown();
-    expect(stop).toHaveBeenCalled();
-    expect(process.env.LLMENTARY_PROXY_URL).toBeUndefined();
-    expect(process.env.LLMENTARY_BEARER_TOKEN).toBeUndefined();
+    let teardown: (() => Promise<void>) | undefined;
+    try {
+      teardown = await globalSetup();
+      expect(process.env.LLMENTARY_PROXY_URL).toBe("http://127.0.0.1:4010");
+      expect(process.env.LLMENTARY_BEARER_TOKEN).toBe("adapter-token");
+      await teardown();
+      teardown = undefined;
+      expect(stop).toHaveBeenCalled();
+      expect(process.env.LLMENTARY_PROXY_URL).toBeUndefined();
+      expect(process.env.LLMENTARY_BEARER_TOKEN).toBeUndefined();
+    } finally {
+      if (teardown) await teardown().catch(() => undefined);
+    }
   });
 });
 
