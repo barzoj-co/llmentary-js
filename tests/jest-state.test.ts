@@ -9,8 +9,10 @@ import {
   allocateRun,
   applyState,
   deleteState,
+  identityFromState,
   pointerPath,
   readState,
+  resolveRunId,
   stateFilePath,
   stopOwnedProxy,
   writeState,
@@ -193,6 +195,27 @@ describe("Jest state hardening", () => {
       expect((await stat(dir)).mode & 0o777).toBe(0o755);
       expect((await stat(custom)).mode & 0o777).toBe(0o600);
     }
+  });
+
+  it("resolves the run id from the owner pointer when env is empty", async () => {
+    stashEnv();
+    const { runId } = await allocateRun(process.pid);
+    allocatedOwnerPids.push(process.pid);
+    delete process.env.LLMENTARY_JEST_RUN_ID;
+    delete process.env.LLMENTARY_JEST_STATE_FILE;
+    await expect(resolveRunId()).resolves.toBe(runId);
+  });
+
+  it("throws when no env run id or pointer exists", async () => {
+    stashEnv();
+    await expect(resolveRunId()).rejects.toThrow(/Jest run id is missing/);
+  });
+
+  it("does not invent an identity without pid and instance id", async () => {
+    expect(identityFromState({ runId: "r", proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" })).toBeUndefined();
+    await expect(
+      stopOwnedProxy({ runId: "r", proxyUrl: "http://127.0.0.1:1", controlUrl: "http://127.0.0.1:2" }),
+    ).resolves.toBe(false);
   });
 
   it("chmod 0600 wins even if the file previously existed world-readable", async () => {
