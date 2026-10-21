@@ -363,14 +363,22 @@ export class AssertionScope {
    */
   async isolatedFrom(other: IsolatedFromOther, options: IsolatedFromOptions = {}): Promise<AssertionResult> {
     const otherId = typeof other === "string" ? other : other.sessionId;
-    return this.evaluate(`expected session ${this.sessionId} to stay isolated from ${otherId}`, async (trace) => {
-      const otherTrace = await this.waitOtherTrace(other, otherId);
-      const allowEmpty = options.allowEmpty ?? this.query.allowEmpty;
-      return isolationCheck(trace, this.sessionId, otherTrace, otherId, {
-        ...options,
-        ...(allowEmpty ? { allowEmpty: true } : {}),
+    const allowEmpty = options.allowEmpty ?? this.query.allowEmpty;
+    const previousQuery = this.query;
+    if (allowEmpty && !this.query.allowEmpty) {
+      this.query = { ...this.query, allowEmpty: true };
+    }
+    try {
+      return await this.evaluate(`expected session ${this.sessionId} to stay isolated from ${otherId}`, async (trace) => {
+        const otherTrace = await this.waitOtherTrace(other, otherId);
+        return isolationCheck(trace, this.sessionId, otherTrace, otherId, {
+          ...options,
+          ...(allowEmpty ? { allowEmpty: true } : {}),
+        });
       });
-    });
+    } finally {
+      this.query = previousQuery;
+    }
   }
 
   private async waitOtherTrace(other: IsolatedFromOther, otherId: string): Promise<SessionTrace> {
@@ -1334,7 +1342,10 @@ function introducedUserTurns(
   let firstCall = true;
   for (const { record, index } of orderedCalls(trace)) {
     const messages = promptUserMessages(record);
-    if (messages.length === 0) continue;
+    if (messages.length === 0) {
+      firstCall = false;
+      continue;
+    }
     if (firstCall) {
       firstCall = false;
       for (const text of messages.slice(0, -1)) {
@@ -1342,9 +1353,7 @@ function introducedUserTurns(
       }
       const last = messages[messages.length - 1]!;
       const key = normalizeIsolationText(last);
-      if (!seen.has(key) && !introduced.has(key)) {
-        introduced.set(key, { record, index, display: last });
-      }
+      introduced.set(key, { record, index, display: last });
       seen.add(key);
       continue;
     }
