@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AssertionScope, isolationCheck } from "../src/assertions.js";
-import { SessionNotFound } from "../src/control.js";
+import { ControlClient, SessionNotFound, type ControlFetch } from "../src/control.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { JsonValue, SessionTrace } from "../src/types.js";
 
@@ -253,6 +253,25 @@ describe("isolatedFrom", () => {
     await expect(scope.isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
     await expect(scope.isolatedFrom("never-created")).resolves.not.toBeInstanceOf(SessionNotFound);
     await expect(scope.allowEmpty().isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
+  });
+
+  it("does not treat a failed comparison-session lookup as an empty other", async () => {
+    const weather = sessionTrace("weather", [
+      chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
+    ]);
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/sessions/weather")) {
+        return new Response(JSON.stringify({ id: "weather", calls: weather.calls }), { status: 200 });
+      }
+      if (url.includes("/wait")) {
+        return new Response("upstream timeout", { status: 504, statusText: "Gateway Timeout" });
+      }
+      return new Response("control unavailable", { status: 503, statusText: "Service Unavailable" });
+    };
+    const control = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    const scope = new AssertionScope({ control, sessionId: weather.id });
+    await expect(scope.isolatedFrom("barge")).rejects.toThrow(/503 Service Unavailable/);
   });
 
   it("honours minChars and ignoreTexts", () => {
