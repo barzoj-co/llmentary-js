@@ -1,4 +1,9 @@
-const { llmentary, Session, sessionHeaders } = require("../../dist/cjs/index.js");
+const { mkdtempSync, rmSync, writeFileSync } = require("node:fs");
+const { tmpdir } = require("node:os");
+const { join } = require("node:path");
+const { llmentary, Session, sessionHeaders, contractPath } = require("../../dist/cjs/index.js");
+
+const PACKAGE_ROOT = join(__dirname, "../..");
 
 describe("CJS export", () => {
   test("creates session headers", () => {
@@ -18,5 +23,28 @@ describe("CJS export", () => {
     expect(lm.baseURL).toBe("http://127.0.0.1:9999/v1");
     expect(lm.pathBaseURL()).toBe("http://127.0.0.1:9999/s/session-1/v1");
     expect(lm.headers["x-test-session"]).toBe("session-1");
+  });
+
+  test("contractPath finds the package contract from CJS when cwd is empty", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "llmentary-cjs-contract-"));
+    const packaged = join(PACKAGE_ROOT, "openapi.yaml");
+    const prevCwd = process.cwd();
+    const prevPath = process.env.LLMENTARY_OPENAPI_PATH;
+    const prevBin = process.env.LLMENTARY_BIN;
+    try {
+      writeFileSync(packaged, "from-package: true\n");
+      delete process.env.LLMENTARY_OPENAPI_PATH;
+      delete process.env.LLMENTARY_BIN;
+      process.chdir(cwd);
+      expect(contractPath()).toBe(packaged);
+    } finally {
+      process.chdir(prevCwd);
+      if (prevPath === undefined) delete process.env.LLMENTARY_OPENAPI_PATH;
+      else process.env.LLMENTARY_OPENAPI_PATH = prevPath;
+      if (prevBin === undefined) delete process.env.LLMENTARY_BIN;
+      else process.env.LLMENTARY_BIN = prevBin;
+      rmSync(packaged, { force: true });
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });

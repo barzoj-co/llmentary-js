@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { thisModuleHref } from "./module-href.js";
 
 const CONTRACT_NAME = "openapi.yaml";
 
@@ -48,7 +49,6 @@ function searchRoots(): string[] {
       for (let i = 0; i < 8; i += 1) {
         if (existsSync(join(dir, "package.json"))) {
           roots.push(dir);
-          break;
         }
         const parent = dirname(dir);
         if (parent === dir) break;
@@ -60,14 +60,4 @@ function searchRoots(): string[] {
   }
   roots.push(process.cwd());
   return [...new Set(roots)];
-}
-
-/** ESM `import.meta.url` without putting `import.meta` in the CJS compile. */
-function thisModuleHref(): string | undefined {
-  try {
-    const href = (0, eval)("import.meta.url") as unknown;
-    return typeof href === "string" && href.length > 0 ? href : undefined;
-  } catch {
-    return undefined;
-  }
 }

@@ -1,8 +1,11 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { contractPath } from "../src/contract.js";
+
+const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const previousOpenapi = process.env.LLMENTARY_OPENAPI_PATH;
 const previousBin = process.env.LLMENTARY_BIN;
@@ -49,6 +52,23 @@ describe("contractPath", () => {
       process.chdir(prevCwd);
       await rm(cwd, { recursive: true, force: true });
       await rm(binDir, { recursive: true, force: true });
+    }
+  });
+
+  it("finds the package contract when cwd is empty and env is unset", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "llmentary-contract-empty-"));
+    const packaged = join(PACKAGE_ROOT, "openapi.yaml");
+    const prevCwd = process.cwd();
+    try {
+      await writeFile(packaged, "from-package: true\n");
+      delete process.env.LLMENTARY_OPENAPI_PATH;
+      delete process.env.LLMENTARY_BIN;
+      process.chdir(cwd);
+      expect(contractPath()).toBe(packaged);
+    } finally {
+      process.chdir(prevCwd);
+      await rm(packaged, { force: true });
+      await rm(cwd, { recursive: true, force: true });
     }
   });
 });
