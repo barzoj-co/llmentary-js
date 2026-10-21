@@ -1,14 +1,14 @@
 import { defineConfig } from "vitest/config";
 
 /** Floored from the lower of local (90.04 / 83.96 / 92.97) and CI Node 22 (89.98 / 83.93 / 93.25). */
-const MEASURED_FLOORS = {
+export const MEASURED_FLOORS = {
   lines: 89,
   statements: 89,
   functions: 92,
   branches: 83,
 } as const;
 
-const RELEASE_FLOORS = {
+export const RELEASE_FLOORS = {
   lines: 90,
   statements: 90,
   functions: 90,
