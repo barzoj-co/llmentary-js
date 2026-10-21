@@ -5,7 +5,6 @@ import OpenAI from "openai";
 import {
   ControlClient,
   SessionNotFound,
-  WaitTimeoutError,
   formatTraceSummary,
   llmentary,
   SessionAssertionError,
@@ -1167,15 +1166,10 @@ describe("OpenAI E2E through llmentary", () => {
           await lm.wait({ minCalls: 0, timeout: 3, quiet: "200ms" });
           throw new Error("wait on a never-created session succeeded");
         } catch (error) {
-          if (error instanceof SessionNotFound) {
-            expect(error.sessionId).toBe(lm.sessionId);
-            expect(error.status).toBe(404);
-          } else if (!(error instanceof WaitTimeoutError)) {
-            throw error;
-          }
-          // Bundled proxy 0.2.2 still returns 504 wait_timeout for min_calls=0.
-          // DOG-17 404 (proxy PR barzoj-co/llmentary#30) ships in 0.2.3; until
-          // then the 404 mapping is covered by unit fixtures.
+          expect(error).toBeInstanceOf(SessionNotFound);
+          if (!(error instanceof SessionNotFound)) throw error;
+          expect(error.sessionId).toBe(lm.sessionId);
+          expect(error.status).toBe(404);
         }
         await retryNetwork(() =>
           openaiClient(lm).chat.completions.create({
