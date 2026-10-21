@@ -1299,9 +1299,12 @@ describe("OpenAI E2E through llmentary", () => {
       expect(served).toMatch(/openapi:\s*['"]?3\./);
       expect(served).toMatch(/Session/);
       const proxyVersion = await lm.proxyVersion();
-      const stamped = served.match(/(?:^|\n)\s*version:\s*['"]?v?([0-9][0-9A-Za-z.+-]*)/);
-      if (proxyVersion && stamped?.[1]) {
-        expect(stamped[1]).toBe(proxyVersion.replace(/^v/, ""));
+      const infoVersion = openApiInfoVersion(served);
+      const release = proxyVersion?.replace(/^v/, "");
+      // DOG-37 stamps info.version from the release. v0.3.0 still ships the
+      // static document version 0.1.0; only a non-placeholder stamp must match.
+      if (infoVersion && release && infoVersion !== "0.1.0") {
+        expect(infoVersion).toBe(release);
       }
       const bundled = contractPath();
       if (bundled) {
@@ -1555,4 +1558,11 @@ function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { name?: string; message?: string };
   return candidate.name === "AbortError" || /abort/i.test(candidate.message ?? "");
+}
+
+/** `info.version` only — not the first `version:` key in the document. */
+function openApiInfoVersion(yaml: string): string | undefined {
+  const info = yaml.match(/(?:^|\n)info:\s*\n([\s\S]*?)(?=\n\S|$)/);
+  const version = info?.[1]?.match(/^\s+version:\s*['"]?v?([0-9][0-9A-Za-z.+-]*)/m);
+  return version?.[1];
 }
