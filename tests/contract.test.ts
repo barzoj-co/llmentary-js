@@ -4,11 +4,14 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { contractPath } from "../src/contract.js";
 
-const previous = process.env.LLMENTARY_OPENAPI_PATH;
+const previousOpenapi = process.env.LLMENTARY_OPENAPI_PATH;
+const previousBin = process.env.LLMENTARY_BIN;
 
 afterEach(() => {
-  if (previous === undefined) delete process.env.LLMENTARY_OPENAPI_PATH;
-  else process.env.LLMENTARY_OPENAPI_PATH = previous;
+  if (previousOpenapi === undefined) delete process.env.LLMENTARY_OPENAPI_PATH;
+  else process.env.LLMENTARY_OPENAPI_PATH = previousOpenapi;
+  if (previousBin === undefined) delete process.env.LLMENTARY_BIN;
+  else process.env.LLMENTARY_BIN = previousBin;
 });
 
 describe("contractPath", () => {
@@ -28,5 +31,24 @@ describe("contractPath", () => {
     process.env.LLMENTARY_OPENAPI_PATH = join(tmpdir(), "missing-openapi.yaml");
     const found = contractPath();
     expect(found === undefined || found.endsWith("openapi.yaml")).toBe(true);
+  });
+
+  it("prefers the contract beside LLMENTARY_BIN over the working directory", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "llmentary-contract-cwd-"));
+    const binDir = await mkdtemp(join(tmpdir(), "llmentary-contract-bin-"));
+    const prevCwd = process.cwd();
+    try {
+      await writeFile(join(cwd, "openapi.yaml"), "cwd: true\n");
+      await writeFile(join(binDir, "openapi.yaml"), "bin: true\n");
+      await writeFile(join(binDir, "llmentary"), "");
+      delete process.env.LLMENTARY_OPENAPI_PATH;
+      process.env.LLMENTARY_BIN = join(binDir, "llmentary");
+      process.chdir(cwd);
+      expect(contractPath()).toBe(join(binDir, "openapi.yaml"));
+    } finally {
+      process.chdir(prevCwd);
+      await rm(cwd, { recursive: true, force: true });
+      await rm(binDir, { recursive: true, force: true });
+    }
   });
 });
