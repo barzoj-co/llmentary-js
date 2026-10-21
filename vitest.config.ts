@@ -1,14 +1,14 @@
 import { defineConfig } from "vitest/config";
 
 /** Floored from Node 22 `test:coverage` on main @ 353f9e5 (77.66 / 81.72 / 82.45). */
-const MEASURED_FLOORS = {
+export const MEASURED_FLOORS = {
   lines: 77,
   statements: 77,
   functions: 82,
   branches: 81,
 } as const;
 
-const RELEASE_FLOORS = {
+export const RELEASE_FLOORS = {
   lines: 90,
   statements: 90,
   functions: 90,
