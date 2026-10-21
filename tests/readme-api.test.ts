@@ -27,7 +27,7 @@ describe("README public API snippets", () => {
     expect(readme).toContain("since");
     expect(readme).toContain("callCount");
     expect(readme).toContain("allowEmpty");
-    expect(readme).toContain("v0.2.1");
+    expect(readme).toContain("v0.2.2");
   });
 
   it("does not document removed factory or handle names", () => {
