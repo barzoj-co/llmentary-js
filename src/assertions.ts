@@ -54,7 +54,7 @@ export interface AssertionScopeOptions {
 export class AssertionScope {
   private readonly control: ControlClient;
   private readonly sessionId: string;
-  private readonly query: QueryOptions;
+  private query: QueryOptions;
   private readonly defaultWait: WaitOptions;
   private readonly softMode: boolean;
   private readonly collected: AssertionResult[] = [];
@@ -80,13 +80,8 @@ export class AssertionScope {
 
   /** Opt out of the empty-filter failure on `noErrors()` / `notCalled()`. */
   allowEmpty(): AssertionScope {
-    return new AssertionScope({
-      control: this.control,
-      sessionId: this.sessionId,
-      query: { ...this.query, allowEmpty: true },
-      defaultWait: this.defaultWait,
-      soft: this.softMode,
-    });
+    this.query = { ...this.query, allowEmpty: true };
+    return this;
   }
 
   async toolCalled(name: string, options: ToolCallAssertionOptions = {}): Promise<AssertionResult> {

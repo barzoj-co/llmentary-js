@@ -154,6 +154,18 @@ describe("offersTool / withoutTools / since", () => {
       "no calls matched query (withoutTools, since=3)",
     );
   });
+
+  it("keeps allowEmpty() results on the same soft collection", async () => {
+    const last = trace.calls.length;
+    const soft = scopeFor(trace, { since: last }).soft();
+    await soft.allowEmpty().notCalled("x");
+    await expect(soft.check()).resolves.toMatchObject({ pass: true });
+
+    const mixed = scopeFor(trace, { offersTool: "missing" }).soft();
+    await mixed.noErrors();
+    await mixed.allowEmpty().notCalled("x");
+    await expect(mixed.check()).rejects.toThrow(/no calls matched query \(offersTool=missing\)/);
+  });
 });
 
 describe("mentionsAny", () => {
