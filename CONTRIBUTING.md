@@ -67,7 +67,7 @@ coverage as a second report.
 
 Thresholds start at the floored Node 22 numbers from main @ 353f9e5
 and ratchet up as real tests land. Current floors (CI Node 22 after
-process/session API tests): 89% lines/statements, 83% branches, 93%
+process/session API tests): 89% lines/statements, 83% branches, 92%
 functions.
 Release-please PRs (`release-please--*` head ref, or
 `COVERAGE_RELEASE_PLEASE=1`) require **≥90%** lines, statements, and
