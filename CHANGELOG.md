@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/barzoj-co/llmentary-js/compare/v0.2.1...v0.3.0) (2026-10-21)
+
+
+### Features
+
+* map wait 404, expose seq, and add isolatedFrom ([#22](https://github.com/barzoj-co/llmentary-js/issues/22)) ([20fcdcc](https://github.com/barzoj-co/llmentary-js/commit/20fcdcc2e7dff7470c9a8e8aed05ababf5734856))
+
+
+### Bug Fixes
+
+* bundle proxy v0.2.2 ([#23](https://github.com/barzoj-co/llmentary-js/issues/23)) ([50c3c2d](https://github.com/barzoj-co/llmentary-js/commit/50c3c2df9beadfe3968a5d890e6c50e5e05f5770))
+* bundle proxy v0.3.0 ([#24](https://github.com/barzoj-co/llmentary-js/issues/24)) ([8f01fd0](https://github.com/barzoj-co/llmentary-js/commit/8f01fd063b0fab21c9b79366dc78c53fc9f1f4a9))
+* fail vacuous empty-filter assertions ([#18](https://github.com/barzoj-co/llmentary-js/issues/18)) ([7c92bc4](https://github.com/barzoj-co/llmentary-js/commit/7c92bc4f6a0d7dda314feb11c7178d646ec8e4e6))
+
 ## [0.2.1](https://github.com/barzoj-co/llmentary-js/compare/v0.2.0...v0.2.1) (2026-10-21)
 
 
