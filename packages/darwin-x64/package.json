@@ -1,6 +1,6 @@
 {
   "name": "@llmentary/darwin-x64",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "macOS x64 llmentary proxy binary (optionalDependency of llmentary).",
   "license": "MIT AND AGPL-3.0-only",
   "repository": {
