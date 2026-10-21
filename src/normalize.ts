@@ -76,6 +76,15 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
   const usageWithDetails = enrichUsageDetails(usage, response, decodedResponse);
   const promptText = textFromPayload(request);
   const responseText = responseTextFromPayload(response, normalized);
+  const sessionSource =
+    stringAt(object, "session_source") ??
+    stringAt(object, "sessionSource") ??
+    stringAt(metadata, "session_source") ??
+    stringAt(metadata, "sessionSource");
+  const upstreamUrl =
+    stringAt(objectAt(object, "upstream"), "url") ??
+    stringAt(object, "upstream_url") ??
+    stringAt(object, "upstreamUrl");
   return {
     raw,
     ...(id ? { id } : {}),
@@ -99,6 +108,8 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     ...(httpStatus !== undefined ? { httpStatus } : {}),
     ...(promptText ? { promptText } : {}),
     ...(responseText ? { responseText } : {}),
+    ...(sessionSource ? { sessionSource } : {}),
+    ...(upstreamUrl ? { upstreamUrl } : {}),
   };
 }
 

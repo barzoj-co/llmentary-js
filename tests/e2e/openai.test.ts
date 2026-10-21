@@ -1118,11 +1118,36 @@ describe("OpenAI E2E through llmentary", () => {
         );
         await lm.expect().callCount(1);
         await lm.expect().outputText();
+        const trace = await lm.session();
+        expect(trace.calls[0]?.sessionSource).toBe("path");
+        expect(trace.calls[0]?.upstreamUrl).toBeTruthy();
+        expect(trace.calls[0]?.upstreamUrl).not.toMatch(/\/s\//);
       } finally {
         if (previous === undefined) delete process.env.OPENAI_BASE_URL;
         else process.env.OPENAI_BASE_URL = previous;
         await lm.cleanup();
       }
+    });
+
+    it("fails noErrors on an empty since(mark) after a real call", async () => {
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
+      await retryNetwork(() =>
+        client.chat.completions.create({
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 8,
+          messages: [{ role: "user", content: "Reply with the single word ping." }],
+        }),
+      );
+      await lm.expect().callCount(1);
+      const mark = await lm.mark();
+      await expect(lm.expect({ since: mark }).noErrors()).rejects.toBeInstanceOf(SessionAssertionError);
+      await expect(lm.expect({ since: mark }).noErrors()).rejects.toThrow(/no calls matched query \(since=/);
+      await expect(lm.expect({ since: mark }).notCalled("lookup_weather")).rejects.toThrow(/no calls matched query/);
+      await lm.expect().callCount(1);
+      await lm.expect({ since: mark }).allowEmpty().noErrors();
+      await lm.cleanup();
     });
 
     it("scopes a second live turn with since(mark) and filters a router call with withoutTools", async () => {

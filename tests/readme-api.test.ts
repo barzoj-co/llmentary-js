@@ -25,6 +25,8 @@ describe("README public API snippets", () => {
     expect(readme).toContain("offersTool");
     expect(readme).toContain("withoutTools");
     expect(readme).toContain("since");
+    expect(readme).toContain("callCount");
+    expect(readme).toContain("allowEmpty");
     expect(readme).toContain("v0.2.1");
   });
 
@@ -54,6 +56,8 @@ describe("README public API snippets", () => {
     expect(typeof lm.mark).toBe("function");
     expect(typeof lm.query({}).offersTool).toBe("function");
     expect(typeof lm.query({}).withoutTools).toBe("function");
+    expect(typeof lm.query({}).allowEmpty).toBe("function");
+    expect(typeof lm.expect().allowEmpty).toBe("function");
     expect(typeof lm.expect().finalResponseMentionsAny).toBe("function");
     expect(typeof lm.expect().toolResultInPrompt).toBe("function");
     expect(typeof lm.expect().soft().check).toBe("function");

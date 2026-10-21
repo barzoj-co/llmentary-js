@@ -74,7 +74,18 @@ lm.expect({ since: mark });
 lm.query({}).since(mark).expect();
 ```
 
-`offersTool(name)` keeps calls whose **request** offered that tool. `withoutTools()` keeps calls that offered none (structured-output routers). `await lm.mark()` is the current call count (`seq`). `since: mark` keeps calls with `seq >= mark`. The generated summary prints `seq=N` using those numbers. Per-call `promptText` / `responseText` fill the same role as Python `prompt_text` / `response_text`.
+`offersTool(name)` keeps calls whose **request** offered that tool. `withoutTools()` keeps calls that offered none (structured-output routers). `await lm.mark()` is the current call count (`seq`). `since: mark` keeps calls with `seq >= mark`. The generated summary prints `seq=N` using those numbers. Per-call `promptText` / `responseText` fill the same role as Python `prompt_text` / `response_text`. `sessionSource` and `upstreamUrl` are typed accessors for the proxy's `session_source` and `upstream.url` (absent when the proxy omitted them).
+
+### Filters and empty traces
+
+A filtered or `since` expectation that matches **zero** calls fails `noErrors()` / `notCalled()` with `no calls matched query (withoutTools, since=3)` plus the trace summary. That stops "the router had no errors" from going green when the router never ran. Opt out with `allowEmpty()` (Go `AllowEmpty()`):
+
+```ts
+lm.query({}).since(mark).allowEmpty().expect().noErrors();
+lm.expect({ since: mark }).allowEmpty().notCalled("lookup_weather");
+```
+
+`callCount(0)` still states an explicit empty count and does not need the opt-out. Unfiltered `expect()` on a session with zero calls still fails with `no calls recorded for session …` (DOG-2).
 
 `apiType` values mirror the Go client scoping:
 
@@ -142,7 +153,7 @@ await lm.expect().toolResultInPrompt("lookup_weather");
 
 Expect helpers on a session with zero calls fail with `no calls recorded for session <id>; known sessions: …` plus the trace summary. `GET /sessions/{id}` 404 raises `SessionNotFound`.
 
-Failures throw `SessionAssertionError`; its message appends the proxy trace summary when present, or a generated summary with call count, API type, model, tools, finish reasons, and error markers.
+Failures throw `SessionAssertionError`; its message appends the proxy trace summary when present, or a generated summary with call count, API type, model, tools, optional `finish=` (omitted when there is no finish reason), optional `src=` / `tokens=`, and error markers. Unparsed calls (no request and no response) print `unparsed call, keys=[…]` instead of a key dump on every plain answer.
 
 ### Soft assertions
 
@@ -153,7 +164,7 @@ if (!result.pass) {
 }
 ```
 
-`lm.softExpect()` is equivalent to `lm.expect().soft()`. Soft results stay non-throwing; `await soft.check()` throws one `SessionAssertionError` that lists every collected failure.
+`lm.softExpect()` is equivalent to `lm.expect().soft()`. Soft results stay non-throwing; `await soft.check()` throws one `SessionAssertionError` that lists every collected failure, then appends the trace summary **once**.
 
 ## Runner integrations
 

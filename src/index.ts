@@ -1,4 +1,9 @@
-export { SessionAssertionError, AssertionScope, formatTraceSummary } from "./assertions.js";
+export {
+  SessionAssertionError,
+  AssertionScope,
+  formatEmptyFilterMessage,
+  formatTraceSummary,
+} from "./assertions.js";
 export { specStatusForRecord, validationWasRun } from "./normalize.js";
 export {
   resolveBinary,
