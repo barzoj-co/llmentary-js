@@ -140,11 +140,11 @@
     }
   },
   "optionalDependencies": {
-    "@llmentary/darwin-arm64": "0.3.0",
-    "@llmentary/darwin-x64": "0.3.0",
-    "@llmentary/linux-arm64": "0.3.0",
-    "@llmentary/linux-x64": "0.3.0",
-    "@llmentary/win32-x64": "0.3.0"
+    "@llmentary/darwin-arm64": "0.4.0",
+    "@llmentary/darwin-x64": "0.4.0",
+    "@llmentary/linux-arm64": "0.4.0",
+    "@llmentary/linux-x64": "0.4.0",
+    "@llmentary/win32-x64": "0.4.0"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
