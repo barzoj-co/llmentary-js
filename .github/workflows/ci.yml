@@ -40,22 +40,6 @@ jobs:
             exit 1
           fi
 
-      # TODO: remove LLMTESTLAB_REPO_TOKEN once llmentary is public
-      - name: Install released proxy
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        env:
-          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
-          LLMENTARY_INSTALL_DIR: ${{ github.workspace }}/.bin
-        run: bash scripts/install-proxy.sh
-
-      - name: Require installed proxy binary
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        run: |
-          if [ ! -x "$LLMENTARY_BIN" ]; then
-            echo "::error::CI did not produce LLMENTARY_BIN; real Go proxy tests cannot run."
-            exit 1
-          fi
-
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -64,6 +48,26 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # TODO: remove LLMTESTLAB_REPO_TOKEN once llmentary is public
+      # Install and isolation-vector fetch share this one raw secret (hygiene).
+      - name: Install released proxy
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          LLMENTARY_INSTALL_DIR: ${{ github.workspace }}/.bin
+          LLMENTARY_ISOLATION_VECTORS_REF: main
+        run: |
+          bash scripts/install-proxy.sh
+          node scripts/check-isolation-vectors.mjs
+
+      - name: Require installed proxy binary
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ ! -x "$LLMENTARY_BIN" ]; then
+            echo "::error::CI did not produce LLMENTARY_BIN; real Go proxy tests cannot run."
+            exit 1
+          fi
 
       - name: Typecheck
         run: npm run typecheck
@@ -76,7 +80,6 @@ jobs:
 
       - name: Unit tests
         env:
-          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
           LLMENTARY_ISOLATION_VECTORS_REF: main
         run: |
           if [ "${{ matrix.node }}" = "22" ]; then
