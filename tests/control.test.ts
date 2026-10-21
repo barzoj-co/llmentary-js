@@ -229,6 +229,20 @@ describe("ControlClient", () => {
     );
   });
 
+  it("propagates getSession failure after a wait 504 with no counts", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.includes("/wait")) {
+        return new Response("upstream timeout", { status: 504, statusText: "Gateway Timeout" });
+      }
+      return new Response("control unavailable", { status: 503, statusText: "Service Unavailable" });
+    };
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    await expect(client.wait("s1")).rejects.toMatchObject({ status: 503 });
+    await expect(client.wait("s1")).rejects.not.toBeInstanceOf(WaitTimeoutError);
+  });
+
   it("reads calls_seen from a wait_timeout JSON error when the session body is absent", async () => {
     const fetchImpl: ControlFetch = async (input) => {
       const url = requestUrl(input);

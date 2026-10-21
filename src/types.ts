@@ -130,11 +130,19 @@ export interface IsolatedFromOptions {
   /** Require every call's `sessionSource` to be `path`. */
   requirePathSource?: boolean;
   /**
-   * Allow isolation to pass when either session has zero calls.
+   * Allow isolation to pass when this session has zero calls.
    * Prefer `allowEmpty()` on the expectation. Default is to fail with
-   * `no calls recorded for session <id>`.
+   * `no calls recorded for session <id>`. An empty *other* session is not
+   * a leak (it introduced nothing).
    */
   allowEmpty?: boolean;
+  /**
+   * Ignore user texts shorter than this after normalization
+   * (trim, collapse whitespace, casefold). Default 8.
+   */
+  minChars?: number;
+  /** User texts to ignore after the same normalization. */
+  ignoreTexts?: string[];
 }
 
 export interface CallRecord {
@@ -177,7 +185,7 @@ export interface CallRecord {
   sessionSource?: string;
   /** Upstream URL the proxy forwarded to (the `/s/{session}` prefix is not forwarded). */
   upstreamUrl?: string;
-  /** User-role message texts only (Chat `messages`, Responses `input`). */
+  /** Joined text for each user-role message (Chat `messages`, Responses `input`). */
   userTexts?: string[];
   raw: JsonValue;
 }

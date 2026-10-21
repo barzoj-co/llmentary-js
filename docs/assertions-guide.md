@@ -23,6 +23,6 @@ await used.expect().allowEmpty().isolatedFrom(unused);
 
 `expectNoCalls()` calls `wait({ minCalls: 0 })`. `SessionNotFound` passes. A session with N recorded calls fails with `expected 0 LLM calls, got N` plus the trace summary.
 
-`isolatedFrom` against a never-created session raises an assertion error (`no calls recorded for session <id>`), not `SessionNotFound`. Pass `{ allowEmpty: true }` or call `allowEmpty()` when the other session is allowed to be empty.
+`isolatedFrom` against a never-created session maps `SessionNotFound` to an empty other session (not a leak). Empty **this** session still fails unless you pass `{ allowEmpty: true }` or call `allowEmpty()`.
 
 Client messages contain `known sessions:` at most once. The proxy 404 hint is `list sessions with GET /sessions`.
