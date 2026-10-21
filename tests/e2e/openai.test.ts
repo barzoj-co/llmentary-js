@@ -1089,19 +1089,41 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("parses reasoning tokens from one reasoning-model call", async () => {
+      // o4-mini sometimes bills reasoning_tokens=0 even with encrypted reasoning.
+      // Retry the live call; a hit is still required.
       const lm = newSession(proxy);
-      await retryNetwork(() =>
-        openaiClient(lm).responses.create({
-          model: REASONING_MODEL,
-          max_output_tokens: 256,
-          reasoning: { effort: "medium" },
-          input:
-            "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How many cents does the ball cost? Reply with only the integer.",
-        }),
-      );
-      await lm.expect().model(REASONING_MODEL);
-      await lm.expect().usageDetails({ reasoningTokens: { min: 1 } });
+      const client = openaiClient(lm);
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (attempt > 0) await delay(250 * 2 ** (attempt - 1));
+        console.log(`reasoning-token parse attempt ${attempt + 1}/3`);
+        await retryNetwork(() =>
+          client.responses.create({
+            model: REASONING_MODEL,
+            max_output_tokens: 256,
+            reasoning: { effort: "medium" },
+            input:
+              "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How many cents does the ball cost? Reply with only the integer.",
+          }),
+        );
+        const callIndex = (await lm.wait()).calls.length - 1;
+        try {
+          await lm.query({ index: callIndex }).expect().usageDetails({ reasoningTokens: { min: 1 } });
+          await lm.query({ index: callIndex }).expect().model(REASONING_MODEL);
+          await lm.cleanup();
+          return;
+        } catch (error) {
+          lastError = error;
+          const detail = error instanceof Error ? error.message : String(error);
+          console.warn(`reasoning-token parse attempt ${attempt + 1}/3 failed: ${detail}`);
+          if (!(error instanceof SessionAssertionError)) throw error;
+        }
+      }
       await lm.cleanup();
+      const last = lastError instanceof Error ? lastError.message : String(lastError);
+      throw new Error(`expected reasoningTokens.min=1 within 3 live ${REASONING_MODEL} attempts; last error: ${last}`, {
+        cause: lastError,
+      });
     });
 
     it("attributes a live OpenAI SDK call through pathBaseURL with no session header", async () => {
@@ -1151,8 +1173,9 @@ describe("OpenAI E2E through llmentary", () => {
           } else if (!(error instanceof WaitTimeoutError)) {
             throw error;
           }
-          // Bundled proxy 0.2.1 still returns 504 wait_timeout for min_calls=0.
-          // The 404 mapping is covered by unit fixtures until the next proxy release.
+          // Bundled proxy 0.2.2 still returns 504 wait_timeout for min_calls=0.
+          // DOG-17 404 (proxy PR barzoj-co/llmentary#30) ships in 0.2.3; until
+          // then the 404 mapping is covered by unit fixtures.
         }
         await retryNetwork(() =>
           openaiClient(lm).chat.completions.create({

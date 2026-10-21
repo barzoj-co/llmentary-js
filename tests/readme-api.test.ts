@@ -31,7 +31,7 @@ describe("README public API snippets", () => {
     expect(readme).toContain("SessionNotFound");
     expect(readme).toContain("WaitTimeoutError");
     expect(readme).toContain("openapi.yaml");
-    expect(readme).toContain("v0.2.1");
+    expect(readme).toContain("v0.2.2");
   });
 
   it("does not document removed factory or handle names", () => {

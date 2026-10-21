@@ -70,8 +70,8 @@ fi
 if [[ "${1:-}" == "--self-test" ]]; then
   tag="$(read_proxy_tag)"
   version="${tag#v}"
-  [[ "$tag" == "v0.2.1" ]] || {
-    echo "PROXY_VERSION must be v0.2.1, got $tag" >&2
+  [[ "$tag" == "v0.2.2" ]] || {
+    echo "PROXY_VERSION must be v0.2.2, got $tag" >&2
     exit 1
   }
   [[ "$(goreleaser_os linux)" == "linux" ]]
@@ -79,10 +79,10 @@ if [[ "${1:-}" == "--self-test" ]]; then
   [[ "$(goreleaser_os win32)" == "windows" ]]
   [[ "$(goreleaser_arch x86_64)" == "amd64" ]]
   [[ "$(goreleaser_arch arm64)" == "arm64" ]]
-  [[ "$(proxy_archive_name linux amd64 "$version")" == "llmentary_0.2.1_linux_amd64.tar.gz" ]]
-  [[ "$(proxy_archive_name darwin arm64 "$version")" == "llmentary_0.2.1_darwin_arm64.tar.gz" ]]
-  [[ "$(proxy_archive_name windows amd64 "$version")" == "llmentary_0.2.1_windows_amd64.zip" ]]
-  [[ "$(proxy_archive_name windows arm64 "$version")" == "llmentary_0.2.1_windows_arm64.zip" ]]
+  [[ "$(proxy_archive_name linux amd64 "$version")" == "llmentary_0.2.2_linux_amd64.tar.gz" ]]
+  [[ "$(proxy_archive_name darwin arm64 "$version")" == "llmentary_0.2.2_darwin_arm64.tar.gz" ]]
+  [[ "$(proxy_archive_name windows amd64 "$version")" == "llmentary_0.2.2_windows_amd64.zip" ]]
+  [[ "$(proxy_archive_name windows arm64 "$version")" == "llmentary_0.2.2_windows_arm64.zip" ]]
   empty="$(mktemp)"
   [[ "$(file_sha256 "$empty")" == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]]
   rm -f "$empty"

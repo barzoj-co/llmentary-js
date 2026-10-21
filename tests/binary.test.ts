@@ -16,9 +16,9 @@ import {
 import { formatUpstreamSpec, looksLikeLlmentaryProxy, originForGoUpstream, redactArgs, resolveUpstreamSpec } from "../src/proxy.js";
 
 describe("binary release asset matching", () => {
-  it("pins PROXY_VERSION to v0.2.1", () => {
+  it("pins PROXY_VERSION to v0.2.2", () => {
     const pin = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "PROXY_VERSION"), "utf8").trim();
-    expect(pin).toBe("v0.2.1");
+    expect(pin).toBe("v0.2.2");
   });
 
   it("install-proxy.sh --self-test accepts the current pin and archive names", () => {
@@ -27,7 +27,7 @@ describe("binary release asset matching", () => {
       cwd: join(dirname(fileURLToPath(import.meta.url)), ".."),
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("v0.2.1");
+    expect(result.stdout).toContain("v0.2.2");
   });
 
   it("matches GoReleaser-style Linux x64 tarballs", () => {
