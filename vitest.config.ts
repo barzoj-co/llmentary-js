@@ -15,7 +15,7 @@ const RELEASE_FLOORS = {
   branches: 90,
 } as const;
 
-function coverageThresholds(): { lines: number; statements: number; functions: number; branches: number } {
+export function coverageThresholds(): { lines: number; statements: number; functions: number; branches: number } {
   const head = process.env.GITHUB_HEAD_REF ?? "";
   const releasePlease = head.startsWith("release-please") || process.env.COVERAGE_RELEASE_PLEASE === "1";
   return releasePlease ? RELEASE_FLOORS : MEASURED_FLOORS;
