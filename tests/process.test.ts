@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   forgetSpawnedProcess,
   linuxStartMsFromProc,
@@ -13,6 +13,7 @@ import {
   processLookups,
   type ProcessQueryResult,
   processMatchesIdentity,
+  readProcessIdentity,
   readProcessStartMs,
   rememberSpawnedProcess,
   stopProcessIfMatches,
@@ -150,6 +151,128 @@ describe("process identity", () => {
       ),
     ).toBe((1_700_000_000 + 200 / 100) * 1000);
   });
+
+  it("rejects malformed /proc start-time inputs", () => {
+    expect(linuxStartMsFromProc("no-paren", "btime 1\n")).toBeUndefined();
+    expect(linuxStartMsFromProc("1 (x) S 0", "btime 1700000000\n")).toBeUndefined();
+    expect(linuxStartMsFromProc("1 (node) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0", "btime 1700000000\n")).toBeUndefined();
+    expect(linuxStartMsFromProc("1 (node) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 200 0 0", "cpu 1\n")).toBeUndefined();
+    expect(linuxStartMsFromProc("1 (node) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 200 0 0", "btime 0\n")).toBeUndefined();
+    expect(
+      linuxStartMsFromProc("1 (node) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 200 0 0", "btime 1700000000\n", 0),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined for a pid that is already gone", async () => {
+    await expect(readProcessIdentity(2_147_000_000)).resolves.toBeUndefined();
+  });
+
+  it("ignores rememberSpawnedProcess without a pid or instance id", () => {
+    rememberSpawnedProcess({ pid: 0, instanceId: "x" });
+    rememberSpawnedProcess({ pid: 99 });
+  });
+
+  it("falls back to /proc/uptime when btime is missing", async () => {
+    const child = spawnWithoutInstanceId();
+    const pid = child.pid!;
+    await delay(50);
+    processLookups.readProcFileSync = ((path: string) => {
+      const file = String(path);
+      if (file === `/proc/${pid}/stat`) return "1 (node) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 200 0 0";
+      if (file === "/proc/stat") return "cpu 1\n";
+      if (file === "/proc/uptime") return "12.5 0\n";
+      throw new Error(`unexpected proc path ${file}`);
+    }) as unknown as typeof originalLookups.readProcFileSync;
+    processLookups.spawnSync = (command) => {
+      if (command === "getconf") return emptySpawnResult(1);
+      return { stdout: "", stderr: "", status: 1 };
+    };
+    const start = readProcessStartMs(pid);
+    expect(start).toBeDefined();
+    expect(Math.abs((start ?? 0) - (Date.now() - 10_500))).toBeLessThan(3_000);
+  });
+
+  it("falls back to ps etime when /proc start time is unavailable", async () => {
+    const child = spawnWithoutInstanceId();
+    const pid = child.pid!;
+    await delay(50);
+    processLookups.readProcFileSync = () => {
+      throw new Error("proc unavailable");
+    };
+    processLookups.spawnSync = (command, args) => {
+      if (command === "ps" && args?.includes("etime=")) return { stdout: "00:08\n", stderr: "", status: 0 };
+      return { stdout: "", stderr: "", status: 1 };
+    };
+    const start = readProcessStartMs(pid);
+    expect(start).toBeDefined();
+    expect(Math.abs((start ?? 0) - (Date.now() - 8_000))).toBeLessThan(2_000);
+  });
+
+  it("returns undefined when ps etime is unparsable", async () => {
+    const child = spawnWithoutInstanceId();
+    const pid = child.pid!;
+    await delay(50);
+    processLookups.readProcFileSync = () => {
+      throw new Error("proc unavailable");
+    };
+    processLookups.spawnSync = () => ({ stdout: "etimes\n", stderr: "", status: 0 });
+    expect(readProcessStartMs(pid)).toBeUndefined();
+  });
+
+  it("escalates to SIGKILL when a matching process ignores SIGTERM", async () => {
+    const instanceId = randomUUID();
+    const child = spawn(
+      process.execPath,
+      ["-e", 'process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000)'],
+      {
+        env: { ...process.env, LLMENTARY_INSTANCE_ID: instanceId },
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+    children.push(child);
+    const pid = child.pid!;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("child never signaled ready")), 5_000);
+      child.stdout.once("data", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      child.once("exit", (code, signal) => {
+        clearTimeout(timer);
+        reject(new Error(`child exited before ready: ${code} ${signal}`));
+      });
+    });
+    const kill = vi.spyOn(process, "kill");
+    try {
+      await expect(stopProcessIfMatches(pid, { pid, instanceId })).resolves.toBe(true);
+      expect(kill).toHaveBeenCalledWith(pid, "SIGKILL");
+    } finally {
+      kill.mockRestore();
+    }
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline && pidExists(pid)) await delay(50);
+    expect(pidExists(pid)).toBe(false);
+  });
+});
+
+describe("Windows process lookups", () => {
+  it("reads start time from powershell through processLookups", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { configurable: true, value: "win32" });
+    processLookups.spawnSync = (command) => {
+      if (command === "powershell.exe") return { stdout: "1700000000123\n", stderr: "", status: 0 };
+      return { stdout: "", stderr: "", status: 1 };
+    };
+    try {
+      expect(readProcessStartMs(4242)).toBe(1_700_000_000_123);
+      processLookups.spawnSync = () => ({ stdout: "", stderr: "", status: 1 });
+      expect(readProcessStartMs(4242)).toBeUndefined();
+      processLookups.spawnSync = () => ({ stdout: "not-a-number\n", stderr: "", status: 0 });
+      expect(readProcessStartMs(4242)).toBeUndefined();
+    } finally {
+      if (descriptor) Object.defineProperty(process, "platform", descriptor);
+    }
+  });
 });
 
 describe("parsePsEtime", () => {
@@ -161,6 +284,9 @@ describe("parsePsEtime", () => {
     expect(parsePsEtime("")).toBeUndefined();
     expect(parsePsEtime("etimes")).toBeUndefined();
     expect(parsePsEtime("1")).toBeUndefined();
+    expect(parsePsEtime("-2-01:00:00")).toBeUndefined();
+    expect(parsePsEtime("01:02:03:04")).toBeUndefined();
+    expect(parsePsEtime("01:-2")).toBeUndefined();
   });
 });
 
