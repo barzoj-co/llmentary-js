@@ -1,0 +1,39 @@
+{
+  "name": "history-replay",
+  "expect": "fail",
+  "messageFragment": "What is my biological age?",
+  "self": {
+    "id": "iso-c",
+    "calls": [
+      {
+        "id": "call_m",
+        "seq": 1,
+        "session_id": "iso-c",
+        "api_family": "openai.chat",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "messages": [
+            { "role": "user", "content": "What is my biological age?" },
+            { "role": "assistant", "content": "42" },
+            { "role": "user", "content": "And my BMI?" }
+          ]
+        }
+      }
+    ]
+  },
+  "other": {
+    "id": "iso-a",
+    "calls": [
+      {
+        "id": "call_h",
+        "seq": 1,
+        "session_id": "iso-a",
+        "api_family": "openai.chat",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "messages": [{ "role": "user", "content": "What is my biological age?" }]
+        }
+      }
+    ]
+  }
+}

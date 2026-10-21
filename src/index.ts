@@ -6,7 +6,13 @@ export {
   isolationCheck,
 } from "./assertions.js";
 export type { IsolatedFromOther } from "./assertions.js";
-export { extractUserTexts, specStatusForRecord, validationWasRun } from "./normalize.js";
+export {
+  extractUserMessages,
+  extractUserTexts,
+  normalizeIsolationText,
+  specStatusForRecord,
+  validationWasRun,
+} from "./normalize.js";
 export {
   resolveBinary,
   assetNameCandidates,

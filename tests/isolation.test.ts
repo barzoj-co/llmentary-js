@@ -95,7 +95,7 @@ describe("isolatedFrom", () => {
     await expect(scopeFor(barge, weather).isolatedFrom(weather.id)).resolves.toMatchObject({ pass: true });
   });
 
-  it("fails when the same user text appears in both sessions", async () => {
+  it("passes when both sessions send the same canned user text", async () => {
     const weather = sessionTrace("weather", [
       chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
     ]);
@@ -103,11 +103,55 @@ describe("isolatedFrom", () => {
       chatCall({ id: "call_1", seq: 1, sessionId: "barge", user: WEATHER_USER }),
     ]);
     const result = isolationCheck(weather, "weather", barge, "barge");
+    expect(result.pass).toBe(true);
+    await expect(scopeFor(weather, barge).isolatedFrom("barge")).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(barge, weather).isolatedFrom("weather")).resolves.toMatchObject({ pass: true });
+  });
+
+  it("passes when a short greeting is a substring of the other session's turn", () => {
+    const hello = sessionTrace("hello", [
+      chatCall({ id: "call_a", seq: 1, sessionId: "hello", user: "Hi" }),
+    ]);
+    const long = sessionTrace("long", [
+      chatCall({
+        id: "call_b",
+        seq: 1,
+        sessionId: "long",
+        user: "Hi, what is my biological age? This text is long.",
+      }),
+    ]);
+    expect(isolationCheck(hello, "hello", long, "long").pass).toBe(true);
+    expect(isolationCheck(long, "long", hello, "hello").pass).toBe(true);
+  });
+
+  it("fails when a session's prompt replays a user turn only the other introduced", () => {
+    const original = sessionTrace("iso-a", [
+      chatCall({ id: "call_h", seq: 1, sessionId: "iso-a", user: "What is my biological age?" }),
+    ]);
+    const replay = sessionTrace("iso-c", [
+      {
+        id: "call_m",
+        seq: 1,
+        session_id: "iso-c",
+        session_source: "path",
+        api_family: "openai.chat",
+        request: {
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "user", content: "What is my biological age?" },
+            { role: "assistant", content: "42" },
+            { role: "user", content: "And my BMI?" },
+          ],
+        },
+        response: { choices: [{ finish_reason: "stop", message: { content: "ok" } }] },
+      },
+    ]);
+    const result = isolationCheck(replay, "iso-c", original, "iso-a");
     expect(result.pass).toBe(false);
-    expect(result.message).toMatch(/user text .*ZURICH_QUAYZE/);
-    expect(result.message).toMatch(/#1 \(call_3\)/);
-    expect(result.message).toMatch(/session barge #1 \(call_1\)/);
-    await expect(scopeFor(weather, barge).isolatedFrom("barge")).rejects.toThrow(/user text/);
+    expect(result.message).toMatch(/user text .*What is my biological age\?/);
+    expect(result.message).toMatch(/session iso-c #1 \(call_m\)/);
+    expect(result.message).toMatch(/session iso-a #1 \(call_h\)/);
+    expect(isolationCheck(original, "iso-a", replay, "iso-c").pass).toBe(true);
   });
 
   it("fails when a call has a foreign sessionId", async () => {
@@ -169,6 +213,34 @@ describe("isolatedFrom", () => {
       /no calls recorded for session never-created/,
     );
     await expect(scope.allowEmpty().isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
+  });
+
+  it("honours minChars and ignoreTexts", () => {
+    const leaked = sessionTrace("replay", [
+      {
+        id: "call_r",
+        seq: 1,
+        session_id: "replay",
+        api_family: "openai.chat",
+        request: {
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "user", content: "Secret token ALPHA_TOKEN" },
+            { role: "assistant", content: "ok" },
+            { role: "user", content: "Follow up please" },
+          ],
+        },
+        response: { choices: [{ finish_reason: "stop", message: { content: "ok" } }] },
+      },
+    ]);
+    const origin = sessionTrace("origin", [
+      chatCall({ id: "call_o", seq: 1, sessionId: "origin", user: "Secret token ALPHA_TOKEN" }),
+    ]);
+    expect(isolationCheck(leaked, "replay", origin, "origin").pass).toBe(false);
+    expect(
+      isolationCheck(leaked, "replay", origin, "origin", { ignoreTexts: ["Secret token ALPHA_TOKEN"] }).pass,
+    ).toBe(true);
+    expect(isolationCheck(leaked, "replay", origin, "origin", { minChars: 80 }).pass).toBe(true);
   });
 
   it("fails overlapping call ids and optional path-source mismatches", () => {

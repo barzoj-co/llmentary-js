@@ -1,0 +1,36 @@
+{
+  "name": "responses-history-replay",
+  "expect": "fail",
+  "messageFragment": "What is my biological age?",
+  "self": {
+    "id": "resp-c",
+    "calls": [
+      {
+        "id": "call_rc",
+        "seq": 1,
+        "session_id": "resp-c",
+        "api_family": "openai.responses",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "input": [
+            { "role": "user", "content": "What is my biological age?" },
+            { "role": "assistant", "content": "42" },
+            { "role": "user", "content": "And my BMI?" }
+          ]
+        }
+      }
+    ]
+  },
+  "other": {
+    "id": "resp-a",
+    "calls": [
+      {
+        "id": "call_ra",
+        "seq": 1,
+        "session_id": "resp-a",
+        "api_family": "openai.responses",
+        "request": { "model": "gpt-4.1-mini", "input": "What is my biological age?" }
+      }
+    ]
+  }
+}

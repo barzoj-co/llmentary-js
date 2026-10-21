@@ -10,6 +10,8 @@ import {
   objectAt,
   specStatusForRecord,
   stringAt,
+  extractUserMessages,
+  normalizeIsolationText,
   validationWasRun,
   valueAt,
 } from "./normalize.js";
@@ -354,8 +356,9 @@ export class AssertionScope {
 
   /**
    * Prove this session stayed isolated from another: matching session ids,
-   * no shared call ids, and no shared user-role texts. System prompts and
-   * tool names are not compared. `other` is a session id or a `Session`.
+   * no shared call ids, and no foreign user-role turns (exact normalized
+   * match; see docs/isolation-spec semantics). System prompts and tool
+   * names are not compared. `other` is a session id or a `Session`.
    */
   async isolatedFrom(other: IsolatedFromOther, options: IsolatedFromOptions = {}): Promise<AssertionResult> {
     const otherId = typeof other === "string" ? other : other.sessionId;
@@ -1280,21 +1283,57 @@ export function isolationCheck(
       failures.push(`call id ${record.id} appears in sessions ${selfId} and ${otherId}`);
     }
   }
+  const selfIntroduced = introducedUserTurns(self);
+  const otherIntroduced = introducedUserTurns(other);
   for (const [index, record] of self.calls.entries()) {
-    for (const text of record.userTexts ?? []) {
-      for (const [otherIndex, otherRecord] of other.calls.entries()) {
-        if ((otherRecord.userTexts ?? []).includes(text)) {
-          failures.push(
-            `user text ${JSON.stringify(text)} from session ${selfId} ${formatCallRef(record, index)} also appears in session ${otherId} ${formatCallRef(otherRecord, otherIndex)}`,
-          );
-        }
-      }
+    for (const text of promptUserMessages(record)) {
+      if (ignoreIsolationText(text, options)) continue;
+      const key = normalizeIsolationText(text);
+      if (selfIntroduced.has(key)) continue;
+      const otherHit = otherIntroduced.get(key);
+      if (!otherHit || ignoreIsolationText(otherHit.display, options)) continue;
+      failures.push(
+        `user text ${JSON.stringify(text)} from session ${selfId} ${formatCallRef(record, index)} also appears in session ${otherId} ${formatCallRef(otherHit.record, otherHit.index)}`,
+      );
     }
   }
   if (failures.length === 0) {
     return { pass: true, message: `session ${selfId} is isolated from ${otherId}` };
   }
   return { pass: false, message: failures.join("\n") };
+}
+
+const DEFAULT_ISOLATION_MIN_CHARS = 8;
+
+function ignoreIsolationText(text: string, options: IsolatedFromOptions): boolean {
+  const normalized = normalizeIsolationText(text);
+  const minChars = options.minChars ?? DEFAULT_ISOLATION_MIN_CHARS;
+  if (normalized.length < minChars) return true;
+  const ignored = new Set((options.ignoreTexts ?? []).map(normalizeIsolationText));
+  return ignored.has(normalized);
+}
+
+function promptUserMessages(record: CallRecord): string[] {
+  const fromRequest = extractUserMessages(record.request);
+  if (fromRequest.length > 0) return fromRequest;
+  return record.userTexts ?? [];
+}
+
+/** Last user-role message of each call: the turn this session introduced. */
+function introducedUserTurns(
+  trace: SessionTrace,
+): Map<string, { record: CallRecord; index: number; display: string }> {
+  const introduced = new Map<string, { record: CallRecord; index: number; display: string }>();
+  for (const [index, record] of trace.calls.entries()) {
+    const messages = promptUserMessages(record);
+    const last = messages[messages.length - 1];
+    if (!last) continue;
+    const key = normalizeIsolationText(last);
+    if (!introduced.has(key)) {
+      introduced.set(key, { record, index, display: last });
+    }
+  }
+  return introduced;
 }
 
 function formatCallRef(record: CallRecord, index = 0): string {

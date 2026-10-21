@@ -1,0 +1,37 @@
+{
+  "name": "short-hi-substring",
+  "expect": "pass",
+  "messageFragment": null,
+  "self": {
+    "id": "hello",
+    "calls": [
+      {
+        "id": "call_hi",
+        "seq": 1,
+        "session_id": "hello",
+        "api_family": "openai.chat",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "messages": [{ "role": "user", "content": "Hi" }]
+        }
+      }
+    ]
+  },
+  "other": {
+    "id": "long",
+    "calls": [
+      {
+        "id": "call_long",
+        "seq": 1,
+        "session_id": "long",
+        "api_family": "openai.chat",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "messages": [
+            { "role": "user", "content": "Hi, what is my biological age? This text is long." }
+          ]
+        }
+      }
+    ]
+  }
+}

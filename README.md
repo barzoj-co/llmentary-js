@@ -167,11 +167,11 @@ const weather = llmentary({ sessionId: "weather" });
 const barge = llmentary({ sessionId: "barge" });
 const weatherClient = new OpenAI({ apiKey, baseURL: weather.pathBaseURL() });
 const bargeClient = new OpenAI({ apiKey, baseURL: barge.pathBaseURL() });
-// …two different user prompts, even if they share a system prompt…
+// the same user prompt in both sessions is not a leak
 await weather.expect().isolatedFrom(barge);
 ```
 
-`isolatedFrom` checks session ids, overlapping call ids, and **user-role** texts only. Empty sessions fail unless you call `allowEmpty()`. That opt-out also hides a mistyped `other` session id. See [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
+`isolatedFrom` follows the cross-language spec (DOG-29): session ids, overlapping call ids, and **foreign user turns** only (exact match after trim / collapse whitespace / casefold; never substring). A user text both sessions sent themselves is not a leak. Options: `minChars` (default 8), `ignoreTexts`. System / developer prompts and tool definitions are not compared. Empty sessions fail unless you call `allowEmpty()`. That opt-out also hides a mistyped `other` session id. Vectors: `testdata/isolation/`. See [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
 
 ## Testing interruptions / barge-in
 

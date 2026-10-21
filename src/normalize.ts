@@ -488,9 +488,18 @@ export function attachSessionTraceHelpers(
 
 export function extractUserTexts(request: JsonValue | undefined): string[] {
   const texts: string[] = [];
+  for (const message of extractUserMessages(request)) {
+    texts.push(message);
+  }
+  return texts;
+}
+
+/** One string per user-role message; content parts are joined. */
+export function extractUserMessages(request: JsonValue | undefined): string[] {
+  const texts: string[] = [];
   const object = asObject(request);
   for (const message of asArray(valueAt(object, "messages"))) {
-    collectUserRoleText(message, texts);
+    collectUserRoleMessage(message, texts);
   }
   const input = valueAt(object, "input");
   if (typeof input === "string") {
@@ -498,34 +507,36 @@ export function extractUserTexts(request: JsonValue | undefined): string[] {
     if (trimmed) texts.push(trimmed);
   } else {
     for (const item of asArray(input)) {
-      collectUserRoleText(item, texts);
+      collectUserRoleMessage(item, texts);
     }
   }
   return texts;
 }
 
-function collectUserRoleText(value: JsonValue, texts: string[]): void {
-  const object = asObject(value);
-  if (stringAt(object, "role") !== "user") return;
-  pushContentTexts(valueAt(object, "content"), texts);
+export function normalizeIsolationText(text: string): string {
+  return text.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function pushContentTexts(content: JsonValue | undefined, texts: string[]): void {
-  if (typeof content === "string") {
-    const trimmed = content.trim();
-    if (trimmed) texts.push(trimmed);
-    return;
-  }
+function collectUserRoleMessage(value: JsonValue, texts: string[]): void {
+  const object = asObject(value);
+  if (stringAt(object, "role") !== "user") return;
+  const joined = joinContentParts(valueAt(object, "content"));
+  if (joined) texts.push(joined);
+}
+
+function joinContentParts(content: JsonValue | undefined): string {
+  if (typeof content === "string") return content.trim();
+  const parts: string[] = [];
   for (const part of asArray(content)) {
     if (typeof part === "string") {
-      const trimmed = part.trim();
-      if (trimmed) texts.push(trimmed);
+      if (part.trim()) parts.push(part.trim());
       continue;
     }
     const object = asObject(part);
     const text = stringAt(object, "text") ?? stringAt(object, "input_text");
-    if (text?.trim()) texts.push(text.trim());
+    if (text?.trim()) parts.push(text.trim());
   }
+  return parts.join(" ").trim();
 }
 
 function textFromPayload(value: JsonValue | undefined): string | undefined {

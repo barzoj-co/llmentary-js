@@ -1,0 +1,37 @@
+{
+  "name": "responses-same-input",
+  "expect": "pass",
+  "messageFragment": null,
+  "self": {
+    "id": "resp-a",
+    "calls": [
+      {
+        "id": "call_ra",
+        "seq": 1,
+        "session_id": "resp-a",
+        "api_family": "openai.responses",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "input": "What is my biological age?"
+        }
+      }
+    ]
+  },
+  "other": {
+    "id": "resp-b",
+    "calls": [
+      {
+        "id": "call_rb",
+        "seq": 1,
+        "session_id": "resp-b",
+        "api_family": "openai.responses",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "input": [
+            { "role": "user", "content": [{ "type": "input_text", "text": "What is my biological age?" }] }
+          ]
+        }
+      }
+    ]
+  }
+}

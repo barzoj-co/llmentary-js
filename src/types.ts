@@ -135,6 +135,13 @@ export interface IsolatedFromOptions {
    * `no calls recorded for session <id>`.
    */
   allowEmpty?: boolean;
+  /**
+   * Ignore user texts shorter than this after normalization
+   * (trim, collapse whitespace, casefold). Default 8.
+   */
+  minChars?: number;
+  /** User texts to ignore after the same normalization. */
+  ignoreTexts?: string[];
 }
 
 export interface CallRecord {

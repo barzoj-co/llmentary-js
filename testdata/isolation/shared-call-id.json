@@ -1,0 +1,35 @@
+{
+  "name": "shared-call-id",
+  "expect": "fail",
+  "messageFragment": "call id call_3 appears in sessions weather and barge",
+  "self": {
+    "id": "weather",
+    "calls": [
+      {
+        "id": "call_3",
+        "seq": 1,
+        "session_id": "weather",
+        "api_family": "openai.chat",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "messages": [{ "role": "user", "content": "Ask only for the ZURICH_QUAYZE weather token." }]
+        }
+      }
+    ]
+  },
+  "other": {
+    "id": "barge",
+    "calls": [
+      {
+        "id": "call_3",
+        "seq": 1,
+        "session_id": "barge",
+        "api_family": "openai.chat",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "messages": [{ "role": "user", "content": "Ask only for the LISBON_FERRY story token." }]
+        }
+      }
+    ]
+  }
+}

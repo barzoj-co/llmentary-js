@@ -1,0 +1,35 @@
+{
+  "name": "same-canned-question",
+  "expect": "pass",
+  "messageFragment": null,
+  "self": {
+    "id": "a",
+    "calls": [
+      {
+        "id": "call_a",
+        "seq": 1,
+        "session_id": "a",
+        "api_family": "openai.chat",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "messages": [{ "role": "user", "content": "What is my biological age?" }]
+        }
+      }
+    ]
+  },
+  "other": {
+    "id": "b",
+    "calls": [
+      {
+        "id": "call_b",
+        "seq": 1,
+        "session_id": "b",
+        "api_family": "openai.chat",
+        "request": {
+          "model": "gpt-4.1-mini",
+          "messages": [{ "role": "user", "content": "What is my biological age?" }]
+        }
+      }
+    ]
+  }
+}
