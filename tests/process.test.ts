@@ -233,7 +233,7 @@ describe("process identity", () => {
     const pid = child.pid!;
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("child never signaled ready")), 5_000);
-      child.stdout!.once("data", () => {
+      child.stdout.once("data", () => {
         clearTimeout(timer);
         resolve();
       });
