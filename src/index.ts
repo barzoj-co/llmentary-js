@@ -50,6 +50,7 @@ export {
   looksLikeLlmentaryProxy,
 } from "./proxy.js";
 export type {
+  AbortPhase,
   ApiType,
   AssertionResult,
   BinaryDownloadOptions,

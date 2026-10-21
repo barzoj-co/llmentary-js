@@ -32,6 +32,7 @@ Important properties:
 - `lm.fetch(input, init)` which injects the session headers
 - `lm.openAI()` config for `new OpenAI(...)`
 - `lm.vercelAI()` base URL/header config for Vercel AI SDK adapters
+- Per-call `clientAborted` / `abortPhase` (`before_headers` | `after_headers`) for barge-in. Top-level fields win; older proxies fall back to `normalized.client_aborted`. `await lm.expect().aborted()` asserts at least one call was cancelled.
 
 ## Proxy lifecycle
 

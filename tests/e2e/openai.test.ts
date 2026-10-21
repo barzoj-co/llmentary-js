@@ -373,6 +373,40 @@ describe("OpenAI E2E through llmentary", () => {
       await abortLm.cleanup();
     });
 
+    it("records a 50ms client abort as typed clientAborted before_headers", async () => {
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 50);
+      try {
+        await client.chat.completions.create(
+          {
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 64,
+            stream: true,
+            messages: [{ role: "user", content: "Count slowly from 1 to 40 in words." }],
+          },
+          { signal: controller.signal },
+        );
+      } catch (error) {
+        if (!controller.signal.aborted && !isAbortError(error)) throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+      const trace = await lm.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
+      const call = trace.calls[0];
+      expect(call?.clientAborted).toBe(true);
+      expect(call?.httpStatus).not.toBe(502);
+      // Proxy 0.3.0 keeps phase in the log; typed abort_phase arrives with DOG-27/28.
+      if (call?.abortPhase !== undefined) {
+        expect(call.abortPhase).toBe("before_headers");
+      }
+      await lm.expect().aborted();
+      await lm.expect().finishReason(/cancelled/i);
+      await lm.cleanup();
+    });
+
     it("records a client abort mid-stream and leaves the proxy healthy", async () => {
       const lm = newSession(proxy);
       const client = openaiClient(lm);

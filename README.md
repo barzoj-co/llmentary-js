@@ -173,6 +173,22 @@ await weather.expect().isolatedFrom(barge);
 
 `isolatedFrom` checks session ids, overlapping call ids, and **user-role** texts only. Empty sessions fail unless you call `allowEmpty()`. That opt-out also hides a mistyped `other` session id. See [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
 
+## Testing interruptions / barge-in
+
+A client cancel is a typed Call field (`clientAborted`, `abortPhase`), not only `normalized.client_aborted`. Older proxies still populate the typed accessors from that nested alias. `abortPhase` is `before_headers` or `after_headers` (DOG-28).
+
+```ts
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 50);
+await client.chat.completions.create({ stream: true, /* … */ }, { signal: controller.signal }).catch(() => undefined);
+const call = (await lm.wait({ minCalls: 1 })).calls[0];
+expect(call?.clientAborted).toBe(true);
+expect(call?.abortPhase).toBe("before_headers");
+expect(call?.httpStatus).not.toBe(502);
+await lm.expect().aborted();
+await lm.expect().finishReason("cancelled");
+```
+
 <!-- llmentary-repos:start -->
 ## llmentary repositories
 

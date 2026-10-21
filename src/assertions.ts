@@ -393,6 +393,19 @@ export class AssertionScope {
     });
   }
 
+  async aborted(expected = true): Promise<AssertionResult> {
+    return this.evaluate(`expected clientAborted=${expected}`, (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      const flags = records.map((record) => record.clientAborted === true);
+      const pass = expected ? flags.some(Boolean) : records.length > 0 && flags.every((flag) => !flag);
+      const phases = records.map((record) => record.abortPhase ?? "-").join(", ");
+      return {
+        pass,
+        message: `expected clientAborted=${expected}, saw ${flags.map(String).join(", ") || "<none>"} (phase ${phases || "<none>"})`,
+      };
+    });
+  }
+
   async outputText(expected?: string | RegExp): Promise<AssertionResult> {
     return this.evaluate("expected output text", (trace) => {
       const texts = recordsForTrace(trace, this.query).flatMap(outputTextsForRecord);
@@ -1217,6 +1230,10 @@ export function formatTraceSummary(trace: SessionTrace): string {
       parts.push(`tokens=${usage.prompt ?? "-"}/${usage.completion ?? "-"}`);
     }
     parts.push(`error=${record.error ? "yes" : "no"}`);
+    if (record.clientAborted === true) {
+      parts.push("client_aborted");
+      if (record.abortPhase) parts.push(`phase=${record.abortPhase}`);
+    }
     parts.push(`spec=${specStatusForRecord(record)}`);
     lines.push(parts.join(" "));
   });
