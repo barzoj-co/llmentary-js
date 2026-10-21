@@ -37,7 +37,7 @@ describe("real Go proxy with fake upstream", () => {
   it("reports bundled proxy --version 0.4.0", () => {
     expect(proxyPin).toBe("v0.4.0");
     const out = execFileSync(process.env.LLMENTARY_BIN!, ["--version"], { encoding: "utf8" });
-    expect(out).toMatch(/^llmentary 0\.4\.0 \([0-9a-f]{7}/);
+    expect(out).toMatch(/^llmentary 0\.4\.0 \(f970baf/);
   });
 
   it("honours wait quiet=100ms after one finished call", async () => {
