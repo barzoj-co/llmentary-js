@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/barzoj-co/llmentary-js/compare/v0.3.0...v0.4.0) (2026-10-21)
+
+
+### Features
+
+* add ControlClient.openapi and ship the control contract ([#29](https://github.com/barzoj-co/llmentary-js/issues/29)) ([f0af2b2](https://github.com/barzoj-co/llmentary-js/commit/f0af2b255478f782915ce39b482bbb80aacd6f06))
+* add expectNoCalls and allowEmpty on empty sessions ([#25](https://github.com/barzoj-co/llmentary-js/issues/25)) ([005cbd8](https://github.com/barzoj-co/llmentary-js/commit/005cbd89ffddbe20fa83a353b1e6cfe073fcee0a))
+* expose typed clientAborted and abortPhase on calls ([#27](https://github.com/barzoj-co/llmentary-js/issues/27)) ([8b0a6b9](https://github.com/barzoj-co/llmentary-js/commit/8b0a6b9f17c919495bfeb0026978559df1610c83))
+
+
+### Bug Fixes
+
+* bundle proxy v0.4.0 ([#31](https://github.com/barzoj-co/llmentary-js/issues/31)) ([5ea2028](https://github.com/barzoj-co/llmentary-js/commit/5ea20280e6c17ce100c168978633731cd2408a38))
+* label request-only spec status and omit http=0 ([#28](https://github.com/barzoj-co/llmentary-js/issues/28)) ([cbdc6f2](https://github.com/barzoj-co/llmentary-js/commit/cbdc6f2fa09ba188be18b4f37dc7bda1cd6e0b1d))
+* match isolatedFrom on foreign user turns only ([#26](https://github.com/barzoj-co/llmentary-js/issues/26)) ([f0d1509](https://github.com/barzoj-co/llmentary-js/commit/f0d1509a9ff285687a979d5051c0d06941783213))
+
 ## [0.3.0](https://github.com/barzoj-co/llmentary-js/compare/v0.2.1...v0.3.0) (2026-10-21)
 
 
