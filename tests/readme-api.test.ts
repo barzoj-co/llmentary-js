@@ -29,6 +29,8 @@ describe("README public API snippets", () => {
     expect(readme).toContain("allowEmpty");
     expect(readme).toContain("isolatedFrom");
     expect(readme).toContain("expectNoCalls");
+    expect(readme).toContain("foreign user turns");
+    expect(readme).toContain("testdata/isolation");
     expect(readme).toContain("clientAborted");
     expect(readme).toContain("abortPhase");
     expect(readme).toContain("before_headers");

@@ -1444,6 +1444,71 @@ describe("OpenAI E2E through llmentary", () => {
         await used.expect().allowEmpty().isolatedFrom(unused);
       } finally {
         await used.cleanup();
+        await unused.cleanup();
+      }
+    });
+
+    it("isolatedFrom passes the same user prompt and fails on history replay", async () => {
+      const prompt = "What is my biological age? Answer with one number.";
+      const a = llmentary({
+        sessionId: `iso-same-a-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const b = llmentary({
+        sessionId: `iso-same-b-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const c = llmentary({
+        sessionId: `iso-replay-c-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const clientA = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: a.pathBaseURL() });
+      const clientB = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: b.pathBaseURL() });
+      const clientC = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: c.pathBaseURL() });
+      try {
+        await retryNetwork(() =>
+          clientA.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        );
+        await retryNetwork(() =>
+          clientB.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        );
+        await a.expect().isolatedFrom(b);
+        await b.expect().isolatedFrom(a);
+        await retryNetwork(() =>
+          clientC.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [
+              { role: "user", content: prompt },
+              { role: "assistant", content: "42" },
+              { role: "user", content: "And my BMI? One number." },
+            ],
+          }),
+        );
+        await expect(c.expect().isolatedFrom(a)).rejects.toBeInstanceOf(SessionAssertionError);
+        await expect(c.expect().isolatedFrom(a)).rejects.toThrow(/user text/);
+        await expect(c.expect().isolatedFrom(a)).rejects.toThrow(/biological age/);
+      } finally {
+        await a.cleanup();
+        await b.cleanup();
+        await c.cleanup();
       }
     });
 

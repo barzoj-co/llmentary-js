@@ -4,6 +4,7 @@ coverage/
 .llmentary/
 .cache/
 .bin/
+.proxy-testdata/
 *.log
 packages/*/bin/*
 !packages/*/bin/.gitkeep

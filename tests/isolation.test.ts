@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { AssertionScope, SessionAssertionError, isolationCheck } from "../src/assertions.js";
-import { SessionNotFound } from "../src/control.js";
+import { AssertionScope, isolationCheck } from "../src/assertions.js";
+import { ControlClient, SessionNotFound, type ControlFetch } from "../src/control.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { JsonValue, SessionTrace } from "../src/types.js";
 
@@ -95,7 +95,7 @@ describe("isolatedFrom", () => {
     await expect(scopeFor(barge, weather).isolatedFrom(weather.id)).resolves.toMatchObject({ pass: true });
   });
 
-  it("fails when the same user text appears in both sessions", async () => {
+  it("passes when both sessions send the same canned user text", async () => {
     const weather = sessionTrace("weather", [
       chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
     ]);
@@ -103,11 +103,98 @@ describe("isolatedFrom", () => {
       chatCall({ id: "call_1", seq: 1, sessionId: "barge", user: WEATHER_USER }),
     ]);
     const result = isolationCheck(weather, "weather", barge, "barge");
+    expect(result.pass).toBe(true);
+    await expect(scopeFor(weather, barge).isolatedFrom("barge")).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(barge, weather).isolatedFrom("weather")).resolves.toMatchObject({ pass: true });
+  });
+
+  it("passes when a short greeting is a substring of the other session's turn", () => {
+    const hello = sessionTrace("hello", [
+      chatCall({ id: "call_a", seq: 1, sessionId: "hello", user: "Hi" }),
+    ]);
+    const long = sessionTrace("long", [
+      chatCall({
+        id: "call_b",
+        seq: 1,
+        sessionId: "long",
+        user: "Hi, what is my biological age? This text is long.",
+      }),
+    ]);
+    expect(isolationCheck(hello, "hello", long, "long").pass).toBe(true);
+    expect(isolationCheck(long, "long", hello, "hello").pass).toBe(true);
+  });
+
+  it("fails when a session's prompt replays a user turn only the other introduced", () => {
+    const original = sessionTrace("iso-a", [
+      chatCall({ id: "call_h", seq: 1, sessionId: "iso-a", user: "What is my biological age?" }),
+    ]);
+    const replay = sessionTrace("iso-c", [
+      {
+        id: "call_m",
+        seq: 1,
+        session_id: "iso-c",
+        session_source: "path",
+        api_family: "openai.chat",
+        request: {
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "user", content: "What is my biological age?" },
+            { role: "assistant", content: "42" },
+            { role: "user", content: "And my BMI?" },
+          ],
+        },
+        response: { choices: [{ finish_reason: "stop", message: { content: "ok" } }] },
+      },
+    ]);
+    const result = isolationCheck(replay, "iso-c", original, "iso-a");
     expect(result.pass).toBe(false);
-    expect(result.message).toMatch(/user text .*ZURICH_QUAYZE/);
-    expect(result.message).toMatch(/#1 \(call_3\)/);
-    expect(result.message).toMatch(/session barge #1 \(call_1\)/);
-    await expect(scopeFor(weather, barge).isolatedFrom("barge")).rejects.toThrow(/user text/);
+    expect(result.message).toMatch(/user text .*What is my biological age\?/);
+    expect(result.message).toMatch(/session iso-c #1 \(call_m\)/);
+    expect(result.message).toMatch(/session iso-a #1 \(call_h\)/);
+    expect(isolationCheck(original, "iso-a", replay, "iso-c").pass).toBe(true);
+  });
+
+  it("does not treat first-call inbound history as introduced, even if a later call repeats it", () => {
+    const origin = sessionTrace("iso-a", [
+      chatCall({ id: "call_y1", seq: 1, sessionId: "iso-a", user: "What is my biological age?" }),
+    ]);
+    const replay = sessionTrace("iso-x", [
+      {
+        id: "call_x1",
+        seq: 1,
+        session_id: "iso-x",
+        request: {
+          messages: [
+            { role: "user", content: "What is my biological age?" },
+            { role: "assistant", content: "I need more data." },
+            { role: "user", content: "Continue from the saved thread." },
+          ],
+        },
+      },
+      chatCall({ id: "call_x2", seq: 2, sessionId: "iso-x", user: "What is my biological age?" }),
+    ]);
+    const shuffled = sessionTrace("iso-x", [
+      chatCall({ id: "call_x2", seq: 2, sessionId: "iso-x", user: "A later turn from X only." }),
+      {
+        id: "call_x1",
+        seq: 1,
+        session_id: "iso-x",
+        request: {
+          messages: [
+            { role: "user", content: "What is my biological age?" },
+            { role: "assistant", content: "I need more data." },
+            { role: "user", content: "Continue from the saved thread." },
+          ],
+        },
+      },
+    ]);
+    for (const self of [replay, shuffled]) {
+      const result = isolationCheck(self, "iso-x", origin, "iso-a");
+      expect(result.pass, result.message).toBe(false);
+      expect(result.message).toContain("user text 'What is my biological age?'");
+      expect(result.message).toContain("from session iso-a #1 (call_y1)");
+      expect(result.message).toContain("appears in session iso-x #1 (call_x1)");
+    }
   });
 
   it("fails when a call has a foreign sessionId", async () => {
@@ -119,28 +206,28 @@ describe("isolatedFrom", () => {
     ]);
     const result = isolationCheck(weather, "weather", barge, "barge");
     expect(result.pass).toBe(false);
-    expect(result.message).toMatch(/sessionId=barge, expected weather/);
+    expect(result.message).toMatch(/session_id=barge, expected weather/);
     expect(result.message).toMatch(/#1 \(call_3\)/);
   });
 
-  it("fails an empty session unless allowEmpty", async () => {
+  it("fails an empty self session unless allowEmpty; empty other is not a leak", async () => {
     const weather = sessionTrace("weather", [
       chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
     ]);
     const empty = sessionTrace("barge", []);
-    expect(isolationCheck(weather, "weather", empty, "barge").pass).toBe(false);
-    expect(isolationCheck(weather, "weather", empty, "barge").message).toBe("no calls recorded for session barge");
+    expect(isolationCheck(weather, "weather", empty, "barge").pass).toBe(true);
     expect(isolationCheck(empty, "barge", weather, "weather").message).toBe("no calls recorded for session barge");
-    expect(isolationCheck(weather, "weather", empty, "barge", { allowEmpty: true }).pass).toBe(true);
-    await expect(scopeFor(weather, empty).isolatedFrom("barge")).rejects.toThrow(
+    expect(isolationCheck(empty, "barge", weather, "weather", { allowEmpty: true }).pass).toBe(true);
+    await expect(scopeFor(weather, empty).isolatedFrom("barge")).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(empty, weather).isolatedFrom("weather")).rejects.toThrow(
       /no calls recorded for session barge/,
     );
-    await expect(scopeFor(weather, empty).allowEmpty().isolatedFrom("barge")).resolves.toMatchObject({
+    await expect(scopeFor(empty, weather).allowEmpty().isolatedFrom("weather")).resolves.toMatchObject({
       pass: true,
     });
   });
 
-  it("maps a never-created other session to an assertion error, not SessionNotFound", async () => {
+  it("maps a never-created other session to an empty other, not SessionNotFound", async () => {
     const weather = sessionTrace("weather", [
       chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
     ]);
@@ -163,12 +250,56 @@ describe("isolatedFrom", () => {
       } as never,
       sessionId: weather.id,
     });
-    await expect(scope.isolatedFrom("never-created")).rejects.toBeInstanceOf(SessionAssertionError);
-    await expect(scope.isolatedFrom("never-created")).rejects.not.toBeInstanceOf(SessionNotFound);
-    await expect(scope.isolatedFrom("never-created")).rejects.toThrow(
-      /no calls recorded for session never-created/,
-    );
+    await expect(scope.isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
+    await expect(scope.isolatedFrom("never-created")).resolves.not.toBeInstanceOf(SessionNotFound);
     await expect(scope.allowEmpty().isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
+  });
+
+  it("does not treat a failed comparison-session lookup as an empty other", async () => {
+    const weather = sessionTrace("weather", [
+      chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
+    ]);
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/sessions/weather")) {
+        return new Response(JSON.stringify({ id: "weather", calls: weather.calls }), { status: 200 });
+      }
+      if (url.includes("/wait")) {
+        return new Response("upstream timeout", { status: 504, statusText: "Gateway Timeout" });
+      }
+      return new Response("control unavailable", { status: 503, statusText: "Service Unavailable" });
+    };
+    const control = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    const scope = new AssertionScope({ control, sessionId: weather.id });
+    await expect(scope.isolatedFrom("barge")).rejects.toThrow(/503 Service Unavailable/);
+  });
+
+  it("honours minChars and ignoreTexts", () => {
+    const leaked = sessionTrace("replay", [
+      {
+        id: "call_r",
+        seq: 1,
+        session_id: "replay",
+        api_family: "openai.chat",
+        request: {
+          model: "gpt-4.1-mini",
+          messages: [
+            { role: "user", content: "Secret token ALPHA_TOKEN" },
+            { role: "assistant", content: "ok" },
+            { role: "user", content: "Follow up please" },
+          ],
+        },
+        response: { choices: [{ finish_reason: "stop", message: { content: "ok" } }] },
+      },
+    ]);
+    const origin = sessionTrace("origin", [
+      chatCall({ id: "call_o", seq: 1, sessionId: "origin", user: "Secret token ALPHA_TOKEN" }),
+    ]);
+    expect(isolationCheck(leaked, "replay", origin, "origin").pass).toBe(false);
+    expect(
+      isolationCheck(leaked, "replay", origin, "origin", { ignoreTexts: ["Secret token ALPHA_TOKEN"] }).pass,
+    ).toBe(true);
+    expect(isolationCheck(leaked, "replay", origin, "origin", { minChars: 80 }).pass).toBe(true);
   });
 
   it("fails overlapping call ids and optional path-source mismatches", () => {

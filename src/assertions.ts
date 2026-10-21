@@ -10,6 +10,8 @@ import {
   objectAt,
   specStatusForRecord,
   stringAt,
+  extractUserMessages,
+  normalizeIsolationText,
   validationWasRun,
   valueAt,
 } from "./normalize.js";
@@ -354,8 +356,9 @@ export class AssertionScope {
 
   /**
    * Prove this session stayed isolated from another: matching session ids,
-   * no shared call ids, and no shared user-role texts. System prompts and
-   * tool names are not compared. `other` is a session id or a `Session`.
+   * no shared call ids, and no foreign user-role turns (exact normalized
+   * match; see docs/isolation-spec semantics). System prompts and tool
+   * names are not compared. `other` is a session id or a `Session`.
    */
   async isolatedFrom(other: IsolatedFromOther, options: IsolatedFromOptions = {}): Promise<AssertionResult> {
     const otherId = typeof other === "string" ? other : other.sessionId;
@@ -1260,13 +1263,10 @@ export function isolationCheck(
   if (self.calls.length === 0 && !options.allowEmpty) {
     return { pass: false, message: `no calls recorded for session ${selfId}` };
   }
-  if (other.calls.length === 0 && !options.allowEmpty) {
-    return { pass: false, message: `no calls recorded for session ${otherId}` };
-  }
   const failures: string[] = [];
-  for (const [index, record] of self.calls.entries()) {
+  for (const { record, index } of orderedCalls(self)) {
     if (record.sessionId !== undefined && record.sessionId !== selfId) {
-      failures.push(`${formatCallRef(record, index)} has sessionId=${record.sessionId}, expected ${selfId}`);
+      failures.push(`${formatCallRef(record, index)} has session_id=${record.sessionId}, expected ${selfId}`);
     }
     if (options.requirePathSource && record.sessionSource !== "path") {
       failures.push(
@@ -1280,21 +1280,72 @@ export function isolationCheck(
       failures.push(`call id ${record.id} appears in sessions ${selfId} and ${otherId}`);
     }
   }
-  for (const [index, record] of self.calls.entries()) {
-    for (const text of record.userTexts ?? []) {
-      for (const [otherIndex, otherRecord] of other.calls.entries()) {
-        if ((otherRecord.userTexts ?? []).includes(text)) {
-          failures.push(
-            `user text ${JSON.stringify(text)} from session ${selfId} ${formatCallRef(record, index)} also appears in session ${otherId} ${formatCallRef(otherRecord, otherIndex)}`,
-          );
-        }
-      }
+  const selfIntroduced = introducedUserTurns(self);
+  const otherIntroduced = introducedUserTurns(other);
+  for (const { record, index } of orderedCalls(self)) {
+    for (const text of promptUserMessages(record)) {
+      if (ignoreIsolationText(text, options)) continue;
+      const key = normalizeIsolationText(text);
+      if (selfIntroduced.has(key)) continue;
+      const otherHit = otherIntroduced.get(key);
+      if (!otherHit || ignoreIsolationText(otherHit.display, options)) continue;
+      failures.push(
+        `user text '${text}' from session ${otherId} ${formatCallRef(otherHit.record, otherHit.index)} appears in session ${selfId} ${formatCallRef(record, index)}`,
+      );
     }
   }
   if (failures.length === 0) {
     return { pass: true, message: `session ${selfId} is isolated from ${otherId}` };
   }
   return { pass: false, message: failures.join("\n") };
+}
+
+const DEFAULT_ISOLATION_MIN_CHARS = 8;
+
+function ignoreIsolationText(text: string, options: IsolatedFromOptions): boolean {
+  const normalized = normalizeIsolationText(text);
+  const minChars = options.minChars ?? DEFAULT_ISOLATION_MIN_CHARS;
+  if (normalized.length < minChars) return true;
+  const ignored = new Set((options.ignoreTexts ?? []).map(normalizeIsolationText));
+  return ignored.has(normalized);
+}
+
+function promptUserMessages(record: CallRecord): string[] {
+  const fromRequest = extractUserMessages(record.request);
+  if (fromRequest.length > 0) return fromRequest;
+  return record.userTexts ?? [];
+}
+
+/**
+ * Last user-role message of each call, walked in `seq` order.
+ * Inbound history (every user message before the last on that call) is seen,
+ * not introduced — repeating it later still does not count as this session's turn.
+ */
+function introducedUserTurns(
+  trace: SessionTrace,
+): Map<string, { record: CallRecord; index: number; display: string }> {
+  const introduced = new Map<string, { record: CallRecord; index: number; display: string }>();
+  const seen = new Set<string>();
+  for (const { record, index } of orderedCalls(trace)) {
+    const messages = promptUserMessages(record);
+    if (messages.length === 0) continue;
+    const last = messages[messages.length - 1]!;
+    for (const text of messages.slice(0, -1)) {
+      seen.add(normalizeIsolationText(text));
+    }
+    const key = normalizeIsolationText(last);
+    if (!seen.has(key) && !introduced.has(key)) {
+      introduced.set(key, { record, index, display: last });
+    }
+    seen.add(key);
+  }
+  return introduced;
+}
+
+function orderedCalls(trace: SessionTrace): Array<{ record: CallRecord; index: number }> {
+  return trace.calls
+    .map((record, index) => ({ record, index }))
+    .sort((a, b) => (a.record.seq ?? a.index + 1) - (b.record.seq ?? b.index + 1));
 }
 
 function formatCallRef(record: CallRecord, index = 0): string {

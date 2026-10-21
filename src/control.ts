@@ -88,11 +88,7 @@ export class ControlClient {
   ): Promise<{ calls: number; stillActive: number }> {
     const fromBody = trySessionCounts(sessionId, body);
     if (fromBody) return fromBody;
-    try {
-      return sessionCounts(await this.getSession(sessionId));
-    } catch {
-      return { calls: 0, stillActive: 0 };
-    }
+    return sessionCounts(await this.getSession(sessionId));
   }
 
   async deleteSession(sessionId: string): Promise<void> {

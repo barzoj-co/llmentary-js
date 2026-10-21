@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCallRecord, normalizeSessionTrace } from "../src/normalize.js";
+import { normalizeCallRecord, normalizeIsolationText, normalizeSessionTrace } from "../src/normalize.js";
 
 const CHAT_REQUEST = Buffer.from(
   JSON.stringify({
@@ -225,6 +225,14 @@ describe("seq, sessionId, and userTexts", () => {
 
     const stringInput = normalizeCallRecord({ request: { input: "plain user turn" } });
     expect(stringInput.userTexts).toEqual(["plain user turn"]);
+  });
+});
+
+describe("normalizeIsolationText", () => {
+  it("trims, collapses whitespace, and applies full Unicode casefold", () => {
+    expect(normalizeIsolationText("  What   IS my\tage? ")).toBe("what is my age?");
+    expect(normalizeIsolationText("Straße")).toBe(normalizeIsolationText("STRASSE"));
+    expect(normalizeIsolationText("ß")).toBe("ss");
   });
 });
 
