@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AssertionScope, SessionAssertionError, isolationCheck } from "../src/assertions.js";
+import { AssertionScope, isolationCheck } from "../src/assertions.js";
 import { SessionNotFound } from "../src/control.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
 import type { JsonValue, SessionTrace } from "../src/types.js";
@@ -227,7 +227,7 @@ describe("isolatedFrom", () => {
     });
   });
 
-  it("maps a never-created other session to an assertion error, not SessionNotFound", async () => {
+  it("maps a never-created other session to an empty other, not SessionNotFound", async () => {
     const weather = sessionTrace("weather", [
       chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
     ]);
@@ -250,11 +250,8 @@ describe("isolatedFrom", () => {
       } as never,
       sessionId: weather.id,
     });
-    await expect(scope.isolatedFrom("never-created")).rejects.toBeInstanceOf(SessionAssertionError);
-    await expect(scope.isolatedFrom("never-created")).rejects.not.toBeInstanceOf(SessionNotFound);
-    await expect(scope.isolatedFrom("never-created")).rejects.toThrow(
-      /no calls recorded for session never-created/,
-    );
+    await expect(scope.isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
+    await expect(scope.isolatedFrom("never-created")).resolves.not.toBeInstanceOf(SessionNotFound);
     await expect(scope.allowEmpty().isolatedFrom("never-created")).resolves.toMatchObject({ pass: true });
   });
 

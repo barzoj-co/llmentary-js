@@ -77,7 +77,7 @@ jobs:
       - name: Unit tests
         env:
           GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
-          LLMENTARY_ISOLATION_VECTORS_REF: cursor/dog-29-isolation-spec-f2b6
+          LLMENTARY_ISOLATION_VECTORS_REF: main
         run: |
           if [ "${{ matrix.node }}" = "22" ]; then
             if [ -x "${LLMENTARY_BIN:-}" ]; then

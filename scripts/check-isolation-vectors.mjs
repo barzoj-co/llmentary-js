@@ -6,10 +6,11 @@
  * 1. LLMENTARY_ISOLATION_VECTORS_DIR (must exist when set)
  * 2. .proxy-testdata/isolation
  * 3. GitHub testdata/isolation on LLMENTARY_ISOLATION_VECTORS_REF
- *    (default cursor/dog-29-isolation-spec-f2b6) when GH_TOKEN is set
+ *    (default main) when a GitHub token is set
  *
- * Exit 0 only when no proxy copy is available (no env, no local checkout,
- * no token). A configured-but-missing directory is an error.
+ * A 404/403 from GitHub is a visible SKIP (stderr), never a silent pass
+ * and never reported as a match. Other fetch errors fail the check.
+ * No token and no local checkout: visible SKIP.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -20,7 +21,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LOCAL = join(ROOT, "testdata", "isolation");
 const DEFAULT_PROXY_DIR = join(ROOT, ".proxy-testdata", "isolation");
 const PROXY_REPO = process.env.LLMENTARY_REPO || "barzoj-co/llmentary";
-const PROXY_REF = process.env.LLMENTARY_ISOLATION_VECTORS_REF || "cursor/dog-29-isolation-spec-f2b6";
+const PROXY_REF = process.env.LLMENTARY_ISOLATION_VECTORS_REF || "main";
 const PROXY_PATH = "testdata/isolation";
 const ENV_DIR = process.env.LLMENTARY_ISOLATION_VECTORS_DIR;
 
@@ -46,9 +47,16 @@ async function jsonFiles(dir) {
   return files;
 }
 
+function skip(reason, localCount) {
+  console.error(
+    `isolation vectors: SKIP proxy compare (${reason}; using ${localCount} local vectors against ${PROXY_REPO}@${PROXY_REF}:${PROXY_PATH})`,
+  );
+  process.exit(0);
+}
+
 async function fetchProxyVectors() {
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || process.env.LLMTESTLAB_REPO_TOKEN;
-  if (!token) return undefined;
+  if (!token) return { skip: "no GH_TOKEN/GITHUB_TOKEN" };
   const listUrl = `https://api.github.com/repos/${PROXY_REPO}/contents/${PROXY_PATH}?ref=${encodeURIComponent(PROXY_REF)}`;
   const headers = {
     Authorization: `Bearer ${token}`,
@@ -57,6 +65,9 @@ async function fetchProxyVectors() {
     "X-GitHub-Api-Version": "2022-11-28",
   };
   const listRes = await fetch(listUrl, { headers });
+  if (listRes.status === 404 || listRes.status === 403) {
+    return { skip: `HTTP ${listRes.status} from ${listUrl}` };
+  }
   if (!listRes.ok) {
     const body = await listRes.text();
     throw new Error(`GET ${listUrl} failed: ${listRes.status} ${body.slice(0, 400)}`);
@@ -72,8 +83,13 @@ async function fetchProxyVectors() {
     if (entry.type !== "file" || typeof entry.name !== "string") continue;
     if (!entry.name.endsWith(".json") && entry.name !== "README.md") continue;
     const fileRes = await fetch(entry.download_url || entry.url, {
-      headers: entry.download_url ? { "User-Agent": headers["User-Agent"], Authorization: headers.Authorization } : headers,
+      headers: entry.download_url
+        ? { "User-Agent": headers["User-Agent"], Authorization: headers.Authorization }
+        : headers,
     });
+    if (fileRes.status === 404 || fileRes.status === 403) {
+      return { skip: `HTTP ${fileRes.status} fetching ${entry.name}` };
+    }
     if (!fileRes.ok) {
       throw new Error(`GET ${entry.name} failed: ${fileRes.status}`);
     }
@@ -86,7 +102,7 @@ async function fetchProxyVectors() {
       files[entry.name] = { digest: digest(text), path: join(dest, entry.name), text };
     }
   }
-  return files;
+  return { files };
 }
 
 function printOfficial(name, text) {
@@ -116,7 +132,9 @@ if (ENV_DIR) {
   remoteLabel = DEFAULT_PROXY_DIR;
 } else {
   try {
-    remote = await fetchProxyVectors();
+    const fetched = await fetchProxyVectors();
+    if (fetched.skip) skip(fetched.skip, Object.keys(local).length);
+    remote = fetched.files;
     remoteLabel = `${PROXY_REPO}@${PROXY_REF}:${PROXY_PATH}`;
   } catch (error) {
     console.error(`isolation vectors: failed to fetch proxy copy (${error instanceof Error ? error.message : error})`);
@@ -125,10 +143,7 @@ if (ENV_DIR) {
 }
 
 if (!remote) {
-  console.log(
-    `isolation vectors: proxy copy not available (looked in ${ENV_DIR || DEFAULT_PROXY_DIR} and ${PROXY_REPO}@${PROXY_REF}). Using ${Object.keys(local).length} local vectors.`,
-  );
-  process.exit(0);
+  skip("no proxy copy available", Object.keys(local).length);
 }
 
 const names = new Set([...Object.keys(local), ...Object.keys(remote)]);

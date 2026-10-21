@@ -2,7 +2,7 @@
 
 Vendored copy of the proxy's `testdata/isolation` from
 [barzoj-co/llmentary#35](https://github.com/barzoj-co/llmentary/pull/35)
-(`cursor/dog-29-isolation-spec-f2b6`). Normative cases for `isolatedFrom`
+(merged to `main` as `bb39133`). Normative cases for `isolatedFrom`
 (DOG-29):
 
 1. Every call in X has `session_id == X`.
@@ -18,5 +18,5 @@ Vendored copy of the proxy's `testdata/isolation` from
 `scripts/check-isolation-vectors.mjs` diffs this directory against that proxy
 path. Set `LLMENTARY_ISOLATION_VECTORS_DIR` to a checkout of
 `testdata/isolation`, or `GH_TOKEN` to fetch
-`barzoj-co/llmentary@cursor/dog-29-isolation-spec-f2b6:testdata/isolation`.
+`barzoj-co/llmentary@main:testdata/isolation`.
 A configured-but-missing directory fails the check.
