@@ -96,9 +96,19 @@ function loadVectors(): IsolationVector[] {
     .map((name) => parseVector(name, JSON.parse(readFileSync(join(VECTOR_DIR, name), "utf8")) as JsonValue));
 }
 
-describe("isolation vectors (DOG-29)", () => {
+describe("isolation vectors (DOG-29 / DOG-32 / DOG-33)", () => {
   const vectors = loadVectors();
-  expect(vectors.length).toBeGreaterThanOrEqual(8);
+  expect(vectors.length).toBeGreaterThanOrEqual(16);
+  const names = new Set(vectors.map((vector) => vector.name));
+  expect(names).toContain("empty-other");
+  expect(names).toContain("empty-other-allow");
+  expect(names).toContain("missing-other-id");
+  expect(names).toContain("later-call-two-new-user-messages");
+  expect(names).toContain("responses-later-call-two-new-user-messages");
+  expect(names).toContain("history-replay");
+  expect(names).toContain("first-call-history-repeat");
+  expect(names).toContain("same-canned-question");
+  expect(names).toContain("short-hi-substring");
 
   it.each(vectors)("$name", (vector) => {
     const self = normalizeSessionTrace(vector.self.id, vector.self);

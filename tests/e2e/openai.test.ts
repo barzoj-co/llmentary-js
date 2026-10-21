@@ -1448,6 +1448,84 @@ describe("OpenAI E2E through llmentary", () => {
       }
     });
 
+    it("isolatedFrom fails a never-created other session unless allowEmpty (DOG-32)", async () => {
+      const used = newSession(proxy);
+      const ghostId = `ghost-${randomUUID()}`;
+      const client = openaiClient(used);
+      try {
+        await retryNetwork(() =>
+          client.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word ping." }],
+          }),
+        );
+        await expect(used.expect().isolatedFrom(ghostId)).rejects.toBeInstanceOf(SessionAssertionError);
+        await expect(used.expect().isolatedFrom(ghostId)).rejects.toThrow(
+          /no calls recorded for session .*isolated_from needs calls on both sides/,
+        );
+        await used.expect().allowEmpty().isolatedFrom(ghostId);
+      } finally {
+        await used.cleanup();
+      }
+    });
+
+    it("isolatedFrom treats every new user message on a later call as introduced (DOG-33)", async () => {
+      const opening = "Opening question number one. Reply with the single word ping.";
+      const second = "Second message sent by P itself. Reply with the single word ping.";
+      const third = "Third message sent by P itself. Reply with the single word ping.";
+      const p = llmentary({
+        sessionId: `iso-p-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const q = llmentary({
+        sessionId: `iso-q-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const clientP = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: p.pathBaseURL() });
+      const clientQ = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: q.pathBaseURL() });
+      try {
+        await retryNetwork(() =>
+          clientP.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: opening }],
+          }),
+        );
+        await retryNetwork(() =>
+          clientP.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [
+              { role: "user", content: opening },
+              { role: "user", content: second },
+              { role: "user", content: third },
+            ],
+          }),
+        );
+        await retryNetwork(() =>
+          clientQ.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: second }],
+          }),
+        );
+        await p.expect().isolatedFrom(q);
+        await q.expect().isolatedFrom(p);
+      } finally {
+        await p.cleanup();
+        await q.cleanup();
+      }
+    });
+
     it("isolatedFrom passes the same user prompt and fails on history replay", async () => {
       const prompt = "What is my biological age? Answer with one number.";
       const a = llmentary({

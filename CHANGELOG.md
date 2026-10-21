@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Bug Fixes
+
+* fail `isolatedFrom` on an empty or unknown other session unless `allowEmpty` (DOG-32)
+* treat every new user-role message on a later call as introduced (DOG-33)
+
 ## [0.4.0](https://github.com/barzoj-co/llmentary-js/compare/v0.3.0...v0.4.0) (2026-10-21)
 
 
