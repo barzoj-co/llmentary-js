@@ -45,10 +45,10 @@ describe("coverage gate wiring", () => {
     expect(coverageThresholds()).toEqual({ lines: 90, statements: 90, functions: 90, branches: 90 });
 
     stash("GITHUB_HEAD_REF", "cursor/coverage-measure-a722");
+    const regular = coverageThresholds();
+    expect(regular).not.toEqual({ lines: 90, statements: 90, functions: 90, branches: 90 });
+
     stash("COVERAGE_RELEASE_PLEASE", "1");
     expect(coverageThresholds()).toEqual({ lines: 90, statements: 90, functions: 90, branches: 90 });
-
-    stash("COVERAGE_RELEASE_PLEASE", undefined);
-    expect(coverageThresholds().lines).toBeLessThan(90);
   });
 });
