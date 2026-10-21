@@ -113,6 +113,41 @@ describe("spec validation accessors", () => {
     expect(pascal.ignoredFields()[0]).toMatchObject({ kind: "enumDescriptions" });
   });
 
+  it("falls through null spec lists and keeps an empty array as clean", () => {
+    const fromTopLevel = normalizeCallRecord({
+      api_family: "openai.chat",
+      SpecViolations: [{ side: "request", path: "foo", message: "no" }],
+      IgnoredFields: [{ kind: "enumDescriptions" }],
+      normalized: {
+        spec_violations: null,
+        ignored_fields: null,
+      },
+    });
+    expect(fromTopLevel.specViolations).toHaveLength(1);
+    expect(fromTopLevel.specViolations?.[0]).toMatchObject({ side: "request", path: "foo" });
+    expect(fromTopLevel.ignoredFields).toHaveLength(1);
+    expect(fromTopLevel.ignoredFields?.[0]).toMatchObject({ kind: "enumDescriptions" });
+
+    const emptyKeepsClean = normalizeCallRecord({
+      api_family: "openai.chat",
+      SpecViolations: [{ side: "request", path: "foo", message: "no" }],
+      IgnoredFields: [{ kind: "enumDescriptions" }],
+      normalized: {
+        spec_violations: [],
+        ignored_fields: [],
+      },
+    });
+    expect(emptyKeepsClean.specViolations).toEqual([]);
+    expect(emptyKeepsClean.ignoredFields).toEqual([]);
+
+    const absent = normalizeCallRecord({
+      api_family: "openai.chat",
+      normalized: { output_text: "hi" },
+    });
+    expect(absent.specViolations).toBeUndefined();
+    expect(absent.ignoredFields).toBeUndefined();
+  });
+
   it("treats chatservice run-1 as clean, not as a violation", async () => {
     const trace = normalizeSessionTrace("s1", { id: "s1", calls: [CHATSERVICE_RUN1] });
     await expect(scopeFor(trace).noSpecViolations()).resolves.toMatchObject({ pass: true });

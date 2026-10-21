@@ -374,10 +374,6 @@ export function firstPositiveOrDefined(...values: Array<number | undefined>): nu
   return defined.find((value) => value > 0) ?? defined[0];
 }
 
-function hasOwn(object: JsonObject | undefined, key: string): boolean {
-  return Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
-}
-
 function parseValidation(raw: JsonObject | undefined): Validation | undefined {
   if (!raw || Object.keys(raw).length === 0) return undefined;
   const out: Validation = { raw };
@@ -404,33 +400,22 @@ function parseValidation(raw: JsonObject | undefined): Validation | undefined {
 }
 
 function parseSpecViolationList(normalized: JsonObject | undefined, object: JsonObject): SpecViolation[] | undefined {
-  const source = firstOwn(normalized, object, ["spec_violations", "specViolations", "SpecViolations"]);
-  if (!source) return undefined;
-  const values = asArray(
-    valueAt(source, "spec_violations") ?? valueAt(source, "specViolations") ?? valueAt(source, "SpecViolations"),
-  );
-  return values.map((value) => parseSpecViolation(value));
+  const values = firstArrayAt([normalized, object], ["spec_violations", "specViolations", "SpecViolations"]);
+  return values?.map((value) => parseSpecViolation(value));
 }
 
 function parseIgnoredFieldList(normalized: JsonObject | undefined, object: JsonObject): IgnoredField[] | undefined {
-  const source = firstOwn(normalized, object, ["ignored_fields", "ignoredFields", "IgnoredFields"]);
-  if (!source) return undefined;
-  const values = asArray(
-    valueAt(source, "ignored_fields") ?? valueAt(source, "ignoredFields") ?? valueAt(source, "IgnoredFields"),
-  );
-  return values.map((value) => parseIgnoredField(value));
+  const values = firstArrayAt([normalized, object], ["ignored_fields", "ignoredFields", "IgnoredFields"]);
+  return values?.map((value) => parseIgnoredField(value));
 }
 
-function firstOwn(
-  normalized: JsonObject | undefined,
-  object: JsonObject,
-  keys: string[],
-): JsonObject | undefined {
-  for (const key of keys) {
-    if (hasOwn(normalized, key)) return normalized;
-  }
-  for (const key of keys) {
-    if (hasOwn(object, key)) return object;
+/** Missing or null keys fall through; an empty array is an intentional clean list. */
+function firstArrayAt(objects: Array<JsonObject | undefined>, keys: string[]): JsonValue[] | undefined {
+  for (const object of objects) {
+    for (const key of keys) {
+      const value = valueAt(object, key);
+      if (Array.isArray(value)) return value;
+    }
   }
   return undefined;
 }
