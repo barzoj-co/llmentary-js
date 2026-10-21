@@ -99,6 +99,25 @@ export class ControlClient {
     return this.request(`/sessions/${encodeURIComponent(sessionId)}/otlp`);
   }
 
+  /** Served control contract (`GET /openapi.yaml`), with the bearer token when set. */
+  async openapi(): Promise<string> {
+    const headers = new Headers();
+    if (this.bearerToken) headers.set("authorization", `Bearer ${this.bearerToken}`);
+    const path = "/openapi.yaml";
+    const response = await this.fetchImpl(`${this.controlUrl}${path}`, {
+      headers,
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new ControlApiError(
+        `llmentary control API GET ${path} failed: ${response.status} ${response.statusText}${text ? `\n${text}` : ""}`,
+        { status: response.status, path, body: text },
+      );
+    }
+    return response.text();
+  }
+
   private async request(path: string, init: RequestInit = {}): Promise<JsonValue> {
     const headers = new Headers(init.headers);
     if (this.bearerToken) headers.set("authorization", `Bearer ${this.bearerToken}`);
@@ -231,7 +250,9 @@ export function parseControlError(text: string): { type?: string; message?: stri
 
 export function normalizeSessionList(raw: JsonValue): SessionSummary[] {
   const object = asObject(raw);
-  const values = asArray(valueAt(object, "sessions") ?? raw);
+  const values = asArray(
+    valueAt(object, "sessions") ?? valueAt(object, "Sessions") ?? raw,
+  );
   return values
     .map((value) => normalizeSessionSummary(value))
     .filter((session): session is SessionSummary => Boolean(session));
@@ -239,18 +260,32 @@ export function normalizeSessionList(raw: JsonValue): SessionSummary[] {
 
 export function normalizeSessionSummary(raw: JsonValue): SessionSummary | undefined {
   const object = asObject(raw);
-  const id = stringAt(object, "id") ?? stringAt(object, "session_id");
+  const id = stringAt(object, "id") ?? stringAt(object, "session_id") ?? stringAt(object, "Id") ?? stringAt(object, "SessionId");
   if (!id) return undefined;
-  const sources = asArray(valueAt(object, "sources")).filter((value): value is string => typeof value === "string");
-  const firstStartedAt = stringAt(object, "first_started_at") ?? stringAt(object, "firstStartedAt");
-  const lastEndedAt = stringAt(object, "last_ended_at") ?? stringAt(object, "lastEndedAt");
+  const sources = asArray(valueAt(object, "sources") ?? valueAt(object, "Sources")).filter(
+    (value): value is string => typeof value === "string",
+  );
+  const firstStartedAt =
+    stringAt(object, "first_started_at") ?? stringAt(object, "firstStartedAt") ?? stringAt(object, "FirstStartedAt");
+  const lastEndedAt =
+    stringAt(object, "last_ended_at") ?? stringAt(object, "lastEndedAt") ?? stringAt(object, "LastEndedAt");
+  const specViolationCount =
+    numberAt(object, "spec_violation_count") ??
+    numberAt(object, "specViolationCount") ??
+    numberAt(object, "SpecViolationCount");
+  const ignoredFieldCount =
+    numberAt(object, "ignored_field_count") ??
+    numberAt(object, "ignoredFieldCount") ??
+    numberAt(object, "IgnoredFieldCount");
   return {
     id,
-    calls: numberAt(object, "calls") ?? 0,
-    active: numberAt(object, "active") ?? 0,
+    calls: numberAt(object, "calls") ?? numberAt(object, "Calls") ?? 0,
+    active: numberAt(object, "active") ?? numberAt(object, "Active") ?? 0,
     sources,
     ...(firstStartedAt ? { firstStartedAt } : {}),
     ...(lastEndedAt ? { lastEndedAt } : {}),
+    ...(specViolationCount !== undefined ? { specViolationCount } : {}),
+    ...(ignoredFieldCount !== undefined ? { ignoredFieldCount } : {}),
     raw,
   };
 }

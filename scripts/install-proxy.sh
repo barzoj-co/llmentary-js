@@ -202,10 +202,19 @@ if [[ -z "$FOUND" ]]; then
   exit 1
 fi
 
+CONTRACT="$(find "$EXTRACT" -type f \( -name openapi.yaml -o -name openapi.yml \) | head -n 1)"
+if [[ -z "$CONTRACT" ]]; then
+  echo "no OpenAPI contract inside $ASSET" >&2
+  exit 1
+fi
+
 mkdir -p "$DEST_DIR"
 DEST="$DEST_DIR/$BIN_NAME"
 cp "$FOUND" "$DEST"
 chmod +x "$DEST"
+
+cp "$CONTRACT" "$DEST_DIR/openapi.yaml"
+cp "$CONTRACT" "$ROOT/openapi.yaml"
 
 VERSION_OUT="$("$DEST" --version)"
 if [[ "$VERSION_OUT" != "llmentary ${VERSION}"* ]]; then

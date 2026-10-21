@@ -104,6 +104,14 @@ async function extract(archivePath, dest) {
   }
 }
 
+async function findOpenApi(dir) {
+  const entries = await readdir(dir, { withFileTypes: true, recursive: true });
+  const match = entries.find(
+    (entry) => entry.isFile() && /(?:^|[/\\])openapi\.ya?ml$/i.test(join(entry.parentPath ?? entry.path, entry.name)),
+  );
+  return match ? join(match.parentPath ?? match.path, match.name) : undefined;
+}
+
 async function findBinary(dir) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
   const match = entries.find(
@@ -119,7 +127,7 @@ async function setPackageVersion(root, dir, version) {
   const path = join(root, "packages", dir, "package.json");
   const pkg = JSON.parse(await readFile(path, "utf8"));
   pkg.version = version;
-  pkg.files = ["bin", "README.md", "LICENSE", "LICENSE.AGPL-3.0"];
+  pkg.files = ["bin", "openapi.yaml", "README.md", "LICENSE", "LICENSE.AGPL-3.0"];
   await writeFile(path, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
@@ -157,6 +165,12 @@ async function main() {
       const destDir = join(ROOT, "packages", spec.dir, "bin");
       await mkdir(destDir, { recursive: true });
       await rename(binary, join(destDir, spec.bin));
+      const contract = await findOpenApi(extractDir);
+      if (!contract) {
+        throw new Error(`No openapi.yaml or openapi.yml in ${asset}`);
+      }
+      await writeFile(join(ROOT, "packages", spec.dir, "openapi.yaml"), await readFile(contract));
+      await writeFile(join(ROOT, "openapi.yaml"), await readFile(contract));
       await writeFile(join(ROOT, "packages", spec.dir, "LICENSE"), await readFile(join(ROOT, "LICENSE")));
       await writeFile(
         join(ROOT, "packages", spec.dir, "LICENSE.AGPL-3.0"),
