@@ -1294,7 +1294,7 @@ export function isolationCheck(
       const otherHit = otherIntroduced.get(key);
       if (!otherHit || ignoreIsolationText(otherHit.display, options)) continue;
       failures.push(
-        `user text '${text}' from session ${otherId} ${formatCallRef(otherHit.record, otherHit.index)} appears in session ${selfId} ${formatCallRef(record, index)}`,
+        `user text '${text}' also introduced by session ${otherId} ${formatCallRef(otherHit.record, otherHit.index)} appears in session ${selfId} ${formatCallRef(record, index)}`,
       );
     }
   }
