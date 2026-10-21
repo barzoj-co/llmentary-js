@@ -55,7 +55,7 @@ npm run test:jest:proxy
 
 Coverage is enforced by `vitest` `coverage.thresholds` in the existing
 required **Node 22** job (`npm run test:coverage` when `LLMENTARY_BIN` is
-set, otherwise `npm run test:unit -- --coverage`). Job names stay
+set, otherwise `npm run test:unit:coverage`). Job names stay
 `Node 18` / `Node 20` / `Node 22`. Codecov uploads stay informational
 and do not gate the PR.
 
