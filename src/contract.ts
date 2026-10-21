@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const CONTRACT_NAME = "openapi.yaml";
 
@@ -29,13 +29,10 @@ export function contractPath(): string | undefined {
 function searchRoots(): string[] {
   const roots = new Set<string>([process.cwd()]);
   try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    roots.add(here);
-    roots.add(join(here, ".."));
-    roots.add(join(here, "..", ".."));
-    roots.add(join(here, "..", "..", ".."));
+    const require = createRequire(join(process.cwd(), "package.json"));
+    roots.add(dirname(require.resolve("llmentary/package.json")));
   } catch {
-    // fileURLToPath is unavailable in some CJS bundles; cwd is enough.
+    // Not imported as the published package name from this cwd.
   }
   return [...roots];
 }
