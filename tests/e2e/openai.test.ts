@@ -1218,7 +1218,7 @@ describe("OpenAI E2E through llmentary", () => {
         expect(traceB.calls[0]?.id).not.toBe("call_1");
         expect(traceA.calls[0]?.seq).toBe(1);
         expect(traceA.calls[1]?.seq).toBe(2);
-        expect(formatTraceSummary(traceB)).toMatch(new RegExp(`#1 \\(${traceB.calls[0]?.id}\\)`));
+        expect(formatTraceSummary(traceB)).toContain(`#1 (${traceB.calls[0]?.id})`);
       } finally {
         await a.cleanup();
         await b.cleanup();

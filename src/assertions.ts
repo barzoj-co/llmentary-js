@@ -1201,13 +1201,13 @@ export function isolationCheck(
     return { pass: false, message: `no calls recorded for session ${otherId}` };
   }
   const failures: string[] = [];
-  for (const record of self.calls) {
+  for (const [index, record] of self.calls.entries()) {
     if (record.sessionId !== undefined && record.sessionId !== selfId) {
-      failures.push(`${formatCallRef(record)} has sessionId=${record.sessionId}, expected ${selfId}`);
+      failures.push(`${formatCallRef(record, index)} has sessionId=${record.sessionId}, expected ${selfId}`);
     }
     if (options.requirePathSource && record.sessionSource !== "path") {
       failures.push(
-        `${formatCallRef(record)} has sessionSource=${record.sessionSource ?? "<none>"}, expected path`,
+        `${formatCallRef(record, index)} has sessionSource=${record.sessionSource ?? "<none>"}, expected path`,
       );
     }
   }
@@ -1217,12 +1217,12 @@ export function isolationCheck(
       failures.push(`call id ${record.id} appears in sessions ${selfId} and ${otherId}`);
     }
   }
-  for (const record of self.calls) {
+  for (const [index, record] of self.calls.entries()) {
     for (const text of record.userTexts ?? []) {
-      for (const otherRecord of other.calls) {
+      for (const [otherIndex, otherRecord] of other.calls.entries()) {
         if ((otherRecord.userTexts ?? []).includes(text)) {
           failures.push(
-            `user text ${JSON.stringify(text)} from session ${selfId} ${formatCallRef(record)} also appears in session ${otherId} ${formatCallRef(otherRecord)}`,
+            `user text ${JSON.stringify(text)} from session ${selfId} ${formatCallRef(record, index)} also appears in session ${otherId} ${formatCallRef(otherRecord, otherIndex)}`,
           );
         }
       }

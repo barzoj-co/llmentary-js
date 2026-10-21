@@ -169,7 +169,7 @@ const bargeClient = new OpenAI({ apiKey, baseURL: barge.pathBaseURL() });
 await weather.expect().isolatedFrom(barge);
 ```
 
-`isolatedFrom` checks session ids, overlapping call ids, and **user-role** texts only. Empty sessions fail unless you call `allowEmpty()`. See [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
+`isolatedFrom` checks session ids, overlapping call ids, and **user-role** texts only. Empty sessions fail unless you call `allowEmpty()`. That opt-out also hides a mistyped `other` session id. See [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
 
 <!-- llmentary-repos:start -->
 ## llmentary repositories
