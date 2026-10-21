@@ -28,6 +28,7 @@ describe("README public API snippets", () => {
     expect(readme).toContain("callCount");
     expect(readme).toContain("allowEmpty");
     expect(readme).toContain("isolatedFrom");
+    expect(readme).toContain("expectNoCalls");
     expect(readme).toContain("SessionNotFound");
     expect(readme).toContain("WaitTimeoutError");
     expect(readme).toContain("openapi.yaml");
@@ -63,6 +64,8 @@ describe("README public API snippets", () => {
     expect(typeof lm.query({}).allowEmpty).toBe("function");
     expect(typeof lm.expect().allowEmpty).toBe("function");
     expect(typeof lm.expect().isolatedFrom).toBe("function");
+    expect(typeof lm.expect().expectNoCalls).toBe("function");
+    expect(typeof lm.expectNoCalls).toBe("function");
     expect(typeof lm.expect().finalResponseMentionsAny).toBe("function");
     expect(typeof lm.expect().toolResultInPrompt).toBe("function");
     expect(typeof lm.expect().soft().check).toBe("function");

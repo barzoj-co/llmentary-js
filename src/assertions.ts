@@ -1,5 +1,5 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
-import { ControlClient, SessionNotFound, formatZeroCallsMessage } from "./control.js";
+import { ControlClient, SessionNotFound, formatEmptySessionMessage } from "./control.js";
 import { mentionsAnyResult, type MentionsAnyOptions } from "./mentions.js";
 import {
   asArray,
@@ -79,10 +79,38 @@ export class AssertionScope {
     });
   }
 
-  /** Opt out of the empty-filter failure on `noErrors()` / `notCalled()`. */
+  /** Opt out of the empty-session / empty-filter failure on zero-call assertions. */
   allowEmpty(): AssertionScope {
     this.query = { ...this.query, allowEmpty: true };
     return this;
+  }
+
+  /**
+   * Pass when wait(`minCalls=0`) returns 404 (`SessionNotFound`) or an empty
+   * trace. Fail when the session recorded any calls, with the trace summary.
+   */
+  async expectNoCalls(options: WaitOptions = {}): Promise<AssertionResult> {
+    const waitOptions = { ...this.defaultWait, ...options, minCalls: 0 };
+    let trace: SessionTrace;
+    try {
+      trace = await this.control.wait(this.sessionId, waitOptions);
+    } catch (error) {
+      if (error instanceof SessionNotFound || (error instanceof WaitTimeoutError && error.calls === 0)) {
+        return this.finish({
+          pass: true,
+          message: "expected 0 LLM calls, got 0",
+          trace: emptyTrace(this.sessionId),
+        });
+      }
+      throw error;
+    }
+    if (trace.calls.length === 0) {
+      return this.finish({ pass: true, message: "expected 0 LLM calls, got 0", trace });
+    }
+    const message = `expected 0 LLM calls, got ${trace.calls.length}`;
+    const error = new SessionAssertionError(message, trace);
+    if (this.softMode) return this.finish({ pass: false, message, trace, error });
+    throw error;
   }
 
   async toolCalled(name: string, options: ToolCallAssertionOptions = {}): Promise<AssertionResult> {
@@ -610,6 +638,7 @@ export class AssertionScope {
       return { pass: false, message: formatEmptyFilterMessage(this.query) };
     }
     if (trace.calls.length === 0) {
+      if (this.query.allowEmpty) return undefined;
       return { pass: false, message: "no calls recorded" };
     }
     return undefined;
@@ -629,6 +658,10 @@ export class AssertionScope {
         throw error;
       }
     }
+    const emptyUnfiltered = trace.calls.length === 0 && !hasQueryFilter(this.query);
+    if (emptyUnfiltered && !this.query.allowEmpty) {
+      return this.failZeroCalls(trace, defaultMessage);
+    }
     const result = await predicate(trace);
     const message = result.message ?? defaultMessage;
     if (result.pass) return this.finish({ pass: true, message, trace });
@@ -642,7 +675,7 @@ export class AssertionScope {
 
   private async failZeroCalls(trace: SessionTrace, fallback: string): Promise<AssertionResult> {
     const known = await this.knownSessionIds();
-    const message = `${formatZeroCallsMessage(this.sessionId, known)}${fallback ? `\n${fallback}` : ""}`;
+    const message = `${formatEmptySessionMessage(this.sessionId, known)}${fallback ? `\n${fallback}` : ""}`;
     const error = new SessionAssertionError(message, trace);
     if (this.softMode) return this.finish({ pass: false, message, trace, error });
     throw error;

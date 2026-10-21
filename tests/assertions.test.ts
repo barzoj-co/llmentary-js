@@ -117,8 +117,8 @@ describe("AssertionScope", () => {
     expect(soft.error?.message).toContain("llmentary trace summary");
     await expect(scopeFor(trace).toolCalled("missing")).rejects.toBeInstanceOf(SessionAssertionError);
     await expect(scopeFor(trace).noErrors()).rejects.toThrow(/no calls recorded/);
-    await expect(scopeFor(trace).allowEmpty().noErrors()).rejects.toThrow(/no calls recorded/);
-    await expect(scopeFor(trace).allowEmpty().notCalled("x")).rejects.toThrow(/no calls recorded/);
+    await expect(scopeFor(trace).allowEmpty().noErrors()).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace).allowEmpty().notCalled("x")).resolves.toMatchObject({ pass: true });
   });
 
   it("requires every matching record to satisfy bounds", async () => {
@@ -418,24 +418,66 @@ describe("AssertionScope", () => {
     });
   });
 
-  it("treats wait SessionNotFound as zero calls for callCount(0)", async () => {
-    const scope = new AssertionScope({
-      control: {
-        wait: async () => {
-          throw new SessionNotFound("ghost", {
-            status: 404,
-            path: "/sessions/ghost/wait",
-            body: JSON.stringify({ error: { type: "session_not_found", message: "missing" } }),
-          });
-        },
-        listSessions: async () => [],
-      } as never,
-      sessionId: "ghost",
-    });
-    await expect(scope.callCount(0)).resolves.toMatchObject({ pass: true });
+  it("keeps whole-session expect() strict on a never-created session (DOG-2)", async () => {
+    const scope = neverCreatedScope("ghost");
+    await expect(scope.callCount(0)).rejects.toThrow(/no calls recorded for session ghost/);
     await expect(scope.noErrors()).rejects.toThrow(/no calls recorded for session ghost/);
   });
+
+  it("lets expect({ allowEmpty: true }).callCount(0) pass on a never-created session", async () => {
+    const scope = neverCreatedScope("ghost", { allowEmpty: true });
+    await expect(scope.callCount(0)).resolves.toMatchObject({ pass: true });
+    await expect(neverCreatedScope("ghost").allowEmpty().callCount(0)).resolves.toMatchObject({ pass: true });
+  });
+
+  it("expectNoCalls passes on 404 and fails on a session with calls plus the summary", async () => {
+    const empty = neverCreatedScope("ghost");
+    await expect(empty.expectNoCalls()).resolves.toMatchObject({ pass: true, message: "expected 0 LLM calls, got 0" });
+
+    const busy = scopeFor(
+      normalizeSessionTrace("busy", {
+        id: "busy",
+        calls: [{ id: "call_1", seq: 1, api_family: "openai.chat", request: { model: "gpt-4.1-mini" } }],
+      }),
+    );
+    await expect(busy.expectNoCalls()).rejects.toBeInstanceOf(SessionAssertionError);
+    await expect(busy.expectNoCalls()).rejects.toThrow(/expected 0 LLM calls, got 1/);
+    await expect(busy.soft().expectNoCalls()).resolves.toMatchObject({
+      pass: false,
+      message: "expected 0 LLM calls, got 1",
+    });
+    try {
+      await busy.expectNoCalls();
+      throw new Error("expected expectNoCalls to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SessionAssertionError);
+      expect((error as Error).message).toContain("llmentary trace summary");
+      expect((error as Error).message).toContain("#1 (call_1)");
+    }
+  });
 });
+
+function neverCreatedScope(sessionId: string, query?: QueryOptions): AssertionScope {
+  return new AssertionScope({
+    control: {
+      wait: async () => {
+        throw new SessionNotFound(sessionId, {
+          status: 404,
+          path: `/sessions/${sessionId}/wait`,
+          body: JSON.stringify({
+            error: {
+              type: "session_not_found",
+              message: `no calls recorded for session "${sessionId}"; known sessions: GET /sessions`,
+            },
+          }),
+        });
+      },
+      listSessions: async () => [],
+    } as never,
+    sessionId,
+    ...(query ? { query } : {}),
+  });
+}
 
 function scopeFor(trace: SessionTrace, query?: QueryOptions): AssertionScope {
   return new AssertionScope({

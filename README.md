@@ -100,9 +100,11 @@ await lm.query({}).offersTool("lookup_weather").expect().toolCalled("lookup_weat
 // Empty filters fail noErrors()/notCalled() unless you opt out:
 await lm.expect({ since: mark }).allowEmpty().noErrors();
 await lm.expect().isolatedFrom(other);
+await lm.expectNoCalls();
+await lm.expect({ allowEmpty: true }).callCount(0);
 ```
 
-Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`), session isolation (`isolatedFrom`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). A filter that matches zero calls fails `noErrors()` / `notCalled()` unless you call `allowEmpty()`; use `callCount(n)` for the turn size. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure. `listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` / `seq` / `sessionId` / `userTexts` read the proxy fields. Call `id`s are process-global; `seq` is 1-based per session. The generated summary prints `#seq (id)`.
+Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`), session isolation (`isolatedFrom`), zero-call helpers (`expectNoCalls`, `expect({ allowEmpty: true })`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). A filter that matches zero calls fails `noErrors()` / `notCalled()` unless you call `allowEmpty()`; use `callCount(n)` for the turn size. Whole-session `expect()` on a never-created session stays strict unless you opt in. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure. `listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` / `seq` / `sessionId` / `userTexts` read the proxy fields. Call `id`s are process-global; `seq` is 1-based per session. The generated summary prints `#seq (id)`.
 
 See [docs/api.md](docs/api.md) for the full API, including Jest setup.
 
@@ -152,7 +154,7 @@ try {
 }
 ```
 
-`callCount(0)` treats `SessionNotFound` from wait as zero calls. Bundled proxy **v0.3.0** returns `404 session_not_found` immediately for `min_calls=0` on a never-created session.
+Whole-session `expect()` on a never-created session still fails with `no calls recorded for session …` (DOG-2). That catches a base URL that bypasses the proxy. Opt in with `await lm.expectNoCalls()` (`SessionNotFound` passes; a session with calls fails `expected 0 LLM calls, got N` plus the trace summary) or `await lm.expect({ allowEmpty: true }).callCount(0)`. Bundled proxy **v0.3.0** returns `404 session_not_found` immediately for `min_calls=0` on a never-created session. See [docs/assertions-guide.md](docs/assertions-guide.md).
 
 ## Isolating conversations
 

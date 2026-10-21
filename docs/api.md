@@ -85,7 +85,7 @@ lm.query({}).since(mark).allowEmpty().expect().noErrors();
 lm.expect({ since: mark }).allowEmpty().notCalled("lookup_weather");
 ```
 
-`callCount(0)` still states an explicit empty count and does not need the opt-out. Unfiltered `expect()` on a session with zero calls still fails with `no calls recorded for session …` (DOG-2).
+Unfiltered `expect()` on a session with zero calls still fails with `no calls recorded for session …` (DOG-2), including `callCount(0)`. Opt in with `expect({ allowEmpty: true })`, `allowEmpty()`, or `expectNoCalls()`. A filtered `callCount(0)` still states an explicit empty count and does not need the opt-out.
 
 `apiType` values mirror the Go client scoping:
 
@@ -124,6 +124,8 @@ await lm.expect().promptContains("weather");
 await lm.expect().responseContains(/rain|sun/i);
 await lm.expect().responseJsonValid({ schema: { type: "object" } });
 await lm.expect().callCount(2);
+await lm.expectNoCalls();
+await lm.expect({ allowEmpty: true }).callCount(0);
 await lm.expect().isolatedFrom(other);
 await lm.expect().streamed(true);
 await lm.expect().outputText();
@@ -152,7 +154,7 @@ await lm.expect().toolResultInPrompt("lookup_weather");
 | `spec_violations` | Findings. `[]` is clean; omitted means not checked. |
 | `ignored_fields` | Vendor extensions / dropped fields with `severity:"warning"`. Same empty-vs-absent rule. |
 
-Expect helpers on a session with zero calls fail with `no calls recorded for session <id>; known sessions: …` plus the trace summary. `GET /sessions/{id}` 404 raises `SessionNotFound`. `wait` on a never-created session with `minCalls=0` also raises `SessionNotFound` (`404 session_not_found`). `wait` with `minCalls>=1` on a session that never appears raises `WaitTimeoutError` (`504 wait_timeout`) after `timeout`. `callCount(0)` treats `SessionNotFound` as zero calls.
+Expect helpers on a session with zero calls fail with `no calls recorded for session <id>; known sessions: …` plus the trace summary (`known sessions:` appears at most once; the proxy 404 hint is `list sessions with GET /sessions`). `GET /sessions/{id}` 404 raises `SessionNotFound`. `wait` on a never-created session with `minCalls=0` also raises `SessionNotFound` (`404 session_not_found`). `wait` with `minCalls>=1` on a session that never appears raises `WaitTimeoutError` (`504 wait_timeout`) after `timeout`. `expectNoCalls()` treats that `SessionNotFound` as success. `expect({ allowEmpty: true }).callCount(0)` does the same. Whole-session `expect().callCount(0)` without the opt-in still fails (DOG-2). `isolatedFrom(neverCreated)` raises an assertion error (`no calls recorded for session <id>`), not `SessionNotFound`; `allowEmpty()` lets it pass.
 
 ```ts
 import { SessionNotFound, WaitTimeoutError } from "llmentary";

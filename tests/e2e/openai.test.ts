@@ -1289,6 +1289,33 @@ describe("OpenAI E2E through llmentary", () => {
       }
     });
 
+    it("expectNoCalls passes on a never-used session and fails after a real call", async () => {
+      const used = newSession(proxy);
+      const unused = llmentary({
+        sessionId: `zero-${randomUUID()}`,
+        proxyUrl: proxy.proxyUrl,
+        controlUrl: proxy.controlUrl,
+        defaultWait: { timeoutMs: 25_000, idleMs: 200 },
+      });
+      const client = openaiClient(used);
+      try {
+        await retryNetwork(() =>
+          client.chat.completions.create({
+            model: TEXT_MODEL,
+            temperature: 0,
+            max_tokens: 8,
+            messages: [{ role: "user", content: "Reply with the single word ping." }],
+          }),
+        );
+        await unused.expectNoCalls();
+        await expect(used.expectNoCalls()).rejects.toBeInstanceOf(SessionAssertionError);
+        await expect(used.expectNoCalls()).rejects.toThrow(/expected 0 LLM calls, got /);
+        await used.expect().allowEmpty().isolatedFrom(unused);
+      } finally {
+        await used.cleanup();
+      }
+    });
+
     it("fails noErrors on an empty since(mark) after a real call", async () => {
       const lm = newSession(proxy);
       const client = openaiClient(lm);
