@@ -1,6 +1,6 @@
 {
   "name": "llmentary",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "TypeScript (Vitest/Jest) client for llmentary: deterministic trace-based integration tests for LLM apps",
   "license": "MIT",
   "repository": {
