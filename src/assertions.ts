@@ -884,7 +884,9 @@ function finishReasons(value: JsonValue | undefined): string[] {
 }
 
 function finishReasonsForRecord(record: CallRecord): string[] {
-  return [...new Set([...finishReasons(record.response), ...finishReasons(valueAt(asObject(record.raw), "normalized"))])];
+  const normalized = objectAt(asObject(record.raw), "normalized");
+  const fromNormalized = stringAt(normalized, "finish_reason") ?? stringAt(normalized, "finishReason");
+  return [...new Set([...finishReasons(record.response), ...(fromNormalized ? [fromNormalized] : [])])];
 }
 
 function usageNumbers(record: CallRecord): { prompt?: number; completion?: number; total?: number } | undefined {

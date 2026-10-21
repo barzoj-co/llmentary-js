@@ -184,7 +184,7 @@ await client.chat.completions.create({ stream: true, /* … */ }, { signal: cont
 const call = (await lm.wait({ minCalls: 1 })).calls[0];
 expect(call?.clientAborted).toBe(true);
 if (call?.abortPhase !== undefined) {
-  expect(call.abortPhase).toBe("before_headers");
+  expect(["before_headers", "after_headers"]).toContain(call.abortPhase);
 }
 expect(call?.httpStatus).not.toBe(502);
 await lm.expect().aborted();
