@@ -2,7 +2,7 @@
 
 Optional Windows x64 package for `llmentary`. npm selects it through `optionalDependencies` + `os`/`cpu` when you install `llmentary` on this platform.
 
-There is no `postinstall` script; the binary is packed at publish time from checksum-verified GoReleaser artifacts.
+There is no `postinstall` script; the binary is packed at publish time from checksum-verified GoReleaser artifacts. The same release ships `openapi.yaml` next to the binary (`GET /openapi.yaml` on the control listener).
 
 Override the binary with `LLMENTARY_BIN` if you do not want this package's file.
 

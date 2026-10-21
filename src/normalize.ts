@@ -15,9 +15,13 @@ export function normalizeSessionTrace(sessionId: string, raw: JsonValue): Sessio
   const id = stringAt(object, "id") ?? stringAt(object, "session_id") ?? sessionId;
   const callsValue =
     arrayAt(object, "calls") ??
+    arrayAt(object, "Calls") ??
     arrayAt(object, "records") ??
+    arrayAt(object, "Records") ??
     arrayAt(object, "requests") ??
+    arrayAt(object, "Requests") ??
     arrayAt(object, "traces") ??
+    arrayAt(object, "Traces") ??
     [];
   const calls = callsValue.map((value) => {
     const record = normalizeCallRecord(value);
@@ -370,10 +374,6 @@ export function firstPositiveOrDefined(...values: Array<number | undefined>): nu
   return defined.find((value) => value > 0) ?? defined[0];
 }
 
-function hasOwn(object: JsonObject | undefined, key: string): boolean {
-  return Boolean(object && Object.prototype.hasOwnProperty.call(object, key));
-}
-
 function parseValidation(raw: JsonObject | undefined): Validation | undefined {
   if (!raw || Object.keys(raw).length === 0) return undefined;
   const out: Validation = { raw };
@@ -400,33 +400,24 @@ function parseValidation(raw: JsonObject | undefined): Validation | undefined {
 }
 
 function parseSpecViolationList(normalized: JsonObject | undefined, object: JsonObject): SpecViolation[] | undefined {
-  const source = hasOwn(normalized, "spec_violations")
-    ? normalized
-    : hasOwn(normalized, "specViolations")
-      ? normalized
-      : hasOwn(object, "spec_violations")
-        ? object
-        : hasOwn(object, "specViolations")
-          ? object
-          : undefined;
-  if (!source) return undefined;
-  const values = asArray(valueAt(source, "spec_violations") ?? valueAt(source, "specViolations"));
-  return values.map((value) => parseSpecViolation(value));
+  const values = firstArrayAt([normalized, object], ["spec_violations", "specViolations", "SpecViolations"]);
+  return values?.map((value) => parseSpecViolation(value));
 }
 
 function parseIgnoredFieldList(normalized: JsonObject | undefined, object: JsonObject): IgnoredField[] | undefined {
-  const source = hasOwn(normalized, "ignored_fields")
-    ? normalized
-    : hasOwn(normalized, "ignoredFields")
-      ? normalized
-      : hasOwn(object, "ignored_fields")
-        ? object
-        : hasOwn(object, "ignoredFields")
-          ? object
-          : undefined;
-  if (!source) return undefined;
-  const values = asArray(valueAt(source, "ignored_fields") ?? valueAt(source, "ignoredFields"));
-  return values.map((value) => parseIgnoredField(value));
+  const values = firstArrayAt([normalized, object], ["ignored_fields", "ignoredFields", "IgnoredFields"]);
+  return values?.map((value) => parseIgnoredField(value));
+}
+
+/** Missing or null keys fall through; an empty array is an intentional clean list. */
+function firstArrayAt(objects: Array<JsonObject | undefined>, keys: string[]): JsonValue[] | undefined {
+  for (const object of objects) {
+    for (const key of keys) {
+      const value = valueAt(object, key);
+      if (Array.isArray(value)) return value;
+    }
+  }
+  return undefined;
 }
 
 function parseSpecViolation(raw: JsonValue): SpecViolation {

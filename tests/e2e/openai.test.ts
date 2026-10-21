@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
 import {
   ControlClient,
   SessionNotFound,
+  contractPath,
   formatTraceSummary,
   llmentary,
   SessionAssertionError,
@@ -1277,6 +1279,44 @@ describe("OpenAI E2E through llmentary", () => {
       }
     });
 
+    it("matches the served openapi.yaml to the bundled contract after a live call", async () => {
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
+      await retryNetwork(() =>
+        client.chat.completions.create({
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 8,
+          stream: true,
+          messages: [{ role: "user", content: "Reply with the single word ping." }],
+        }).then(async (stream) => {
+          for await (const chunk of stream) {
+            void chunk;
+          }
+        }),
+      );
+      const served = await lm.control.openapi();
+      expect(served).toMatch(/openapi:\s*['"]?3\./);
+      expect(served).toMatch(/Session/);
+      const proxyVersion = await lm.proxyVersion();
+      const infoVersion = openApiInfoVersion(served);
+      const release = proxyVersion?.replace(/^v/, "");
+      // DOG-37 stamps info.version from the release. v0.3.0 still ships the
+      // static document version 0.1.0; only a non-placeholder stamp must match.
+      if (infoVersion && release && infoVersion !== "0.1.0") {
+        expect(infoVersion).toBe(release);
+      }
+      const bundled = contractPath();
+      if (bundled) {
+        expect(readFileSync(bundled, "utf8")).toBe(served);
+      }
+      const trace = await lm.session();
+      expect(trace.id).toBe(lm.sessionId);
+      expect(trace.calls.length).toBeGreaterThanOrEqual(1);
+      expect(trace.raw).toMatchObject({ id: lm.sessionId });
+      await lm.cleanup();
+    });
+
     it("reads per-session seq across two live path sessions on one proxy", async () => {
       const a = llmentary({
         sessionId: `seq-a-${randomUUID()}`,
@@ -1583,4 +1623,11 @@ function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { name?: string; message?: string };
   return candidate.name === "AbortError" || /abort/i.test(candidate.message ?? "");
+}
+
+/** `info.version` only — not the first `version:` key in the document. */
+function openApiInfoVersion(yaml: string): string | undefined {
+  const info = yaml.match(/(?:^|\n)info:\s*\n([\s\S]*?)(?=\n\S|$)/);
+  const version = info?.[1]?.match(/^\s+version:\s*['"]?v?([0-9][0-9A-Za-z.+-]*)/m);
+  return version?.[1];
 }

@@ -7,6 +7,7 @@ import {
   formatZeroCallsMessage,
   rewriteSessionNotFoundHint,
   parseControlBody,
+  normalizeSessionList,
   type ControlFetch,
 } from "../src/control.js";
 import { WaitTimeoutError, resetWaitEnvDeprecationWarnings } from "../src/wait.js";
@@ -35,6 +36,49 @@ function clearWaitEnv(): void {
     delete process.env[key];
   }
 }
+
+describe("normalizeSessionList", () => {
+  it("accepts PascalCase Sessions and spec counters (proxy DOG-38)", () => {
+    expect(
+      normalizeSessionList({
+        Sessions: [
+          {
+            Id: "sess-a",
+            Calls: 2,
+            Active: 1,
+            Sources: ["path"],
+            SpecViolationCount: 3,
+            IgnoredFieldCount: 1,
+          },
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "sess-a",
+        calls: 2,
+        active: 1,
+        sources: ["path"],
+        specViolationCount: 3,
+        ignoredFieldCount: 1,
+      }),
+    ]);
+  });
+
+  it("accepts snake_case spec counters on the sessions envelope", () => {
+    expect(
+      normalizeSessionList({
+        sessions: [{ id: "sess-b", calls: 1, active: 0, spec_violation_count: 0, ignored_field_count: 2 }],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "sess-b",
+        calls: 1,
+        specViolationCount: 0,
+        ignoredFieldCount: 2,
+      }),
+    ]);
+  });
+});
 
 describe("parseControlBody", () => {
   it("accepts the Go proxy plain-text healthz body", () => {
@@ -262,6 +306,36 @@ describe("ControlClient", () => {
     await expect(client.wait("s1", { minCalls: 2 })).rejects.toThrow(
       "wait timed out after 30s on session s1 (0 calls so far, still active: 0). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
     );
+  });
+
+  it("sends the control token on GET /openapi.yaml and returns the document text", async () => {
+    const seen: string[] = [];
+    const fetchImpl: ControlFetch = async (input, init) => {
+      seen.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer tok-1");
+      return new Response("openapi: 3.1.0\ninfo:\n  title: llmentary control\n", { status: 200 });
+    };
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      bearerToken: "tok-1",
+      fetch: fetchImpl,
+    });
+    await expect(client.openapi()).resolves.toMatch(/^openapi: 3.1.0/);
+    expect(seen[0]).toBe("http://127.0.0.1:9/openapi.yaml");
+  });
+
+  it("propagates a body read failure on a successful openapi response", async () => {
+    const fetchImpl: ControlFetch = async () =>
+      ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: async () => {
+          throw new Error("body closed");
+        },
+      }) as unknown as Response;
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    await expect(client.openapi()).rejects.toThrow(/body closed/);
   });
 
   it("aborts hung requests after requestTimeoutMs and lets wait exceed it", async () => {
