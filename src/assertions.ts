@@ -364,21 +364,17 @@ export class AssertionScope {
   async isolatedFrom(other: IsolatedFromOther, options: IsolatedFromOptions = {}): Promise<AssertionResult> {
     const otherId = typeof other === "string" ? other : other.sessionId;
     const allowEmpty = options.allowEmpty ?? this.query.allowEmpty;
-    const previousQuery = this.query;
-    if (allowEmpty && !this.query.allowEmpty) {
-      this.query = { ...this.query, allowEmpty: true };
-    }
-    try {
-      return await this.evaluate(`expected session ${this.sessionId} to stay isolated from ${otherId}`, async (trace) => {
+    return this.evaluate(
+      `expected session ${this.sessionId} to stay isolated from ${otherId}`,
+      async (trace) => {
         const otherTrace = await this.waitOtherTrace(other, otherId);
         return isolationCheck(trace, this.sessionId, otherTrace, otherId, {
           ...options,
           ...(allowEmpty ? { allowEmpty: true } : {}),
         });
-      });
-    } finally {
-      this.query = previousQuery;
-    }
+      },
+      { allowEmpty },
+    );
   }
 
   private async waitOtherTrace(other: IsolatedFromOther, otherId: string): Promise<SessionTrace> {
@@ -674,6 +670,7 @@ export class AssertionScope {
   private async evaluate(
     defaultMessage: string,
     predicate: (trace: SessionTrace) => { pass: boolean; message?: string } | Promise<{ pass: boolean; message?: string }>,
+    override: { allowEmpty?: boolean } = {},
   ): Promise<AssertionResult> {
     let trace: SessionTrace;
     try {
@@ -685,8 +682,9 @@ export class AssertionScope {
         throw error;
       }
     }
+    const allowEmpty = override.allowEmpty ?? this.query.allowEmpty;
     const emptyUnfiltered = trace.calls.length === 0 && !hasQueryFilter(this.query);
-    if (emptyUnfiltered && !this.query.allowEmpty) {
+    if (emptyUnfiltered && !allowEmpty) {
       return this.failZeroCalls(trace, defaultMessage);
     }
     const result = await predicate(trace);

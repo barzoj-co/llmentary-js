@@ -351,7 +351,13 @@ describe("isolatedFrom", () => {
     ]);
     const empty = sessionTrace("barge", []);
     const scope = scopeFor(empty, weather);
-    await expect(scope.isolatedFrom("weather", { allowEmpty: true })).resolves.toMatchObject({ pass: true });
+    const [isolated, errors] = await Promise.allSettled([
+      scope.isolatedFrom("weather", { allowEmpty: true }),
+      scope.noErrors(),
+    ]);
+    expect(isolated.status).toBe("fulfilled");
+    if (isolated.status === "fulfilled") expect(isolated.value).toMatchObject({ pass: true });
+    expect(errors.status).toBe("rejected");
     await expect(scope.isolatedFrom("weather")).rejects.toThrow(/no calls recorded for session barge/);
   });
 
