@@ -30,6 +30,9 @@ describe("README public API snippets", () => {
     expect(readme).toContain("isolatedFrom");
     expect(readme).toContain("expectNoCalls");
     expect(readme).toContain("foreign user turns");
+    expect(readme).toContain("isolated_from needs calls on both sides");
+    expect(readme).toContain("later calls introduce");
+    expect(readme).not.toMatch(/isolatedFrom\(\s*unused\s*\)/);
     expect(readme).toContain("testdata/isolation");
     expect(readme).toContain("clientAborted");
     expect(readme).toContain("abortPhase");

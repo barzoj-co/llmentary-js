@@ -81,7 +81,7 @@ export class AssertionScope {
     });
   }
 
-  /** Opt out of the empty-session / empty-filter failure on zero-call assertions. */
+  /** Opt out of empty-session, empty-other, and empty-filter failures. */
   allowEmpty(): AssertionScope {
     this.query = { ...this.query, allowEmpty: true };
     return this;
@@ -359,6 +359,7 @@ export class AssertionScope {
    * no shared call ids, and no foreign user-role turns (exact normalized
    * match; see docs/isolation-spec semantics). System prompts and tool
    * names are not compared. `other` is a session id or a `Session`.
+   * An unknown or empty other session fails unless `allowEmpty()`.
    */
   async isolatedFrom(other: IsolatedFromOther, options: IsolatedFromOptions = {}): Promise<AssertionResult> {
     const otherId = typeof other === "string" ? other : other.sessionId;
@@ -1264,6 +1265,9 @@ export function isolationCheck(
     return { pass: false, message: `no calls recorded for session ${selfId}` };
   }
   const failures: string[] = [];
+  if (other.calls.length === 0 && !options.allowEmpty) {
+    failures.push(`no calls recorded for session ${otherId} (isolated_from needs calls on both sides)`);
+  }
   for (const { record, index } of orderedCalls(self)) {
     if (record.sessionId !== undefined && record.sessionId !== selfId) {
       failures.push(`${formatCallRef(record, index)} has session_id=${record.sessionId}, expected ${selfId}`);
@@ -1317,27 +1321,40 @@ function promptUserMessages(record: CallRecord): string[] {
 }
 
 /**
- * Last user-role message of each call, walked in `seq` order.
- * Inbound history (every user message before the last on that call) is seen,
- * not introduced — repeating it later still does not count as this session's turn.
+ * First call (in `seq` order) introduces only its last user-role message.
+ * Later calls introduce each user-role message whose normalized form was
+ * not already present in an earlier call of the same session.
+ * Inbound history on the first call is seen, not introduced.
  */
 function introducedUserTurns(
   trace: SessionTrace,
 ): Map<string, { record: CallRecord; index: number; display: string }> {
   const introduced = new Map<string, { record: CallRecord; index: number; display: string }>();
   const seen = new Set<string>();
+  let firstCall = true;
   for (const { record, index } of orderedCalls(trace)) {
     const messages = promptUserMessages(record);
     if (messages.length === 0) continue;
-    const last = messages[messages.length - 1]!;
-    for (const text of messages.slice(0, -1)) {
-      seen.add(normalizeIsolationText(text));
+    if (firstCall) {
+      firstCall = false;
+      for (const text of messages.slice(0, -1)) {
+        seen.add(normalizeIsolationText(text));
+      }
+      const last = messages[messages.length - 1]!;
+      const key = normalizeIsolationText(last);
+      if (!seen.has(key) && !introduced.has(key)) {
+        introduced.set(key, { record, index, display: last });
+      }
+      seen.add(key);
+      continue;
     }
-    const key = normalizeIsolationText(last);
-    if (!seen.has(key) && !introduced.has(key)) {
-      introduced.set(key, { record, index, display: last });
+    for (const text of messages) {
+      const key = normalizeIsolationText(text);
+      if (!seen.has(key) && !introduced.has(key)) {
+        introduced.set(key, { record, index, display: text });
+      }
+      seen.add(key);
     }
-    seen.add(key);
   }
   return introduced;
 }
