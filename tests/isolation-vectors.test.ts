@@ -11,7 +11,7 @@ const VECTOR_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "testdata
 interface IsolationVector {
   name: string;
   expect: "pass" | "fail";
-  messageFragment?: string | null;
+  messageFragment?: string;
   options?: IsolatedFromOptions;
   self: { id: string; calls: JsonValue[] };
   other: { id: string; calls: JsonValue[] };
@@ -59,14 +59,18 @@ function parseVector(name: string, rawValue: JsonValue): IsolationVector {
   const ignoreTexts = raw.ignore_texts ?? raw.ignoreTexts ?? optionsRaw.ignore_texts ?? optionsRaw.ignoreTexts;
   const self = side(raw, "self", "x", "left", "a");
   const other = side(raw, "other", "y", "right", "b");
+  const messageFragment = stringField(raw, "messageFragment", "message_fragment", "err_contains", "want_message");
+  const ignoreList = Array.isArray(ignoreTexts)
+    ? ignoreTexts.filter((item): item is string => typeof item === "string")
+    : undefined;
   return {
     name: stringField(raw, "name") ?? name.replace(/\.json$/, ""),
     expect: expectPass ? "pass" : "fail",
-    messageFragment: stringField(raw, "messageFragment", "message_fragment", "err_contains", "want_message"),
+    ...(messageFragment ? { messageFragment } : {}),
     options: {
       ...(allowEmpty === true ? { allowEmpty: true } : {}),
       ...(typeof minChars === "number" ? { minChars } : {}),
-      ...(Array.isArray(ignoreTexts) ? { ignoreTexts: ignoreTexts.filter((item): item is string => typeof item === "string") } : {}),
+      ...(ignoreList ? { ignoreTexts: ignoreList } : {}),
     },
     self,
     other,
