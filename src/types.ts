@@ -184,7 +184,7 @@ export interface CallRecord {
   sessionSource?: string;
   /** Upstream URL the proxy forwarded to (the `/s/{session}` prefix is not forwarded). */
   upstreamUrl?: string;
-  /** User-role message texts only (Chat `messages`, Responses `input`). */
+  /** Joined text for each user-role message (Chat `messages`, Responses `input`). */
   userTexts?: string[];
   raw: JsonValue;
 }

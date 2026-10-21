@@ -75,7 +75,7 @@ lm.expect({ since: mark });
 lm.query({}).since(mark).expect();
 ```
 
-`offersTool(name)` keeps calls whose **request** offered that tool. `withoutTools()` keeps calls that offered none (structured-output routers). `await lm.mark()` is the current call count. `since: mark` keeps calls with `seq >= mark` (`mark()` is 0-based into the session list; wire `seq` is 1-based). Call `id`s (`call_3`) are unique within one proxy process and are **not** per-session order. Use `CallRecord.seq` for "nth call of this session". The generated summary prints `#seq (id)` (for example `#1 (call_3)`). Per-call `promptText` / `responseText` fill the same role as Python `prompt_text` / `response_text`. `sessionSource`, `upstreamUrl`, `sessionId`, and `userTexts` are typed accessors for the proxy's `session_source`, `upstream.url`, `session_id`, and user-role message texts (absent when the proxy omitted them).
+`offersTool(name)` keeps calls whose **request** offered that tool. `withoutTools()` keeps calls that offered none (structured-output routers). `await lm.mark()` is the current call count. `since: mark` keeps calls with `seq >= mark` (`mark()` is 0-based into the session list; wire `seq` is 1-based). Call `id`s (`call_3`) are unique within one proxy process and are **not** per-session order. Use `CallRecord.seq` for "nth call of this session". The generated summary prints `#seq (id)` (for example `#1 (call_3)`). Per-call `promptText` / `responseText` fill the same role as Python `prompt_text` / `response_text`. `sessionSource`, `upstreamUrl`, `sessionId`, and `userTexts` are typed accessors for the proxy's `session_source`, `upstream.url`, `session_id`, and joined text for each user-role message (absent when the proxy omitted them).
 
 ### Filters and empty traces
 

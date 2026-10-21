@@ -514,7 +514,8 @@ export function extractUserMessages(request: JsonValue | undefined): string[] {
 }
 
 export function normalizeIsolationText(text: string): string {
-  return text.trim().replace(/\s+/g, " ").toLowerCase();
+  // toUpperCase().toLowerCase() applies full Unicode casefold (ß → ss).
+  return text.trim().replace(/\s+/g, " ").toUpperCase().toLowerCase();
 }
 
 function collectUserRoleMessage(value: JsonValue, texts: string[]): void {
