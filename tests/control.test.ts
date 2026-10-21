@@ -133,9 +133,15 @@ describe("ControlClient", () => {
     expect(rewriteSessionNotFoundHint('no calls recorded for session "empty"; known sessions: GET /sessions')).toBe(
       'no calls recorded for session "empty"; list sessions with GET /sessions',
     );
-    expect(
-      formatEmptySessionMessage("empty", ["iso-a", "iso-b"], 'no calls recorded for session "empty"; known sessions: GET /sessions'),
-    ).toBe('no calls recorded for session "empty"; list sessions with GET /sessions');
+    const rewrittenWithList = formatEmptySessionMessage(
+      "empty",
+      ["iso-a", "iso-b"],
+      'no calls recorded for session "empty"; known sessions: GET /sessions',
+    );
+    expect(rewrittenWithList).toBe(
+      'no calls recorded for session "empty"; list sessions with GET /sessions; known sessions: iso-a, iso-b',
+    );
+    expect(rewrittenWithList.match(/known sessions:/g)?.length).toBe(1);
     const combined = formatEmptySessionMessage("empty", ["iso-a", "iso-b"]);
     expect(combined).toBe("no calls recorded for session empty; known sessions: iso-a, iso-b");
     expect(combined.match(/known sessions:/g)?.length).toBe(1);
