@@ -373,7 +373,7 @@ export class AssertionScope {
           ...(allowEmpty ? { allowEmpty: true } : {}),
         });
       },
-      { allowEmpty },
+      allowEmpty ? { allowEmpty: true } : {},
     );
   }
 
