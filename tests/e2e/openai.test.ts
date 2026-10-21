@@ -1298,6 +1298,11 @@ describe("OpenAI E2E through llmentary", () => {
       const served = await lm.control.openapi();
       expect(served).toMatch(/openapi:\s*['"]?3\./);
       expect(served).toMatch(/Session/);
+      const proxyVersion = await lm.proxyVersion();
+      const stamped = served.match(/(?:^|\n)\s*version:\s*['"]?v?([0-9][0-9A-Za-z.+-]*)/);
+      if (proxyVersion && stamped?.[1]) {
+        expect(stamped[1]).toBe(proxyVersion.replace(/^v/, ""));
+      }
       const bundled = contractPath();
       if (bundled) {
         expect(readFileSync(bundled, "utf8")).toBe(served);

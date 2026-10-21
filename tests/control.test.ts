@@ -7,6 +7,7 @@ import {
   formatZeroCallsMessage,
   rewriteSessionNotFoundHint,
   parseControlBody,
+  normalizeSessionList,
   type ControlFetch,
 } from "../src/control.js";
 import { WaitTimeoutError, resetWaitEnvDeprecationWarnings } from "../src/wait.js";
@@ -35,6 +36,49 @@ function clearWaitEnv(): void {
     delete process.env[key];
   }
 }
+
+describe("normalizeSessionList", () => {
+  it("accepts PascalCase Sessions and spec counters (proxy DOG-38)", () => {
+    expect(
+      normalizeSessionList({
+        Sessions: [
+          {
+            Id: "sess-a",
+            Calls: 2,
+            Active: 1,
+            Sources: ["path"],
+            SpecViolationCount: 3,
+            IgnoredFieldCount: 1,
+          },
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "sess-a",
+        calls: 2,
+        active: 1,
+        sources: ["path"],
+        specViolationCount: 3,
+        ignoredFieldCount: 1,
+      }),
+    ]);
+  });
+
+  it("accepts snake_case spec counters on the sessions envelope", () => {
+    expect(
+      normalizeSessionList({
+        sessions: [{ id: "sess-b", calls: 1, active: 0, spec_violation_count: 0, ignored_field_count: 2 }],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: "sess-b",
+        calls: 1,
+        specViolationCount: 0,
+        ignoredFieldCount: 2,
+      }),
+    ]);
+  });
+});
 
 describe("parseControlBody", () => {
   it("accepts the Go proxy plain-text healthz body", () => {

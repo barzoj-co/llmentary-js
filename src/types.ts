@@ -199,6 +199,9 @@ export interface SessionSummary {
   sources: string[];
   firstStartedAt?: string;
   lastEndedAt?: string;
+  /** Session spec counters from proxy DOG-38 (`spec_violation_count` / `SpecViolationCount`). */
+  specViolationCount?: number;
+  ignoredFieldCount?: number;
   raw: JsonValue;
 }
 

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const CONTRACT_NAME = "openapi.yaml";
 
@@ -10,7 +11,7 @@ const CONTRACT_NAME = "openapi.yaml";
  * Lookup order:
  * 1. `LLMENTARY_OPENAPI_PATH`
  * 2. beside `LLMENTARY_BIN` (the selected proxy binary)
- * 3. the published `llmentary` package root / `docs/`
+ * 3. the loaded SDK package root / `docs/` (resolved from this module, not cwd)
  * 4. the caller working directory / `docs/` (last, so an unrelated cwd file cannot win)
  */
 export function contractPath(): string | undefined {
@@ -34,12 +35,39 @@ export function contractPath(): string | undefined {
 
 function searchRoots(): string[] {
   const roots: string[] = [];
-  try {
-    const require = createRequire(join(process.cwd(), "package.json"));
-    roots.push(dirname(require.resolve("llmentary/package.json")));
-  } catch {
-    // Not imported as the published package name from this cwd.
+  const href = thisModuleHref();
+  if (href) {
+    try {
+      const require = createRequire(href);
+      roots.push(dirname(require.resolve("llmentary/package.json")));
+    } catch {
+      // Not resolved as the published package name from this module.
+    }
+    try {
+      let dir = dirname(fileURLToPath(href));
+      for (let i = 0; i < 8; i += 1) {
+        if (existsSync(join(dir, "package.json"))) {
+          roots.push(dir);
+          break;
+        }
+        const parent = dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+    } catch {
+      // fileURLToPath can throw for non-file URLs.
+    }
   }
   roots.push(process.cwd());
-  return roots;
+  return [...new Set(roots)];
+}
+
+/** ESM `import.meta.url` without putting `import.meta` in the CJS compile. */
+function thisModuleHref(): string | undefined {
+  try {
+    const href = (0, eval)("import.meta.url") as unknown;
+    return typeof href === "string" && href.length > 0 ? href : undefined;
+  } catch {
+    return undefined;
+  }
 }
