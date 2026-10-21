@@ -175,7 +175,7 @@ await weather.expect().isolatedFrom(barge);
 
 ## Testing interruptions / barge-in
 
-A client cancel is a typed Call field (`clientAborted`, `abortPhase`), not only `normalized.client_aborted`. Older proxies still populate `clientAborted` from that nested alias. `abortPhase` is `before_headers` | `after_headers` and is **omitted** when the call is not aborted (a close after `[DONE]` / a terminal Responses event is not an abort). Bundled proxy 0.3.0 may still omit the top-level phase.
+A client cancel is a typed Call field (`clientAborted`, `abortPhase`), not only `normalized.client_aborted`. Older proxies still populate `clientAborted` from that nested alias. `abortPhase` is `before_headers` | `after_headers` and is **omitted** when the call is not aborted (a close after `[DONE]` / a terminal Responses event is not an abort).
 
 ```ts
 const controller = new AbortController();
