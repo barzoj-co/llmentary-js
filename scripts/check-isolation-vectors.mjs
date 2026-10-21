@@ -127,15 +127,20 @@ if (ENV_DIR) {
   }
   remote = await jsonFiles(ENV_DIR);
   remoteLabel = ENV_DIR;
-} else if (await exists(DEFAULT_PROXY_DIR)) {
-  remote = await jsonFiles(DEFAULT_PROXY_DIR);
-  remoteLabel = DEFAULT_PROXY_DIR;
 } else {
   try {
     const fetched = await fetchProxyVectors();
-    if (fetched.skip) skip(fetched.skip, Object.keys(local).length);
-    remote = fetched.files;
-    remoteLabel = `${PROXY_REPO}@${PROXY_REF}:${PROXY_PATH}`;
+    if (fetched.skip) {
+      // 404/403 must never fall through to a stale cache and look like a match.
+      if (/^HTTP 40[34]\b/.test(fetched.skip) || !(await exists(DEFAULT_PROXY_DIR))) {
+        skip(fetched.skip, Object.keys(local).length);
+      }
+      remote = await jsonFiles(DEFAULT_PROXY_DIR);
+      remoteLabel = DEFAULT_PROXY_DIR;
+    } else {
+      remote = fetched.files;
+      remoteLabel = `${PROXY_REPO}@${PROXY_REF}:${PROXY_PATH}`;
+    }
   } catch (error) {
     console.error(`isolation vectors: failed to fetch proxy copy (${error instanceof Error ? error.message : error})`);
     process.exit(1);

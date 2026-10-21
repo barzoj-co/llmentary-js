@@ -83,7 +83,7 @@ jobs:
             if [ -x "${LLMENTARY_BIN:-}" ]; then
               npm run test:coverage
             else
-              npm run test:unit -- --coverage
+              npm run test:unit:coverage
             fi
             npm run test:jest:unit
           else

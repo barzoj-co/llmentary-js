@@ -33,7 +33,7 @@ function side(raw: JsonObject, ...keys: string[]): { id: string; calls: JsonValu
   for (const key of keys) {
     const value = asObject(raw[key]);
     if (Object.keys(value).length === 0) continue;
-    const calls = value.calls;
+    const calls = value.calls ?? value.records ?? value.requests ?? value.traces;
     const idKey = `${key}_id`;
     const idAlias = raw[idKey];
     const id =
