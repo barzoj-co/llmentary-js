@@ -158,6 +158,63 @@ describe("spec validation accessors", () => {
     expect(summary).toMatch(/spec=1 violation/);
     expect(summary).toMatch(/spec=not checked/);
   });
+
+  it("labels request-only validation and omits http=0 from abort summaries", () => {
+    const requestOnly = normalizeCallRecord({
+      id: "call_1",
+      api_family: "openai.chat",
+      http_status: 401,
+      request: { model: "gpt-4.1-mini" },
+      normalized: {
+        validation: { request_checked: true, response_checked: false },
+        spec_violations: [],
+      },
+    });
+    expect(specStatusForRecord(requestOnly)).toBe("request_only");
+    expect(requestOnly.httpStatus).toBe(401);
+
+    const both = normalizeCallRecord({
+      normalized: {
+        validation: { request_checked: true, response_checked: true },
+        spec_violations: [],
+      },
+    });
+    expect(specStatusForRecord(both)).toBe("clean");
+
+    const skipped = normalizeCallRecord({
+      normalized: { validation: { skipped_reason: "no_spec" } },
+    });
+    expect(specStatusForRecord(skipped)).toBe("skipped:no_spec");
+
+    const abort = normalizeCallRecord({
+      id: "call_a",
+      api_family: "openai.chat",
+      http_status: 0,
+      client_aborted: true,
+      request: { model: "gpt-4.1-mini" },
+      normalized: {
+        finish_reason: "cancelled",
+        validation: { request_checked: true, response_checked: false },
+        spec_violations: [],
+      },
+    });
+    expect(abort.httpStatus).toBeUndefined();
+    expect(specStatusForRecord(abort)).toBe("request_only");
+    const summary = formatTraceSummary(normalizeSessionTrace("s1", { id: "s1", calls: [requestOnly.raw, abort.raw] }));
+    expect(summary).toMatch(/spec=request_only/);
+    expect(summary).toMatch(/http=401/);
+    expect(summary).not.toMatch(/http=0/);
+
+    const zeroThen401 = normalizeCallRecord({
+      id: "call_z",
+      api_family: "openai.chat",
+      http_status: 0,
+      error: { status: 401, type: "invalid_request_error" },
+      request: { model: "gpt-4.1-mini" },
+    });
+    expect(zeroThen401.httpStatus).toBe(401);
+    expect(formatTraceSummary(normalizeSessionTrace("s2", { id: "s2", calls: [zeroThen401.raw] }))).toMatch(/http=401/);
+  });
 });
 
 function scopeFor(trace: SessionTrace, query?: QueryOptions): AssertionScope {

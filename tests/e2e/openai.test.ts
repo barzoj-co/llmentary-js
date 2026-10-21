@@ -319,6 +319,60 @@ describe("OpenAI E2E through llmentary", () => {
       await authLm.cleanup();
     });
 
+    it("summarizes 401 and abort calls as spec=request_only without http=0", async () => {
+      const authLm = newSession(proxy);
+      const authClient = new OpenAI(authLm.openAI());
+      await expectHttpError(
+        () =>
+          authClient.chat.completions.create(
+            {
+              model: TEXT_MODEL,
+              temperature: 0,
+              max_tokens: 8,
+              messages: [{ role: "user", content: "ping" }],
+            },
+            { headers: { Authorization: "Bearer sk-invalid-ltl-js-2" } },
+          ),
+        401,
+      );
+      const authTrace = await authLm.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
+      const authSummary = formatTraceSummary(authTrace);
+      expect(authSummary).toMatch(/spec=request_only/);
+      expect(authSummary).toMatch(/http=401/);
+      expect(authSummary).not.toMatch(/http=0/);
+      await authLm.cleanup();
+
+      const abortLm = newSession(proxy);
+      const abortClient = openaiClient(abortLm);
+      const controller = new AbortController();
+      const pending = abortClient.chat.completions.create(
+        {
+          model: TEXT_MODEL,
+          temperature: 0,
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "Count slowly from 1 to 40 in words." }],
+        },
+        { signal: controller.signal },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      controller.abort();
+      try {
+        const stream = await pending;
+        for await (const chunk of stream) {
+          void chunk;
+        }
+      } catch (error) {
+        if (!controller.signal.aborted && !isAbortError(error)) throw error;
+      }
+      const abortTrace = await abortLm.wait({ minCalls: 1, timeout: 25, quiet: "200ms" });
+      const abortSummary = formatTraceSummary(abortTrace);
+      expect(abortSummary).toMatch(/spec=request_only/);
+      expect(abortSummary).not.toMatch(/http=0/);
+      expect(abortTrace.calls[0]?.httpStatus).toBeUndefined();
+      await abortLm.cleanup();
+    });
+
     it("records a client abort mid-stream and leaves the proxy healthy", async () => {
       const lm = newSession(proxy);
       const client = openaiClient(lm);

@@ -1208,6 +1208,9 @@ export function formatTraceSummary(trace: SessionTrace): string {
     ];
     const reasons = finishReasons(record.response).filter((reason) => reason !== "unknown" && reason !== "-");
     if (reasons.length > 0) parts.push(`finish=${reasons.join(",")}`);
+    if (record.httpStatus !== undefined && record.httpStatus !== 0) {
+      parts.push(`http=${record.httpStatus}`);
+    }
     if (record.sessionSource) parts.push(`src=${record.sessionSource}`);
     const usage = usageNumbers(record);
     if (usage && (usage.prompt !== undefined || usage.completion !== undefined)) {
