@@ -78,6 +78,17 @@ export class AssertionScope {
     });
   }
 
+  /** Opt out of the empty-filter failure on `noErrors()` / `notCalled()`. */
+  allowEmpty(): AssertionScope {
+    return new AssertionScope({
+      control: this.control,
+      sessionId: this.sessionId,
+      query: { ...this.query, allowEmpty: true },
+      defaultWait: this.defaultWait,
+      soft: this.softMode,
+    });
+  }
+
   async toolCalled(name: string, options: ToolCallAssertionOptions = {}): Promise<AssertionResult> {
     return this.evaluate(`expected tool "${name}" to be called`, (trace) => {
       const calls = toolCallsForTrace(trace, this.query).filter((call) => call.name === name);
@@ -94,6 +105,8 @@ export class AssertionScope {
 
   async notCalled(name: string): Promise<AssertionResult> {
     return this.evaluate(`expected tool "${name}" not to be called`, (trace) => {
+      const empty = this.emptyMatchFailure(trace);
+      if (empty) return empty;
       const calls = toolCallsForTrace(trace, this.query).filter((call) => call.name === name);
       return {
         pass: calls.length === 0,
@@ -237,6 +250,8 @@ export class AssertionScope {
 
   async noErrors(): Promise<AssertionResult> {
     return this.evaluate("expected no errors", (trace) => {
+      const empty = this.emptyMatchFailure(trace);
+      if (empty) return empty;
       const errors = recordsForTrace(trace, this.query).filter((record) => record.error !== undefined);
       return { pass: errors.length === 0, message: `expected no errors, saw ${errors.length}` };
     });
@@ -302,17 +317,13 @@ export class AssertionScope {
   }
 
   async callCount(expected: number): Promise<AssertionResult> {
-    return this.evaluate(
-      `expected ${expected} recorded call(s)`,
-      (trace) => {
-        const records = recordsForTrace(trace, this.query);
-        return {
-          pass: records.length === expected,
-          message: `expected ${expected} recorded call(s), got ${records.length}`,
-        };
-      },
-      { allowEmptyMatch: true },
-    );
+    return this.evaluate(`expected ${expected} recorded call(s)`, (trace) => {
+      const records = recordsForTrace(trace, this.query);
+      return {
+        pass: records.length === expected,
+        message: `expected ${expected} recorded call(s), got ${records.length}`,
+      };
+    });
   }
 
   async streamed(expected = true): Promise<AssertionResult> {
@@ -567,10 +578,21 @@ export class AssertionScope {
     });
   }
 
+  private emptyMatchFailure(trace: SessionTrace): { pass: false; message: string } | undefined {
+    if (this.query.allowEmpty) return undefined;
+    if (recordsForTrace(trace, this.query).length > 0) return undefined;
+    if (hasQueryFilter(this.query)) {
+      return { pass: false, message: formatEmptyFilterMessage(this.query) };
+    }
+    if (trace.calls.length === 0) {
+      return { pass: false, message: "no calls recorded" };
+    }
+    return undefined;
+  }
+
   private async evaluate(
     defaultMessage: string,
     predicate: (trace: SessionTrace) => { pass: boolean; message?: string } | Promise<{ pass: boolean; message?: string }>,
-    options: { allowEmptyMatch?: boolean } = {},
   ): Promise<AssertionResult> {
     let trace: SessionTrace;
     try {
@@ -581,30 +603,12 @@ export class AssertionScope {
       }
       throw error;
     }
-    if (!options.allowEmptyMatch && !this.query.allowEmpty) {
-      const matched = recordsForTrace(trace, this.query);
-      if (matched.length === 0) {
-        if (trace.calls.length === 0) {
-          return this.failZeroCalls(trace, defaultMessage);
-        }
-        if (hasQueryFilter(this.query)) {
-          return this.failEmptyFilter(trace);
-        }
-      }
-    }
     const result = await predicate(trace);
     const message = result.message ?? defaultMessage;
     if (result.pass) return this.finish({ pass: true, message, trace });
     if (trace.calls.length === 0) {
       return this.failZeroCalls(trace, message);
     }
-    const error = new SessionAssertionError(message, trace);
-    if (this.softMode) return this.finish({ pass: false, message, trace, error });
-    throw error;
-  }
-
-  private failEmptyFilter(trace: SessionTrace): AssertionResult {
-    const message = formatEmptyFilterMessage(this.query, trace.calls.length);
     const error = new SessionAssertionError(message, trace);
     if (this.softMode) return this.finish({ pass: false, message, trace, error });
     throw error;
@@ -1092,8 +1096,8 @@ function hasRawPayload(record: CallRecord): boolean {
   return Boolean(stringAt(raw, "raw_request") || stringAt(raw, "raw_response"));
 }
 
-export function formatEmptyFilterMessage(query: QueryOptions, sessionCallCount: number): string {
-  return `no calls matched query (${describeQueryFilters(query)}); session has ${sessionCallCount} calls`;
+export function formatEmptyFilterMessage(query: QueryOptions): string {
+  return `no calls matched query (${describeQueryFilters(query)})`;
 }
 
 export function hasQueryFilter(query: QueryOptions): boolean {

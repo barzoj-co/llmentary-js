@@ -1146,7 +1146,7 @@ describe("OpenAI E2E through llmentary", () => {
       await expect(lm.expect({ since: mark }).noErrors()).rejects.toThrow(/no calls matched query \(since=/);
       await expect(lm.expect({ since: mark }).notCalled("lookup_weather")).rejects.toThrow(/no calls matched query/);
       await lm.expect().callCount(1);
-      await lm.expect({ since: mark, allowEmpty: true }).noErrors();
+      await lm.expect({ since: mark }).allowEmpty().noErrors();
       await lm.cleanup();
     });
 

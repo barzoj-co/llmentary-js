@@ -132,24 +132,26 @@ describe("offersTool / withoutTools / since", () => {
     expect(filtered.since(1)[0]?.promptText).toMatch(/SEED_X|need tools|sunny/);
   });
 
-  it("fails noErrors and notCalled on empty filters unless allowEmpty", async () => {
+  it("fails noErrors and notCalled on empty filters unless allowEmpty()", async () => {
     const last = trace.calls.length;
     await expect(scopeFor(trace, { withoutTools: true, offersTool: "missing" }).soft().noErrors()).resolves.toMatchObject({
       pass: false,
     });
-    await expect(scopeFor(trace, { offersTool: "missing" }).noErrors()).rejects.toThrow(/no calls matched query/);
+    await expect(scopeFor(trace, { offersTool: "missing" }).noErrors()).rejects.toThrow(
+      /no calls matched query \(offersTool=missing\)/,
+    );
     await expect(scopeFor(trace, { offersTool: "missing" }).notCalled("x")).rejects.toThrow(
-      /no calls matched query \(offersTool=missing\); session has 3 calls/,
+      /^no calls matched query \(offersTool=missing\)/,
     );
     await expect(scopeFor(trace, { since: last }).noErrors()).rejects.toThrow(/no calls matched query \(since=3\)/);
-    await expect(scopeFor(trace, { since: last, allowEmpty: true }).noErrors()).resolves.toMatchObject({ pass: true });
-    await expect(scopeFor(trace, { since: last, allowEmpty: true }).notCalled("x")).resolves.toMatchObject({
+    await expect(scopeFor(trace, { since: last }).allowEmpty().noErrors()).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace, { since: last }).allowEmpty().notCalled("x")).resolves.toMatchObject({
       pass: true,
     });
     await expect(scopeFor(trace, { since: last }).callCount(0)).resolves.toMatchObject({ pass: true });
     await expect(scopeFor(trace, { withoutTools: true }).noErrors()).resolves.toMatchObject({ pass: true });
-    expect(formatEmptyFilterMessage({ withoutTools: true, since: 3 }, 8)).toBe(
-      "no calls matched query (withoutTools, since=3); session has 8 calls",
+    expect(formatEmptyFilterMessage({ withoutTools: true, since: 3 })).toBe(
+      "no calls matched query (withoutTools, since=3)",
     );
   });
 });

@@ -78,7 +78,14 @@ lm.query({}).since(mark).expect();
 
 ### Filters and empty traces
 
-A filtered or `since` expectation that matches **zero** calls fails on the first assertion (`noErrors()`, `notCalled()`, …) with `no calls matched query (withoutTools, since=3); session has 8 calls` plus the trace summary. That stops "the router had no errors" from going green when the router never ran. Opt out with `{ allowEmpty: true }` when the test really expects zero matching calls. `callCount(0)` still states an explicit empty count and does not need the opt-out. Unfiltered `expect()` on a session with zero calls still fails with `no calls recorded for session …` (DOG-2).
+A filtered or `since` expectation that matches **zero** calls fails `noErrors()` / `notCalled()` with `no calls matched query (withoutTools, since=3)` plus the trace summary. That stops "the router had no errors" from going green when the router never ran. Opt out with `allowEmpty()` (Go `AllowEmpty()`):
+
+```ts
+lm.query({}).since(mark).allowEmpty().expect().noErrors();
+lm.expect({ since: mark }).allowEmpty().notCalled("lookup_weather");
+```
+
+`callCount(0)` still states an explicit empty count and does not need the opt-out. Unfiltered `expect()` on a session with zero calls still fails with `no calls recorded for session …` (DOG-2).
 
 `apiType` values mirror the Go client scoping:
 

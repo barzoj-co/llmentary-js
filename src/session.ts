@@ -156,6 +156,11 @@ export class SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, since: mark });
   }
 
+  /** Opt out of the empty-filter failure on `noErrors()` / `notCalled()`. */
+  allowEmpty(): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, allowEmpty: true });
+  }
+
   expect(query?: QueryOptions): AssertionScope {
     return new AssertionScope({
       control: this.session.control,

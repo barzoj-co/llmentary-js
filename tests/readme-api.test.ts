@@ -56,6 +56,8 @@ describe("README public API snippets", () => {
     expect(typeof lm.mark).toBe("function");
     expect(typeof lm.query({}).offersTool).toBe("function");
     expect(typeof lm.query({}).withoutTools).toBe("function");
+    expect(typeof lm.query({}).allowEmpty).toBe("function");
+    expect(typeof lm.expect().allowEmpty).toBe("function");
     expect(typeof lm.expect().finalResponseMentionsAny).toBe("function");
     expect(typeof lm.expect().toolResultInPrompt).toBe("function");
     expect(typeof lm.expect().soft().check).toBe("function");

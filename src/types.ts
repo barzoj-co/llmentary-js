@@ -33,8 +33,9 @@ export interface QueryOptions {
   /** Keep calls after this mark (0-based seq / call count from `mark()`). */
   since?: SessionMark;
   /**
-   * Allow `noErrors()` / `notCalled()` (and other empty-match assertions) to pass
-   * when the filter matches zero calls. Default is to fail with "no calls matched query".
+   * Allow `noErrors()` / `notCalled()` to pass when the filter matches zero calls.
+   * Prefer `allowEmpty()` on the query or expectation. Default is to fail with
+   * `no calls matched query (<filters>)`.
    */
   allowEmpty?: boolean;
 }
