@@ -291,6 +291,21 @@ describe("AssertionScope", () => {
         }),
       ).aborted(),
     ).resolves.toMatchObject({ pass: true });
+    await expect(
+      scopeFor(
+        normalizeSessionTrace("abort", {
+          id: "abort",
+          calls: [
+            {
+              id: "call_a",
+              client_aborted: true,
+              abort_phase: "before_headers",
+              normalized: { finish_reason: "cancelled" },
+            },
+          ],
+        }),
+      ).finishReason(/cancelled/i),
+    ).resolves.toMatchObject({ pass: true });
     const abortOnly = normalizeSessionTrace("abort-only", {
       id: "abort-only",
       calls: [{ id: "call_a", client_aborted: true, abort_phase: "before_headers" }],

@@ -235,7 +235,7 @@ export class AssertionScope {
 
   async finishReason(expected: string | RegExp): Promise<AssertionResult> {
     return this.evaluate(`expected finish reason ${String(expected)}`, (trace) => {
-      const reasons = recordsForTrace(trace, this.query).flatMap((record) => finishReasons(record.response));
+      const reasons = recordsForTrace(trace, this.query).flatMap((record) => finishReasonsForRecord(record));
       const pass = reasons.some((reason) => (expected instanceof RegExp ? expected.test(reason) : reason === expected));
       return { pass, message: `expected finish reason ${String(expected)}, saw ${reasons.join(", ") || "<none>"}` };
     });
@@ -883,6 +883,10 @@ function finishReasons(value: JsonValue | undefined): string[] {
   return [...new Set(reasons)];
 }
 
+function finishReasonsForRecord(record: CallRecord): string[] {
+  return [...new Set([...finishReasons(record.response), ...finishReasons(valueAt(asObject(record.raw), "normalized"))])];
+}
+
 function usageNumbers(record: CallRecord): { prompt?: number; completion?: number; total?: number } | undefined {
   const usage = record.usage ?? objectAt(asObject(record.response), "usage");
   if (!usage) return undefined;
@@ -1221,7 +1225,7 @@ export function formatTraceSummary(trace: SessionTrace): string {
       `model=${record.model ?? "unknown"}`,
       `tools=${tools.join(",") || "-"}`,
     ];
-    const reasons = finishReasons(record.response).filter((reason) => reason !== "unknown" && reason !== "-");
+    const reasons = finishReasonsForRecord(record).filter((reason) => reason !== "unknown" && reason !== "-");
     if (reasons.length > 0) parts.push(`finish=${reasons.join(",")}`);
     if (record.httpStatus !== undefined && record.httpStatus !== 0) {
       parts.push(`http=${record.httpStatus}`);
