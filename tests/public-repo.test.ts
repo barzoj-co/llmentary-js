@@ -40,8 +40,10 @@ describe("public GitHub Releases — no private-repo token crutch", () => {
     };
     expect(config["bump-minor-pre-major"]).toBe(false);
     expect(config["bump-patch-for-minor-pre-major"]).toBe(true);
-    expect(config.packages["."]["bump-minor-pre-major"]).toBe(false);
-    expect(config.packages["."]["bump-patch-for-minor-pre-major"]).toBe(true);
+    const root = config.packages["."];
+    expect(root).toBeDefined();
+    expect(root?.["bump-minor-pre-major"]).toBe(false);
+    expect(root?.["bump-patch-for-minor-pre-major"]).toBe(true);
   });
 
   it("does not require LLMTESTLAB_REPO_TOKEN anywhere in workflows or installers", () => {
