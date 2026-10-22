@@ -1,5 +1,5 @@
 import { firstNonEmpty } from "./env.js";
-import type { WaitOptions } from "./types.js";
+import type { InFlightCall, WaitOptions } from "./types.js";
 
 export const DEFAULT_WAIT_TIMEOUT_MS = 30_000;
 export const DEFAULT_WAIT_QUIET_MS = 500;
@@ -132,13 +132,28 @@ export function mergeWaitOptions(base: WaitOptions, override: WaitOptions = {}):
   return merged;
 }
 
+export function formatInFlightCall(call: InFlightCall): string {
+  const parts = [
+    call.method,
+    call.path,
+    call.phase,
+    call.httpStatus !== undefined ? String(call.httpStatus) : undefined,
+  ].filter((part): part is string => Boolean(part));
+  return parts.join(" ");
+}
+
 export function formatWaitTimeoutError(
   sessionId: string,
   timeout: string,
   calls: number,
   stillActive: number,
+  inFlight: readonly InFlightCall[] = [],
 ): string {
-  return `wait timed out after ${timeout} on session ${sessionId} (${calls} calls so far, still active: ${stillActive}). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.`;
+  const listed = inFlight.map(formatInFlightCall).filter(Boolean).join("; ");
+  const active = listed
+    ? `still active: ${stillActive} [${listed}]`
+    : `still active: ${stillActive}`;
+  return `wait timed out after ${timeout} on session ${sessionId} (${calls} calls so far, ${active}). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.`;
 }
 
 export class WaitTimeoutError extends Error {
@@ -146,14 +161,22 @@ export class WaitTimeoutError extends Error {
   readonly timeout: string;
   readonly calls: number;
   readonly stillActive: number;
+  readonly inFlight: readonly InFlightCall[];
 
-  constructor(sessionId: string, timeout: string, calls: number, stillActive: number) {
-    super(formatWaitTimeoutError(sessionId, timeout, calls, stillActive));
+  constructor(
+    sessionId: string,
+    timeout: string,
+    calls: number,
+    stillActive: number,
+    inFlight: readonly InFlightCall[] = [],
+  ) {
+    super(formatWaitTimeoutError(sessionId, timeout, calls, stillActive, inFlight));
     this.name = "WaitTimeoutError";
     this.sessionId = sessionId;
     this.timeout = timeout;
     this.calls = calls;
     this.stillActive = stillActive;
+    this.inFlight = inFlight;
   }
 }
 

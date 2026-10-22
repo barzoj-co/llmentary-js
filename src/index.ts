@@ -32,12 +32,14 @@ export {
   normalizeSessionList,
   parseControlBody,
   parseControlError,
+  parseInFlightCalls,
 } from "./control.js";
-export type { ControlClientOptions, ControlFetch } from "./control.js";
+export type { ControlClientOptions, ControlErrorBody, ControlFetch } from "./control.js";
 export {
   DEFAULT_WAIT_QUIET_MS,
   DEFAULT_WAIT_TIMEOUT_MS,
   formatGoDurationMs,
+  formatInFlightCall,
   formatWaitTimeoutError,
   parseWaitDuration,
   parseWaitDurationMs,
@@ -72,6 +74,8 @@ export type {
   CallRecord,
   IsolatedFromOptions,
   IgnoredField,
+  InFlightCall,
+  InFlightPhase,
   JsonObject,
   JsonPrimitive,
   JsonSchemaAssertionOptions,

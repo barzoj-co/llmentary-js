@@ -19,6 +19,7 @@
 
 ### Bug Fixes
 
+* list in-flight calls on `WaitTimeoutError` from a 504 `wait_timeout` (DOG-38)
 * compare served and packaged OpenAPI with the proxy stamp-then-sha256 check (DOG-44)
 * fail `isolatedFrom` on an empty or unknown other session unless `allowEmpty` (DOG-32)
 * treat every new user-role message on a later call as introduced (DOG-33)

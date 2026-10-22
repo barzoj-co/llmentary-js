@@ -3,6 +3,24 @@ export type ApiType = "chat_completions" | "responses" | (string & {});
 /** `before_headers` | `after_headers`. Omitted when the call is not aborted. */
 export type AbortPhase = "before_headers" | "after_headers";
 
+/** In-flight wait snapshot. `http_status` is present after upstream headers. */
+export type InFlightPhase = "awaiting_headers" | "streaming" | (string & {});
+
+/** Settled-only `calls` omit these; they appear on `error.in_flight` / `include=in_flight`. */
+export interface InFlightCall {
+  callId?: string;
+  seq?: number;
+  method?: string;
+  path?: string;
+  apiFamily?: string;
+  upstream?: string;
+  startedAt?: string;
+  elapsedMs?: number;
+  phase?: InFlightPhase;
+  bytesReceived?: number;
+  httpStatus?: number;
+}
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };

@@ -127,6 +127,8 @@ A wait timeout is an error:
 
 `wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`
 
+When the proxy 504 includes `error.active` / `error.in_flight`, the client uses those instead of guessing from settled `calls` (which omit in-flight records). The message then lists the still-running calls, for example `still active: 1 [POST /v1/responses awaiting_headers]` or `still active: 1 [POST /v1/chat/completions streaming 200]`. An older proxy without those fields keeps the count-only fallback.
+
 `wait` on a session that was never created (or was `DELETE`d) is not a 200 empty trace:
 
 | `minCalls` | Never-created session | Client error |

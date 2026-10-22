@@ -1,5 +1,6 @@
 import type {
   CallRecord,
+  InFlightCall,
   JsonValue,
   ListSessionsOptions,
   ProxyConfig,
@@ -76,16 +77,13 @@ export class ControlClient {
     } catch (error) {
       if (error instanceof ControlApiError && error.status === 504) {
         const stats = await this.waitTimeoutStats(sessionId, error.body);
-        throw new WaitTimeoutError(sessionId, resolved.timeout, stats.calls, stats.stillActive);
+        throw new WaitTimeoutError(sessionId, resolved.timeout, stats.calls, stats.stillActive, stats.inFlight);
       }
       throw error;
     }
   }
 
-  private async waitTimeoutStats(
-    sessionId: string,
-    body: string,
-  ): Promise<{ calls: number; stillActive: number }> {
+  private async waitTimeoutStats(sessionId: string, body: string): Promise<WaitTimeoutStats> {
     const fromBody = trySessionCounts(sessionId, body);
     if (fromBody) return fromBody;
     return sessionCounts(await this.getSession(sessionId));
@@ -225,7 +223,16 @@ export function formatEmptySessionMessage(
   return `${rewritten.replace(/;?\s*$/, "")}; ${list}`;
 }
 
-export function parseControlError(text: string): { type?: string; message?: string; callsSeen?: number; minCalls?: number } | undefined {
+export interface ControlErrorBody {
+  type?: string;
+  message?: string;
+  callsSeen?: number;
+  minCalls?: number;
+  active?: number;
+  inFlight?: InFlightCall[];
+}
+
+export function parseControlError(text: string): ControlErrorBody | undefined {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{")) return undefined;
   try {
@@ -236,16 +243,59 @@ export function parseControlError(text: string): { type?: string; message?: stri
     const message = stringAt(error, "message");
     const callsSeen = numberAt(error, "calls_seen") ?? numberAt(error, "callsSeen");
     const minCalls = numberAt(error, "min_calls") ?? numberAt(error, "minCalls");
-    if (!type && !message && callsSeen === undefined) return undefined;
+    const active = numberAt(error, "active") ?? numberAt(error, "Active");
+    const inFlight = parseInFlightCalls(valueAt(error, "in_flight") ?? valueAt(error, "inFlight"));
+    if (!type && !message && callsSeen === undefined && active === undefined && inFlight === undefined) {
+      return undefined;
+    }
     return {
       ...(type ? { type } : {}),
       ...(message ? { message } : {}),
       ...(callsSeen !== undefined ? { callsSeen } : {}),
       ...(minCalls !== undefined ? { minCalls } : {}),
+      ...(active !== undefined ? { active } : {}),
+      ...(inFlight !== undefined ? { inFlight } : {}),
     };
   } catch {
     return undefined;
   }
+}
+
+export function parseInFlightCalls(raw: JsonValue | undefined): InFlightCall[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw
+    .map((value) => parseInFlightCall(value))
+    .filter((call): call is InFlightCall => call !== undefined);
+}
+
+function parseInFlightCall(raw: JsonValue): InFlightCall | undefined {
+  const object = asObject(raw);
+  const callId = stringAt(object, "call_id") ?? stringAt(object, "callId") ?? stringAt(object, "id");
+  const method = stringAt(object, "method");
+  const path = stringAt(object, "path");
+  const phase = stringAt(object, "phase");
+  if (!callId && !method && !path && !phase) return undefined;
+  const seq = numberAt(object, "seq");
+  const apiFamily =
+    stringAt(object, "api_family") ?? stringAt(object, "apiFamily") ?? stringAt(object, "api_type");
+  const upstream = stringAt(object, "upstream");
+  const startedAt = stringAt(object, "started_at") ?? stringAt(object, "startedAt");
+  const elapsedMs = numberAt(object, "elapsed_ms") ?? numberAt(object, "elapsedMs");
+  const bytesReceived = numberAt(object, "bytes_received") ?? numberAt(object, "bytesReceived");
+  const httpStatus = numberAt(object, "http_status") ?? numberAt(object, "httpStatus");
+  return {
+    ...(callId ? { callId } : {}),
+    ...(seq !== undefined ? { seq } : {}),
+    ...(method ? { method } : {}),
+    ...(path ? { path } : {}),
+    ...(apiFamily ? { apiFamily } : {}),
+    ...(upstream ? { upstream } : {}),
+    ...(startedAt ? { startedAt } : {}),
+    ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+    ...(phase ? { phase } : {}),
+    ...(bytesReceived !== undefined ? { bytesReceived } : {}),
+    ...(httpStatus !== undefined ? { httpStatus } : {}),
+  };
 }
 
 export function normalizeSessionList(raw: JsonValue): SessionSummary[] {
@@ -312,7 +362,13 @@ function sessionLookupId(path: string): string | undefined {
   }
 }
 
-function trySessionCounts(sessionId: string, text: string): { calls: number; stillActive: number } | undefined {
+interface WaitTimeoutStats {
+  calls: number;
+  stillActive: number;
+  inFlight: InFlightCall[];
+}
+
+function trySessionCounts(sessionId: string, text: string): WaitTimeoutStats | undefined {
   const trimmed = text.trim();
   if (!trimmed.startsWith("{")) return undefined;
   try {
@@ -322,18 +378,30 @@ function trySessionCounts(sessionId: string, text: string): { calls: number; sti
     const hasCalls = ["calls", "records", "requests", "traces"].some((key) =>
       Array.isArray((parsed as Record<string, unknown>)[key]),
     );
-    if (hasCalls) return sessionCounts(normalizeSessionTrace(sessionId, parsed));
-    if (error?.callsSeen !== undefined) return { calls: error.callsSeen, stillActive: 0 };
-    return undefined;
+    const settled = hasCalls ? sessionCounts(normalizeSessionTrace(sessionId, parsed)) : undefined;
+    const inFlight = error?.inFlight;
+    const stillActive =
+      error?.active ??
+      (inFlight !== undefined ? inFlight.length : undefined) ??
+      settled?.stillActive ??
+      (error?.callsSeen !== undefined ? 0 : undefined);
+    const calls = error?.callsSeen ?? settled?.calls;
+    if (calls === undefined && stillActive === undefined) return undefined;
+    return {
+      calls: calls ?? 0,
+      stillActive: stillActive ?? 0,
+      inFlight: inFlight ?? [],
+    };
   } catch {
     return undefined;
   }
 }
 
-function sessionCounts(trace: SessionTrace): { calls: number; stillActive: number } {
+function sessionCounts(trace: SessionTrace): WaitTimeoutStats {
   return {
     calls: trace.calls.length,
     stillActive: trace.calls.filter((call) => isActiveCall(call)).length,
+    inFlight: [],
   };
 }
 
