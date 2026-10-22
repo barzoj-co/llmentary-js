@@ -1070,16 +1070,23 @@ describe("OpenAI E2E through llmentary", () => {
 
   describe("shared", () => {
     it("proxies GET /v1/models and records the raw passthrough", async () => {
-      const lm = newSession(proxy);
-      const response = await lm.fetch(`${lm.baseURL}/models`, {
-        headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}` },
+      await retryNetwork(async () => {
+        const lm = newSession(proxy);
+        try {
+          const response = await lm.fetch(`${lm.baseURL}/models`, {
+            headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}` },
+          });
+          if (!response.ok) {
+            throw new Error(`GET /v1/models failed: ${response.status} overloaded`);
+          }
+          const body = (await response.json()) as { data?: unknown };
+          expect(Array.isArray(body.data)).toBe(true);
+          await lm.expect().callCount(1);
+          await lm.expect().rawRecorded();
+        } finally {
+          await lm.cleanup();
+        }
       });
-      expect(response.ok).toBe(true);
-      const body = (await response.json()) as { data?: unknown };
-      expect(Array.isArray(body.data)).toBe(true);
-      await lm.expect().callCount(1);
-      await lm.expect().rawRecorded();
-      await lm.cleanup();
     });
 
     it("uses the default upstream with no client setting", async () => {
