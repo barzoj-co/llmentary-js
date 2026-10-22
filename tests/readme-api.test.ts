@@ -26,6 +26,8 @@ describe("README public API snippets", () => {
     expect(readme).toContain("withoutTools");
     expect(readme).toContain("since");
     expect(readme).toContain("callCount");
+    expect(readme).toContain("committed");
+    expect(readme).toContain("excludeAborted");
     expect(readme).toContain("allowEmpty");
     expect(readme).toContain("isolatedFrom");
     expect(readme).toContain("expectNoCalls");
@@ -77,6 +79,8 @@ describe("README public API snippets", () => {
     expect(typeof lm.query({}).offersTool).toBe("function");
     expect(typeof lm.query({}).withoutTools).toBe("function");
     expect(typeof lm.query({}).allowEmpty).toBe("function");
+    expect(typeof lm.query({}).committed).toBe("function");
+    expect(typeof lm.query({}).aborted).toBe("function");
     expect(typeof lm.expect().allowEmpty).toBe("function");
     expect(typeof lm.expect().isolatedFrom).toBe("function");
     expect(typeof lm.expect().expectNoCalls).toBe("function");

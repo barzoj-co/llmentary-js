@@ -177,6 +177,16 @@ export class SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, allowEmpty: true });
   }
 
+  /** Keep calls that are not `clientAborted` (DOG-50). */
+  committed(): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, committed: true });
+  }
+
+  /** Keep only `clientAborted` calls (DOG-50). */
+  aborted(): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, aborted: true });
+  }
+
   expect(query?: QueryOptions): AssertionScope {
     return new AssertionScope({
       control: this.session.control,

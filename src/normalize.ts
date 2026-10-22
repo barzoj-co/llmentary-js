@@ -437,7 +437,7 @@ function firstArrayAt(objects: Array<JsonObject | undefined>, keys: string[]): J
 function parseSpecViolation(raw: JsonValue): SpecViolation {
   const object = asObject(raw);
   const out: SpecViolation = { raw };
-  const side = stringAt(object, "side");
+  const side = stringAt(object, "context") ?? stringAt(object, "side");
   const source = stringAt(object, "source");
   const path = stringAt(object, "path");
   const pointer = stringAt(object, "pointer");
@@ -467,7 +467,7 @@ function parseSpecViolation(raw: JsonValue): SpecViolation {
 function parseIgnoredField(raw: JsonValue): IgnoredField {
   const object = asObject(raw);
   const out: IgnoredField = { raw };
-  const side = stringAt(object, "side");
+  const side = stringAt(object, "context") ?? stringAt(object, "side");
   const path = stringAt(object, "path");
   const pointer = stringAt(object, "pointer");
   const kind = stringAt(object, "kind");

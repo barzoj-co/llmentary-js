@@ -5,6 +5,7 @@ import type {
   JsonValue,
   ListSessionsOptions,
   ProxyConfig,
+  SessionSpecSummary,
   SessionSummary,
   SessionTrace,
   WaitOptions,
@@ -304,6 +305,7 @@ export function normalizeSessionSummary(raw: JsonValue): SessionSummary | undefi
     numberAt(object, "ignored_field_count") ??
     numberAt(object, "ignoredFieldCount") ??
     numberAt(object, "IgnoredFieldCount");
+  const spec = parseSessionSpec(valueAt(object, "spec") ?? valueAt(object, "Spec"));
   return {
     id,
     calls: numberAt(object, "calls") ?? numberAt(object, "Calls") ?? 0,
@@ -313,7 +315,36 @@ export function normalizeSessionSummary(raw: JsonValue): SessionSummary | undefi
     ...(lastEndedAt ? { lastEndedAt } : {}),
     ...(specViolationCount !== undefined ? { specViolationCount } : {}),
     ...(ignoredFieldCount !== undefined ? { ignoredFieldCount } : {}),
+    ...(spec ? { spec } : {}),
     raw,
+  };
+}
+
+function parseSessionSpec(raw: JsonValue | undefined): SessionSpecSummary | undefined {
+  if (raw === undefined || raw === null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const object = asObject(raw);
+  const checked = numberAt(object, "checked") ?? numberAt(object, "Checked");
+  const clean = numberAt(object, "clean") ?? numberAt(object, "Clean");
+  const findings = numberAt(object, "findings") ?? numberAt(object, "Findings");
+  const requestOnly =
+    numberAt(object, "request_only") ?? numberAt(object, "requestOnly") ?? numberAt(object, "RequestOnly");
+  const notChecked =
+    numberAt(object, "not_checked") ?? numberAt(object, "notChecked") ?? numberAt(object, "NotChecked");
+  if (
+    checked === undefined &&
+    clean === undefined &&
+    findings === undefined &&
+    requestOnly === undefined &&
+    notChecked === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    checked: checked ?? 0,
+    clean: clean ?? 0,
+    findings: findings ?? 0,
+    requestOnly: requestOnly ?? 0,
+    notChecked: notChecked ?? 0,
   };
 }
 

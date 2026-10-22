@@ -1,7 +1,14 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { AssertionScope, formatTraceSummary } from "../src/assertions.js";
+import { AssertionScope, findingSide, formatTraceSummary } from "../src/assertions.js";
 import { normalizeCallRecord, normalizeSessionTrace, specStatusForRecord } from "../src/normalize.js";
-import type { QueryOptions, SessionTrace } from "../src/types.js";
+import type { JsonValue, QueryOptions, SessionTrace } from "../src/types.js";
+
+const CONTEXT_ONLY = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "testdata/spec/ignored-fields-context-only.json"), "utf8"),
+) as JsonValue;
 
 /** Sample live run: validation metadata is not a violation. */
 const SAMPLE_CLEAN_RUN = {
@@ -200,6 +207,72 @@ describe("spec validation accessors", () => {
     await expect(
       scopeFor(normalizeSessionTrace("s1", { id: "s1", calls: [SAMPLE_CLEAN_RUN] })).noIgnoredFields(),
     ).resolves.toMatchObject({ pass: true });
+  });
+
+  it("fails request-side noIgnoredFields when the proxy writes context instead of side (DOG-45)", async () => {
+    const contextOnly = normalizeSessionTrace("dog-45-context-only", CONTEXT_ONLY);
+    expect(contextOnly.ignoredFields()[0]?.side).toBe("request");
+    expect(findingSide(contextOnly.ignoredFields()[0]!)).toBe("request");
+
+    const failed = await scopeFor(contextOnly).soft().noIgnoredFields({ side: "request" });
+    expect(failed.pass).toBe(false);
+    expect(failed.message).toMatch(/^1 openai.chat request \/provider: vendor extra — vendor_field$/);
+
+    await expect(scopeFor(contextOnly).noIgnoredFields({ side: "response" })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(contextOnly).soft().noIgnoredFields()).resolves.toMatchObject({ pass: false });
+  });
+
+  it("filters ignored fields and spec violations by context, side, or both (DOG-45)", async () => {
+    const variants = {
+      "side only": { side: "request", path: "foo", pointer: "/foo", kind: "vendor_field", message: "extra" },
+      "context only": { context: "request", path: "foo", pointer: "/foo", kind: "vendor_field", message: "extra" },
+      both: {
+        side: "request",
+        context: "request",
+        path: "foo",
+        pointer: "/foo",
+        kind: "vendor_field",
+        message: "extra",
+      },
+      neither: { path: "foo", pointer: "/foo", kind: "vendor_field", message: "extra" },
+    } as const;
+
+    for (const [label, field] of Object.entries(variants)) {
+      const ignored = normalizeSessionTrace("s1", {
+        id: "s1",
+        calls: [
+          {
+            api_family: "openai.chat",
+            normalized: {
+              validation: { mode: "warn", request_checked: true, response_checked: true },
+              spec_violations: [],
+              ignored_fields: [field],
+            },
+          },
+        ],
+      });
+      const request = await scopeFor(ignored).soft().noIgnoredFields({ side: "request" });
+      expect(request.pass, label).toBe(false);
+      expect(request.message, label).toMatch(label === "neither" ? / unknown / : / request /);
+      const response = await scopeFor(ignored).soft().noIgnoredFields({ side: "response" });
+      expect(response.pass, `${label} response`).toBe(label !== "neither");
+
+      const violation = normalizeSessionTrace("s1", {
+        id: "s1",
+        calls: [
+          {
+            api_family: "openai.chat",
+            normalized: {
+              validation: { mode: "warn", request_checked: true, response_checked: true },
+              spec_violations: [{ ...field, keyword: "unevaluatedProperties" }],
+            },
+          },
+        ],
+      });
+      const specRequest = await scopeFor(violation).soft().noSpecViolations({ side: "request" });
+      expect(specRequest.pass, `violation ${label}`).toBe(false);
+      expect(specRequest.message, `violation ${label}`).toMatch(label === "neither" ? / unknown / : / request /);
+    }
   });
 
   it("includes spec status on the generated trace summary", () => {

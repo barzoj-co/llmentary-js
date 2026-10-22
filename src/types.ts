@@ -72,6 +72,15 @@ export interface QueryOptions {
    * `no calls matched query (<filters>)` (filtered).
    */
   allowEmpty?: boolean;
+  /** Keep calls that are not `clientAborted` (DOG-50). */
+  committed?: boolean;
+  /** Keep only `clientAborted` calls (DOG-50). */
+  aborted?: boolean;
+}
+
+export interface CallCountOptions {
+  /** Count calls that are not `clientAborted` (DOG-50). */
+  excludeAborted?: boolean;
 }
 
 export interface SessionOptions {
@@ -150,6 +159,7 @@ export interface SpecViolation {
 }
 
 export interface IgnoredField {
+  /** Effective side: wire `context`, then `side`. Public field is still `side`. */
   side?: string;
   path?: string;
   pointer?: string;
@@ -256,6 +266,15 @@ export interface SessionTrace {
   since(mark: SessionMark): CallRecord[];
 }
 
+/** OpenAPI 0.5.0 `SessionSummary.spec` (`GET /sessions[].spec`). */
+export interface SessionSpecSummary {
+  checked: number;
+  clean: number;
+  findings: number;
+  requestOnly: number;
+  notChecked: number;
+}
+
 export interface SessionSummary {
   id: string;
   calls: number;
@@ -266,6 +285,8 @@ export interface SessionSummary {
   /** Session spec counters from proxy DOG-38 (`spec_violation_count` / `SpecViolationCount`). */
   specViolationCount?: number;
   ignoredFieldCount?: number;
+  /** Typed `GET /sessions[].spec` (DOG-51). */
+  spec?: SessionSpecSummary;
   raw: JsonValue;
 }
 

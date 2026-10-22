@@ -91,6 +91,38 @@ describe("normalizeSessionList", () => {
       }),
     ]);
   });
+
+  it("exposes GET /sessions[].spec (DOG-51)", () => {
+    const rows = normalizeSessionList({
+      sessions: [
+        {
+          id: "sess-spec",
+          calls: 4,
+          active: 0,
+          spec: { checked: 3, clean: 1, findings: 1, request_only: 1, not_checked: 1 },
+        },
+        {
+          Id: "sess-pascal",
+          Calls: 1,
+          Spec: { Checked: 1, Clean: 1, Findings: 0, RequestOnly: 0, NotChecked: 0 },
+        },
+        { id: "sess-empty-spec", calls: 0, spec: {} },
+        { id: "sess-none", calls: 0 },
+      ],
+    });
+    expect(rows[0]).toMatchObject({
+      id: "sess-spec",
+      spec: { checked: 3, clean: 1, findings: 1, requestOnly: 1, notChecked: 1 },
+    });
+    expect(rows[1]).toMatchObject({
+      id: "sess-pascal",
+      spec: { checked: 1, clean: 1, findings: 0, requestOnly: 0, notChecked: 0 },
+    });
+    expect(rows[2]).toMatchObject({ id: "sess-empty-spec" });
+    expect(rows[2]).not.toHaveProperty("spec");
+    expect(rows[3]).toMatchObject({ id: "sess-none" });
+    expect(rows[3]).not.toHaveProperty("spec");
+  });
 });
 
 describe("parseControlBody", () => {

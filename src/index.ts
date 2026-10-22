@@ -2,6 +2,7 @@ export {
   SessionAssertionError,
   AssertionScope,
   formatEmptyFilterMessage,
+  findingSide,
   formatTraceSummary,
   isolationCheck,
 } from "./assertions.js";
@@ -71,6 +72,7 @@ export type {
   BinaryDownloadOptions,
   BinaryResolutionOptions,
   Bounds,
+  CallCountOptions,
   CallRecord,
   GetSessionOptions,
   IsolatedFromOptions,
@@ -91,6 +93,7 @@ export type {
   SessionMark,
   SessionGlobals,
   SessionOptions,
+  SessionSpecSummary,
   SessionSummary,
   SessionTrace,
   SpecAssertionOptions,
