@@ -147,6 +147,32 @@ describe("binary release asset matching", () => {
     expect(pin).toMatch(/^v\d+\.\d+\.\d+$/);
   });
 
+  it("locks every optional platform package so npm ci can resolve them", () => {
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+      optionalDependencies: Record<string, string>;
+    };
+    const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")) as {
+      packages: Record<string, { version?: string; resolved?: string; integrity?: string }>;
+    };
+    const optional = pkg.optionalDependencies;
+    expect(Object.keys(optional).sort()).toEqual([
+      "@llmentary/darwin-arm64",
+      "@llmentary/darwin-x64",
+      "@llmentary/linux-arm64",
+      "@llmentary/linux-x64",
+      "@llmentary/win32-x64",
+    ]);
+    for (const [name, expected] of Object.entries(optional)) {
+      expect(expected, name).toBe(version);
+      const entry = lock.packages[`node_modules/${name}`];
+      expect(entry, `Missing: ${name}@${expected} from lock file`).toBeDefined();
+      expect(entry?.version, name).toBe(expected);
+      const tarball = `${name.split("/")[1]}-${expected}.tgz`;
+      expect(entry?.resolved, name).toMatch(new RegExp(`/${tarball.replace(/\./g, "\\.")}$`));
+      expect(entry?.integrity, name).toMatch(/^sha512-/);
+    }
+  });
+
   it("keeps installer self-test, pack example, and current-pin docs on PROXY_VERSION", () => {
     const installer = readFileSync(join(root, "scripts/install-proxy.sh"), "utf8");
     const packer = readFileSync(join(root, "scripts/pack-platform-binaries.mjs"), "utf8");
