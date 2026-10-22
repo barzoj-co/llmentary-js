@@ -99,6 +99,11 @@ describe("stamp-then-sha256 (DOG-44 / proxy #60)", () => {
     expect(packagedMatchesServed(yaml, yaml.replace(" # x-release-please-version", ""))).toBe(false);
   });
 
+  it("does not consume the next line after a bare hash on the version line", () => {
+    const yaml = "info:\n  version: 1 #\nx-release-please-version\n";
+    expect(stampOpenAPI(yaml)).toBe(yaml);
+  });
+
   it("stamps a tab-indented version line and a CRLF terminator", () => {
     expect(stampOpenAPI("\tversion: 0.4.1\t# x-release-please-version\r\n")).toBe("\tversion: 0.4.1\n");
     expect(packagedMatchesServed("  version: 0.4.1 # x-release-please-version\r\n", "  version: 0.4.1\n")).toBe(true);

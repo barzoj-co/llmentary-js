@@ -8,7 +8,7 @@ import { thisModuleHref } from "./module-href.js";
 const CONTRACT_NAME = "openapi.yaml";
 
 /** Release-please leaves this on the on-disk `info.version` line; serve stamps it off. */
-const RELEASE_PLEASE_VERSION_COMMENT = /^([ \t]*version:[ \t]*\S+)[ \t]+#\s*x-release-please-version[ \t]*\r?$/gm;
+const RELEASE_PLEASE_VERSION_COMMENT = /^([ \t]*version:[ \t]*\S+)[ \t]+#[ \t]*x-release-please-version[ \t]*\r?$/gm;
 
 /**
  * Apply the same serve-time stamp the proxy uses on `GET /openapi.yaml`

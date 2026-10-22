@@ -10,7 +10,6 @@ import OpenAI from "openai";
 import {
   ControlClient,
   SessionNotFound,
-  contractPath,
   llmentary,
   openapiSha256,
   packagedMatchesServed,
@@ -54,9 +53,9 @@ describe("real Go proxy with fake upstream", () => {
 
   it("matches GET /openapi.yaml to the packaged contract after stamp-then-sha256", async () => {
     const bin = process.env.LLMENTARY_BIN!;
-    const packagedPath =
-      contractPath() ??
-      [join(dirname(bin), "openapi.yaml"), join(dirname(bin), "..", "openapi.yaml")].find((path) => existsSync(path));
+    const packagedPath = [join(dirname(bin), "openapi.yaml"), join(dirname(bin), "..", "openapi.yaml")].find((path) =>
+      existsSync(path),
+    );
     expect(packagedPath).toBeDefined();
     const packaged = readFileSync(packagedPath!, "utf8");
     const client = new ControlClient({
