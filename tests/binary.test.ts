@@ -137,6 +137,24 @@ exit 1
   return { result, args };
 }
 
+/** Published @llmentary/*@0.5.0 dist.integrity from registry.npmjs.org. */
+const PUBLISHED_PLATFORM_INTEGRITY: Record<string, string> = {
+  "@llmentary/darwin-arm64":
+    "sha512-leH3rYpszm8eNe0A3oiwHIEWvElrrjkg7by1zR2kw5+fcjtfEHfXzJv8aeSSP0ZlHsiMeaKEq2GGcP4Fx6e6Ag==",
+  "@llmentary/darwin-x64":
+    "sha512-/bFjuNNtTgu95xNLtSajU+74xK/2i4Jc5kKWvzES9cmEe98VPvwFGPS0lzMtQZNh+My7pjlCOiH9yF0DY3cT7Q==",
+  "@llmentary/linux-arm64":
+    "sha512-uOT0d7Ir1e1gwNnKsE+UbYESB+d9Am8CSyCdcBqRXzoZV3Yj3LJQhO+YXGdQyZJoWhxFKJ4Yc9PXt/8NdqVykA==",
+  "@llmentary/linux-x64":
+    "sha512-eC3CWg1zwlpQbMDg3nJNQkhMHQbikUYE175m9IwYLLqtGr2Zvxs/Hw0SZQllqeJ48LVqqeXZHMX1ZxRZIhXMuA==",
+  "@llmentary/win32-x64":
+    "sha512-jNjZmGtVfcxQzKfObE0yyWr1u7+xDjuK0++fUMSQQ1lKzLxMlCS2BAP91RKlvpEKx0M6YDPeXJ3WqZfJgpvnFA==",
+};
+
+function assertPublishedPlatformIntegrity(integrity: string | undefined, name: string): void {
+  expect(integrity, name).toBe(PUBLISHED_PLATFORM_INTEGRITY[name]);
+}
+
 describe("binary release asset matching", () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const pin = readFileSync(join(root, "PROXY_VERSION"), "utf8").trim();
@@ -145,6 +163,41 @@ describe("binary release asset matching", () => {
   it("pins PROXY_VERSION to v0.5.0", () => {
     expect(pin).toBe("v0.5.0");
     expect(pin).toMatch(/^v\d+\.\d+\.\d+$/);
+  });
+
+  it("locks every optional platform package so npm ci can resolve them", () => {
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+      optionalDependencies: Record<string, string>;
+    };
+    const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")) as {
+      packages: Record<string, { version?: string; resolved?: string; integrity?: string }>;
+    };
+    const optional = pkg.optionalDependencies;
+    expect(Object.keys(optional).sort()).toEqual([
+      "@llmentary/darwin-arm64",
+      "@llmentary/darwin-x64",
+      "@llmentary/linux-arm64",
+      "@llmentary/linux-x64",
+      "@llmentary/win32-x64",
+    ]);
+    expect(Object.keys(PUBLISHED_PLATFORM_INTEGRITY).sort()).toEqual(Object.keys(optional).sort());
+    for (const [name, expected] of Object.entries(optional)) {
+      expect(expected, name).toBe(version);
+      const entry = lock.packages[`node_modules/${name}`];
+      expect(entry, `Missing: ${name}@${expected} from lock file`).toBeDefined();
+      expect(entry?.version, name).toBe(expected);
+      const tarball = `${name.slice(name.indexOf("/") + 1)}-${expected}.tgz`;
+      expect(entry?.resolved, name).toBe(`https://registry.npmjs.org/${name}/-/${tarball}`);
+      assertPublishedPlatformIntegrity(entry?.integrity, name);
+    }
+  });
+
+  it("rejects a lockfile integrity that does not match the published digest", () => {
+    const mismatched = "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+    expect(mismatched).toMatch(/^sha512-/);
+    expect(() => {
+      assertPublishedPlatformIntegrity(mismatched, "@llmentary/linux-x64");
+    }).toThrowError(/expected.*sha512-/is);
   });
 
   it("keeps installer self-test, pack example, and current-pin docs on PROXY_VERSION", () => {

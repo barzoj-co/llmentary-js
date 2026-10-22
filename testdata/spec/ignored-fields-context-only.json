@@ -1,0 +1,27 @@
+{
+  "id": "dog-45-context-only",
+  "comment": "Proxy v0.5.0 writes ignored_fields.context and omits side. A request-side assertion must fail.",
+  "calls": [
+    {
+      "id": "call_1",
+      "api_family": "openai.chat",
+      "normalized": {
+        "validation": {
+          "mode": "warn",
+          "request_checked": true,
+          "response_checked": true
+        },
+        "spec_violations": [],
+        "ignored_fields": [
+          {
+            "context": "request",
+            "path": "provider",
+            "pointer": "/provider",
+            "kind": "vendor_field",
+            "message": "vendor extra"
+          }
+        ]
+      }
+    }
+  ]
+}

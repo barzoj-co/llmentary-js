@@ -25,6 +25,7 @@ import type {
   JsonSchemaAssertionOptions,
   JsonValue,
   NormalizedToolCall,
+  CallCountOptions,
   QueryOptions,
   SessionTrace,
   SpecAssertionOptions,
@@ -344,12 +345,15 @@ export class AssertionScope {
     return this.responseJsonValid({ schema });
   }
 
-  async callCount(expected: number): Promise<AssertionResult> {
-    return this.evaluate(`expected ${expected} recorded call(s)`, (trace) => {
-      const records = recordsForTrace(trace, this.query);
+  async callCount(expected: number, options: CallCountOptions = {}): Promise<AssertionResult> {
+    const noun = options.excludeAborted ? "committed call(s)" : "recorded call(s)";
+    return this.evaluate(`expected ${expected} ${noun}`, (trace) => {
+      const records = recordsForTrace(trace, this.query).filter(
+        (record) => !options.excludeAborted || record.clientAborted !== true,
+      );
       return {
         pass: records.length === expected,
-        message: `expected ${expected} recorded call(s), got ${records.length}`,
+        message: `expected ${expected} ${noun}, got ${records.length}`,
       };
     });
   }
@@ -733,6 +737,8 @@ export function recordsForTrace(trace: SessionTrace, query: QueryOptions = {}): 
     const offered = offeredToolNames(record);
     if (query.offersTool && !offered.includes(query.offersTool)) return false;
     if (query.withoutTools && offered.length > 0) return false;
+    if (query.committed === true && record.clientAborted === true) return false;
+    if (query.aborted === true && record.clientAborted !== true) return false;
     return true;
   });
   if (query.index === undefined) return records;
@@ -1197,7 +1203,9 @@ export function hasQueryFilter(query: QueryOptions): boolean {
     query.offersTool !== undefined ||
     query.apiType !== undefined ||
     query.model !== undefined ||
-    query.index !== undefined
+    query.index !== undefined ||
+    query.committed === true ||
+    query.aborted === true
   );
 }
 
@@ -1209,6 +1217,8 @@ function describeQueryFilters(query: QueryOptions): string {
   if (query.apiType) parts.push(`apiType=${query.apiType}`);
   if (query.model) parts.push(`model=${String(query.model)}`);
   if (query.index !== undefined) parts.push(`index=${query.index}`);
+  if (query.committed) parts.push("committed");
+  if (query.aborted) parts.push("aborted");
   return parts.join(", ") || "empty";
 }
 
@@ -1457,10 +1467,20 @@ function selectRecordsForSpec(
 }
 
 function includeFinding(item: SpecViolation | IgnoredField, options: SpecAssertionOptions): boolean {
-  if (options.side && item.side !== options.side) return false;
+  if (options.side) {
+    const side = findingSide(item);
+    // Missing side/context matches every filter (fail closed, DOG-45).
+    if (side && side !== options.side) return false;
+  }
   if (options.ignorePaths?.some((path) => findingMatchesPath(item, path))) return false;
   if (options.ignoreKeywords?.some((keyword) => "keyword" in item && item.keyword === keyword)) return false;
   return true;
+}
+
+/** Wire `context` first (proxy v0.5.0), then `side`. Empty strings are absent. */
+export function findingSide(item: SpecViolation | IgnoredField): string | undefined {
+  const raw = asObject(item.raw);
+  return stringAt(raw, "context") || item.side || stringAt(raw, "side") || undefined;
 }
 
 function findingMatchesPath(item: SpecViolation | IgnoredField, ignore: string): boolean {
@@ -1475,7 +1495,7 @@ function findingMatchesPath(item: SpecViolation | IgnoredField, ignore: string):
 
 function formatContractFinding(callNumber: number, record: CallRecord, item: SpecViolation | IgnoredField): string {
   const family = record.apiFamily ?? record.apiType ?? "unknown";
-  const side = item.side ?? "unknown";
+  const side = findingSide(item) ?? "unknown";
   const path = item.pointer || item.path || "-";
   const message = item.message ?? "";
   const hint = ("keyword" in item && item.keyword) || ("kind" in item && item.kind) || "spec";

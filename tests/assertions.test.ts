@@ -320,6 +320,38 @@ describe("AssertionScope", () => {
     expect((await scope.soft().callCount(2)).message).toMatch(/got 1/);
   });
 
+  it("counts committed calls and can exclude client-aborted leftovers (DOG-50)", async () => {
+    const trace = normalizeSessionTrace("mix", {
+      id: "mix",
+      calls: [
+        { id: "call_1", request: { model: "m" }, normalized: { output_text: "ok" } },
+        { id: "call_2", client_aborted: true, abort_phase: "before_headers" },
+        { id: "call_3", request: { model: "m" }, normalized: { output_text: "ok" } },
+      ],
+    });
+    await expect(scopeFor(trace).callCount(3)).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace).callCount(2, { excludeAborted: true })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace).soft().callCount(3, { excludeAborted: true })).resolves.toMatchObject({
+      pass: false,
+      message: "expected 3 committed call(s), got 2",
+    });
+    await expect(scopeFor(trace, { committed: true }).callCount(2)).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace, { aborted: true }).callCount(1)).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace, { committed: true }).soft().noErrors()).resolves.toMatchObject({ pass: true });
+    const both = await scopeFor(trace, { aborted: true, committed: true }).soft().noErrors();
+    expect(both.pass).toBe(false);
+    expect(both.message).toMatch(/no calls matched query \(committed, aborted\)/);
+    const afterHeaders = normalizeSessionTrace("http200", {
+      id: "http200",
+      calls: [
+        { id: "call_ok", http_status: 200, normalized: { output_text: "ok" } },
+        { id: "call_barge", http_status: 200, client_aborted: true, abort_phase: "after_headers" },
+      ],
+    });
+    await expect(scopeFor(afterHeaders).callCount(1, { excludeAborted: true })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(afterHeaders, { aborted: true }).aborted()).resolves.toMatchObject({ pass: true });
+  });
+
   it("parses usage details, error fields, incomplete traces, and raw recording", async () => {
     const ok = normalizeSessionTrace("s1", {
       id: "s1",

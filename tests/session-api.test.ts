@@ -51,13 +51,22 @@ describe("session query and client helpers", () => {
       sessionId: "s1",
       fetch: fetchImpl,
     });
-    const query = lm.query({ model: "gpt-4.1-mini" }).offersTool("lookup").withoutTools().since(1).allowEmpty();
+    const query = lm
+      .query({ model: "gpt-4.1-mini" })
+      .offersTool("lookup")
+      .withoutTools()
+      .since(1)
+      .allowEmpty()
+      .committed()
+      .aborted();
     expect(query.queryOptions).toMatchObject({
       model: "gpt-4.1-mini",
       offersTool: "lookup",
       withoutTools: true,
       since: 1,
       allowEmpty: true,
+      committed: true,
+      aborted: true,
     });
     expect(query.expect()).toBeInstanceOf(AssertionScope);
     expect(query.softExpect()).toBeInstanceOf(AssertionScope);

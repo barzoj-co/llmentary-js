@@ -70,6 +70,8 @@ lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect();
 lm.query({ index: 1 }).expect();
 lm.query({}).offersTool("lookup_weather").expect();
 lm.query({}).withoutTools().expect();
+lm.query({}).committed().expect().callCount(2);
+await lm.expect().callCount(2, { excludeAborted: true });
 const mark = await lm.mark();
 lm.expect({ since: mark });
 lm.query({}).since(mark).expect();
@@ -147,7 +149,7 @@ await lm.expect().toolResultInPrompt("lookup_weather");
 
 `mentionsAny(text, candidates, { normalizeNumbers, casefold })` is a plain function for answers that come from the app API rather than the trace. Numeric candidates match as whole numbers (`20` does not match `2025`). `finalResponseMentionsAny` runs the same check on the last recorded assistant `output_text` (honours `since`); it does not scan response metadata. `toolResultInPrompt(name, expected?)` requires the **next** request after that tool call to include that call's result content (matching `id`). Pass `expected` (string or `RegExp`) to match the result text. Stronger than `toolResultFedBack`, which only checks that some later request has a tool-role / `function_call_output` message with a matching id.
 
-`noSpecViolations` / `noIgnoredFields` read `normalized.validation`, `normalized.spec_violations`, and `normalized.ignored_fields`. An empty `[]` is clean; a missing field means validation was not run (failure unless `allowUnvalidated: true`). Options: `side`, `calls` (0-based indices or call ids), `ignorePaths`, `ignoreKeywords`. Failure lines look like `<call#> <api_family> <side> <path>: <message> — <hint>`. Vitest/Jest matchers: `toHaveNoSpecViolations()`, `toHaveNoIgnoredFields()`. Per-call accessors are `call.validation`, `call.specViolations`, `call.ignoredFields`; the trace has `trace.specViolations()` / `trace.ignoredFields()`. Each line of the generated summary includes `spec=clean` (0 findings after validation ran; this is not a guarantee that both request and response were checked), `spec=request_only` (request checked and response not checked), `spec=N violation(s)`, `spec=not checked`, or `spec=skipped:<reason>` (singular `spec=1 violation`). `http=` is omitted when the status is 0 or absent (before-headers abort). `call.httpStatus` is `undefined` for 0.
+`noSpecViolations` / `noIgnoredFields` read `normalized.validation`, `normalized.spec_violations`, and `normalized.ignored_fields`. An empty `[]` is clean; a missing field means validation was not run (failure unless `allowUnvalidated: true`). Options: `side`, `calls` (0-based indices or call ids), `ignorePaths`, `ignoreKeywords`. Side filters read wire `context` first, then `side` (proxy v0.5.0 writes `context` only). An entry with neither is included (fail closed), not skipped. Failure lines look like `<call#> <api_family> <side> <path>: <message> — <hint>`. Vitest/Jest matchers: `toHaveNoSpecViolations()`, `toHaveNoIgnoredFields()`. Per-call accessors are `call.validation`, `call.specViolations`, `call.ignoredFields`; the trace has `trace.specViolations()` / `trace.ignoredFields()`. Each line of the generated summary includes `spec=clean` (0 findings after validation ran; this is not a guarantee that both request and response were checked), `spec=request_only` (request checked and response not checked), `spec=N violation(s)`, `spec=not checked`, or `spec=skipped:<reason>` (singular `spec=1 violation`). `http=` is omitted when the status is 0 or absent (before-headers abort). `call.httpStatus` is `undefined` for 0. `callCount(n, { excludeAborted: true })` and `query({}).committed()` count settled calls and ignore `clientAborted` leftovers. `GET /sessions` rows expose typed `spec` (`checked` / `clean` / `findings` / `requestOnly` / `notChecked`).
 
 | Field | Meaning |
 |---|---|
@@ -259,7 +261,7 @@ const control = new ControlClient({ controlUrl: "http://127.0.0.1:4011" });
 await control.health();
 await control.getConfig(); // version, specTargets, upstream timeouts
 await control.getSession("session-id", { include: "in_flight" }); // settled calls + in_flight
-await control.listSessions();
+await control.listSessions(); // rows include spec { checked, clean, findings, requestOnly, notChecked }
 await control.wait("session-id", { timeout: 30, quiet: 0.5, minCalls: 2 });
 // timeoutMs / idleMs still work (deprecated aliases of timeout / quiet)
 await control.wait("session-id", { timeoutMs: 5_000, idleMs: 100 });
