@@ -38,7 +38,7 @@ version already exists on the registry), then the root `llmentary` tarball,
 all with `--access public`. Each `npm publish` must pass an explicit local
 path (`./dist/*.tgz` or `$(realpath ...)`); npm 11 treats a bare `dist/*.tgz`
 as a GitHub shorthand. Provenance is generated automatically by npm
-trusted publishing once the repo is public.
+trusted publishing.
 
 ## One-time manual setup
 

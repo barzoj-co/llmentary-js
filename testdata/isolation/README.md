@@ -25,6 +25,7 @@ Vendored copy of the proxy's `testdata/isolation` from
 
 `scripts/check-isolation-vectors.mjs` diffs this directory against that proxy
 path. Set `LLMENTARY_ISOLATION_VECTORS_DIR` to a checkout of
-`testdata/isolation`, or `GH_TOKEN` to fetch
-`barzoj-co/llmentary@main:testdata/isolation`.
+`testdata/isolation`, or let the script fetch
+`barzoj-co/llmentary@main:testdata/isolation` anonymously (`GH_TOKEN` /
+`GITHUB_TOKEN` are optional, for API rate limits only).
 A configured-but-missing directory fails the check.

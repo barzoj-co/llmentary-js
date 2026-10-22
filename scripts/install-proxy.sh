@@ -63,6 +63,136 @@ file_sha256() {
   fi
 }
 
+# Optional. Public releases download anonymously; a token only raises API rate limits.
+github_token() {
+  printf '%s' "${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+}
+
+WORK=""
+CURL_GITHUB_HEADER=""
+CURL_PID=""
+
+stop_curl_pid() {
+  local pid="${CURL_PID:-}" child
+  CURL_PID=""
+  [[ -n "$pid" ]] || return 0
+  for child in $(ps -o pid= --ppid "$pid" 2>/dev/null || true); do
+    kill -TERM "$child" 2>/dev/null || true
+  done
+  kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+
+install_proxy_cleanup() {
+  stop_curl_pid
+  if [[ -n "${CURL_GITHUB_HEADER:-}" ]]; then
+    rm -f "$CURL_GITHUB_HEADER"
+    CURL_GITHUB_HEADER=""
+  fi
+  if [[ -n "${WORK:-}" ]]; then
+    rm -rf "$WORK"
+    WORK=""
+  fi
+}
+
+interrupt_install_proxy() {
+  install_proxy_cleanup
+  exit "$1"
+}
+
+register_install_proxy_cleanup() {
+  trap 'install_proxy_cleanup' EXIT
+  trap 'interrupt_install_proxy 130' INT
+  trap 'interrupt_install_proxy 143' TERM
+}
+
+register_install_proxy_cleanup
+
+curl_github() {
+  local url="$1"
+  shift
+  local args=(-fsSL -L -H "User-Agent: llmentary-js-install-proxy")
+  local token header_file="" status=0
+  token="$(github_token)"
+  if [[ -n "$token" ]]; then
+    # Keep the bearer token out of curl's process arguments (ps/argv).
+    # Re-register in this shell so a backgrounded/subshell call still
+    # deletes the header on EXIT/INT/TERM (and before the later WORK trap).
+    register_install_proxy_cleanup
+    header_file="$(mktemp "${TMPDIR:-/tmp}/llmentary-gh-auth.XXXXXX")"
+    CURL_GITHUB_HEADER="$header_file"
+    chmod 0600 "$header_file"
+    printf 'Authorization: Bearer %s\n' "$token" >"$header_file"
+    args+=(-H "@${header_file}")
+  fi
+  if [[ -n "${CURL_GITHUB_HOLD_FILE:-}" && -n "$header_file" ]]; then
+    printf '%s\n' "$header_file" >"$CURL_GITHUB_HOLD_FILE"
+  fi
+  if [[ "${CURL_GITHUB_PRINT_ARGS:-}" == "1" ]]; then
+    printf '%s\n' "${args[@]}" "$@" "$url"
+  else
+    # Background so INT/TERM can fire while curl is blocked, then wait.
+    if command -v setsid >/dev/null 2>&1; then
+      setsid curl "${args[@]}" "$@" "$url" &
+    else
+      curl "${args[@]}" "$@" "$url" &
+    fi
+    CURL_PID=$!
+    wait "$CURL_PID" || status=$?
+    CURL_PID=""
+  fi
+  if [[ -n "$header_file" ]]; then
+    rm -f "$header_file"
+    if [[ "${CURL_GITHUB_HEADER:-}" == "$header_file" ]]; then
+      CURL_GITHUB_HEADER=""
+    fi
+  fi
+  return "$status"
+}
+
+list_release_assets() {
+  local tag="$1"
+  local json
+  json="$(curl_github "https://api.github.com/repos/${REPO}/releases/tags/${tag}" -H "Accept: application/vnd.github+json")" || {
+    echo "could not read public release $tag for $REPO" >&2
+    return 1
+  }
+  if ! command -v node >/dev/null 2>&1; then
+    echo "node is required to parse GitHub release metadata" >&2
+    return 1
+  fi
+  printf '%s' "$json" | node --input-type=commonjs -e '
+    let raw = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      raw += chunk;
+    });
+    process.stdin.on("end", () => {
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        process.stderr.write("release metadata is not JSON\n");
+        process.exit(1);
+      }
+      if (!data || !Array.isArray(data.assets) || data.assets.length === 0) {
+        process.stderr.write("release listed no assets\n");
+        process.exit(1);
+      }
+      for (const asset of data.assets) {
+        if (asset && typeof asset.name === "string" && asset.name) {
+          process.stdout.write(`${asset.name}\n`);
+        }
+      }
+    });
+  '
+}
+
+download_release_asset() {
+  local tag="$1" name="$2" dest="$3"
+  curl_github "https://github.com/${REPO}/releases/download/${tag}/${name}" -o "$dest"
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
 fi
@@ -86,7 +216,7 @@ EOF
 verify_pinned_release_assets() {
   local tag="$1" version="$2"
   local names missing=0 required
-  names="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name')"
+  names="$(list_release_assets "$tag")"
   if [[ -z "$names" ]]; then
     echo "release $tag listed no assets" >&2
     return 1
@@ -142,6 +272,93 @@ if [[ "${1:-}" == "--self-test" ]]; then
   empty="$(mktemp)"
   [[ "$(file_sha256 "$empty")" == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]]
   rm -f "$empty"
+  (
+    unset GH_TOKEN GITHUB_TOKEN
+    [[ -z "$(github_token)" ]]
+  )
+  (
+    unset GITHUB_TOKEN
+    GH_TOKEN="rate-limit-only"
+    [[ "$(github_token)" == "rate-limit-only" ]]
+  )
+  (
+    unset GH_TOKEN
+    GITHUB_TOKEN="fallback-token"
+    [[ "$(github_token)" == "fallback-token" ]]
+  )
+  (
+    unset GITHUB_TOKEN
+    GH_TOKEN="should-not-appear-on-argv"
+    printed="$(CURL_GITHUB_PRINT_ARGS=1 curl_github "https://example.test/x")"
+    [[ "$printed" != *should-not-appear-on-argv* ]]
+    [[ "$printed" == *"-H"*$'\n'"@"* ]] || [[ "$printed" == *"@"* ]]
+  )
+  assert_blocked_curl_stops() {
+    local sig="$1" with_token="$2"
+    local fake_bin hold ready hold_pid header="" start elapsed
+    fake_bin="$(mktemp -d)"
+    hold="$(mktemp)"
+    ready="$(mktemp)"
+    rm -f "$ready"
+    printf '%s\n' '#!/usr/bin/env bash' 'if [[ -n "${CURL_FAKE_READY:-}" ]]; then : >"$CURL_FAKE_READY"; fi' 'exec sleep 30' >"$fake_bin/curl"
+    chmod +x "$fake_bin/curl"
+    (
+      # Background jobs start with SIGINT ignored; restore it so the INT trap runs.
+      trap - INT
+      register_install_proxy_cleanup
+      unset GITHUB_TOKEN
+      if [[ "$with_token" == "1" ]]; then
+        export GH_TOKEN="hold-token"
+        export CURL_GITHUB_HOLD_FILE="$hold"
+      else
+        unset GH_TOKEN
+      fi
+      export CURL_FAKE_READY="$ready"
+      export PATH="$fake_bin:$PATH"
+      curl_github "https://example.test/x"
+    ) &
+    hold_pid=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+      if [[ -f "$ready" ]]; then
+        if [[ "$with_token" != "1" ]]; then
+          break
+        fi
+        header="$(cat "$hold" 2>/dev/null || true)"
+        [[ -n "$header" && -f "$header" ]] && break
+      fi
+      sleep 0.05
+    done
+    if [[ ! -f "$ready" ]]; then
+      kill -TERM "$hold_pid" 2>/dev/null || true
+      wait "$hold_pid" 2>/dev/null || true
+      rm -rf "$fake_bin" "$hold" "$ready"
+      echo "blocking fake curl did not start ($sig token=$with_token)" >&2
+      exit 1
+    fi
+    if [[ "$with_token" == "1" && ( -z "$header" || ! -f "$header" ) ]]; then
+      kill -TERM "$hold_pid" 2>/dev/null || true
+      wait "$hold_pid" 2>/dev/null || true
+      rm -rf "$fake_bin" "$hold" "$ready"
+      echo "header file missing before $sig" >&2
+      exit 1
+    fi
+    start=$SECONDS
+    kill -s "$sig" "$hold_pid" 2>/dev/null || true
+    wait "$hold_pid" 2>/dev/null || true
+    elapsed=$((SECONDS - start))
+    if [[ "$elapsed" -ge 2 ]]; then
+      rm -rf "$fake_bin" "$hold" "$ready"
+      echo "$sig did not stop a blocked curl in time (${elapsed}s token=$with_token)" >&2
+      exit 1
+    fi
+    if [[ "$with_token" == "1" ]]; then
+      [[ ! -f "$header" ]]
+    fi
+    rm -rf "$fake_bin" "$hold" "$ready"
+  }
+  assert_blocked_curl_stops TERM 1
+  assert_blocked_curl_stops INT 1
+  assert_blocked_curl_stops TERM 0
   echo "install-proxy self-test: ok (pin $tag)"
   exit 0
 fi
@@ -156,11 +373,6 @@ fi
 
 if [[ $# -ne 0 ]]; then
   usage
-fi
-
-if ! command -v gh >/dev/null 2>&1; then
-  echo "gh is required to download the llmentary GitHub Release" >&2
-  exit 1
 fi
 
 TAG="$(read_proxy_tag)"
@@ -182,15 +394,10 @@ if [[ "$GOOS" == "windows" ]]; then
 fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/llmentary-proxy.XXXXXX")"
-cleanup() {
-  rm -rf "$WORK"
-}
-trap cleanup EXIT
 
-gh release download "$TAG" --repo "$REPO" --dir "$WORK" \
-  --pattern "checksums.txt" \
-  --pattern "checksums.txt.sigstore.json" \
-  --pattern "$ASSET"
+download_release_asset "$TAG" "checksums.txt" "$WORK/checksums.txt"
+download_release_asset "$TAG" "checksums.txt.sigstore.json" "$WORK/checksums.txt.sigstore.json"
+download_release_asset "$TAG" "$ASSET" "$WORK/$ASSET"
 
 if [[ ! -f "$WORK/$ASSET" ]]; then
   echo "release $TAG did not contain $ASSET" >&2

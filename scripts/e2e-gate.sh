@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Gate CI on live e2e success. Exit 0 only when E2E_RESULT=success.
+# Gate CI on live e2e success. Exit 0 when E2E_RESULT=success, or when a
+# fork PR skipped the live job (no secrets). Same-repo skips still fail.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,9 +20,8 @@ gate() {
   fi
 
   if [[ "$is_fork" == "true" && "$result" == "skipped" ]]; then
-    echo "::error::live e2e did not run; a maintainer must run it"
-    echo "Review the diff, push it to a same-repo branch so live e2e runs there; never use pull_request_target."
-    return 1
+    echo "skipped (fork, no secrets)"
+    return 0
   fi
 
   if [[ "$result" == "skipped" ]]; then
@@ -51,26 +51,33 @@ self_test() {
       failed=1
       return
     fi
+    if [[ -n "$expect_msg" ]] && ! grep -F -q "$expect_msg" <<<"$out"; then
+      echo "self-test: result=${result@Q} event=${event@Q} fork=${fork@Q}: missing expected message ${expect_msg@Q}" >&2
+      echo "$out" >&2
+      failed=1
+      return
+    fi
     if [[ "$expect_code" -ne 0 ]]; then
-      if [[ -z "$expect_msg" ]] || ! grep -F -q "$expect_msg" <<<"$out"; then
-        echo "self-test: result=${result@Q} event=${event@Q} fork=${fork@Q}: missing expected message ${expect_msg@Q}" >&2
-        echo "$out" >&2
-        failed=1
-        return
-      fi
       echo "self-test: result=${result:-<empty>} event=${event} fork=${fork} → ${code} (${expect_msg})"
     else
-      echo "self-test: result=${result} event=${event} fork=${fork} → 0"
+      echo "self-test: result=${result} event=${event} fork=${fork} → 0${expect_msg:+ (${expect_msg})}"
     fi
   }
 
   run_case success pull_request false 0
-  run_case skipped pull_request true 1 "live e2e did not run; a maintainer must run it"
+  run_case success pull_request true 0
+  run_case skipped pull_request true 0 "skipped (fork, no secrets)"
+  run_case skipped pull_request false 1 "live e2e did not run (event=pull_request, result=skipped)"
+  run_case skipped push false 1 "live e2e did not run (event=push, result=skipped)"
   run_case skipped workflow_dispatch false 1 "live e2e did not run (event=workflow_dispatch, result=skipped)"
+  run_case skipped workflow_dispatch true 0 "skipped (fork, no secrets)"
+  run_case failure pull_request true 1 "live e2e did not succeed (result=failure)"
   run_case failure pull_request false 1 "live e2e did not succeed (result=failure)"
   run_case cancelled pull_request false 1 "live e2e did not succeed (result=cancelled)"
   run_case "" pull_request false 1 "live e2e did not succeed (result=)"
   run_case unknown pull_request false 1 "live e2e did not succeed (result=unknown)"
+  run_case skipped "" false 1 "live e2e did not run (event=, result=skipped)"
+  run_case skipped pull_request TRUE 1 "live e2e did not run (event=pull_request, result=skipped)"
 
   if [[ "$failed" -ne 0 ]]; then
     return 1

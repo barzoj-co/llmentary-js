@@ -15,34 +15,126 @@ import {
 } from "../src/binary.js";
 import { formatUpstreamSpec, looksLikeLlmentaryProxy, originForGoUpstream, redactArgs, resolveUpstreamSpec } from "../src/proxy.js";
 
-function runVerifyAssets(assets: string): ReturnType<typeof spawnSync> {
+function runVerifyAssets(
+  assets: string,
+  options: { token?: string; curlExit?: number; body?: string } = {},
+): ReturnType<typeof spawnSync> {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const dir = mkdtempSync(join(tmpdir(), "llmentary-gh-"));
-  const gh = join(dir, "gh");
-  const assetList = join(dir, "assets.txt");
-  writeFileSync(assetList, assets.endsWith("\n") ? assets : `${assets}\n`);
+  const dir = mkdtempSync(join(tmpdir(), "llmentary-curl-"));
+  const curl = join(dir, "curl");
+  const seen = join(dir, "curl-args.txt");
+  const names = assets
+    .split("\n")
+    .map((name) => name.trim())
+    .filter(Boolean);
+  const payload =
+    options.body ??
+    JSON.stringify({
+      assets: names.map((name) => ({ name })),
+    });
+  writeFileSync(join(dir, "release.json"), payload);
   writeFileSync(
-    gh,
+    curl,
     `#!/usr/bin/env bash
 set -euo pipefail
-if [[ "\${1:-}" == "release" && "\${2:-}" == "view" ]]; then
-  cat ${JSON.stringify(assetList)}
+printf '%s\\n' "$*" >> ${JSON.stringify(seen)}
+url=""
+for arg in "$@"; do
+  if [[ "$arg" == http://* || "$arg" == https://* ]]; then
+    url="$arg"
+  fi
+done
+if [[ "\${CURL_EXIT:-0}" != "0" ]]; then
+  exit "\${CURL_EXIT}"
+fi
+if [[ "$url" == *"/releases/tags/"* ]]; then
+  cat ${JSON.stringify(join(dir, "release.json"))}
   exit 0
 fi
-echo "unexpected gh $*" >&2
+echo "unexpected curl $*" >&2
 exit 1
 `,
   );
-  chmodSync(gh, 0o755);
+  chmodSync(curl, 0o755);
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: `${dir}:${process.env.PATH ?? ""}`,
+    CURL_EXIT: options.curlExit ? String(options.curlExit) : "0",
+  };
+  delete env.GH_TOKEN;
+  delete env.GITHUB_TOKEN;
+  delete env.CURL_GITHUB_HOLD_FILE;
+  delete env.CURL_GITHUB_PRINT_ARGS;
+  delete env.CURL_FAKE_READY;
+  if (options.token !== undefined) {
+    env.GH_TOKEN = options.token;
+  }
   try {
     return spawnSync("bash", ["scripts/install-proxy.sh", "--verify-assets"], {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` },
+      env,
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function runVerifyAssetsKeepingLogs(
+  assets: string,
+  options: { token?: string } = {},
+): { result: ReturnType<typeof spawnSync>; args: string } {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const dir = mkdtempSync(join(tmpdir(), "llmentary-curl-log-"));
+  const curl = join(dir, "curl");
+  const seen = join(dir, "curl-args.txt");
+  const names = assets
+    .split("\n")
+    .map((name) => name.trim())
+    .filter(Boolean);
+  writeFileSync(join(dir, "release.json"), JSON.stringify({ assets: names.map((name) => ({ name })) }));
+  writeFileSync(
+    curl,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf 'argv:%s\\n' "$*" >> ${JSON.stringify(seen)}
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "-H" && "$arg" == @* ]]; then
+    printf 'header:%s\\n' "$(cat "\${arg#@}")" >> ${JSON.stringify(seen)}
+  fi
+  prev="$arg"
+done
+url=""
+for arg in "$@"; do
+  if [[ "$arg" == http://* || "$arg" == https://* ]]; then
+    url="$arg"
+  fi
+done
+if [[ "$url" == *"/releases/tags/"* ]]; then
+  cat ${JSON.stringify(join(dir, "release.json"))}
+  exit 0
+fi
+echo "unexpected curl $*" >&2
+exit 1
+`,
+  );
+  chmodSync(curl, 0o755);
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` };
+  delete env.GH_TOKEN;
+  delete env.GITHUB_TOKEN;
+  delete env.CURL_GITHUB_HOLD_FILE;
+  delete env.CURL_GITHUB_PRINT_ARGS;
+  delete env.CURL_FAKE_READY;
+  if (options.token !== undefined) env.GH_TOKEN = options.token;
+  const result = spawnSync("bash", ["scripts/install-proxy.sh", "--verify-assets"], {
+    encoding: "utf8",
+    cwd: root,
+    env,
+  });
+  const args = readFileSync(seen, "utf8");
+  rmSync(dir, { recursive: true, force: true });
+  return { result, args };
 }
 
 describe("binary release asset matching", () => {
@@ -70,6 +162,9 @@ describe("binary release asset matching", () => {
     expect(installer).toContain(`llmentary_${version}_windows_arm64.zip`);
     expect(installer).not.toContain("LLMENTARY_RELEASE_ASSETS");
     expect(packer).toContain(`for example ${pin}`);
+    expect(packer).toContain(`export const BUNDLED_PROXY_TAG = "${pin}"`);
+    expect(packer).toContain("resolveDownloadTag");
+    expect(installer).toContain("assert_blocked_curl_stops");
     expect(binaries).toContain(`currently \`${pin}\``);
     expect(releasing).toContain(`pin is \`${pin}\``);
     expect(readme).toContain(`proxy **${pin}**`);
@@ -98,6 +193,22 @@ describe("binary release asset matching", () => {
     );
     expect(mismatch.status).not.toBe(0);
     expect(mismatch.stderr).toMatch(/PROXY_VERSION must be v0\.4\.1, got v0\.0\.0/);
+  });
+
+  it("install-proxy.sh downloads public releases with curl, not gh", () => {
+    const installer = readFileSync(join(root, "scripts/install-proxy.sh"), "utf8");
+    expect(installer).not.toMatch(/\bgh release\b/);
+    expect(installer).not.toContain("command -v gh");
+    expect(installer).not.toContain("LLMTESTLAB_REPO_TOKEN");
+    expect(installer).toContain("https://github.com/${REPO}/releases/download/");
+    expect(installer).toContain("https://api.github.com/repos/${REPO}/releases/tags/");
+    expect(installer).toContain('args+=(-H "@${header_file}")');
+    expect(installer).not.toContain('args+=(-H "Authorization: Bearer ${token}")');
+    expect(installer).toContain("trap 'interrupt_install_proxy 130' INT");
+    expect(installer).toContain("trap 'interrupt_install_proxy 143' TERM");
+    expect(installer).toContain("stop_curl_pid");
+    expect(installer).toContain("setsid curl");
+    expect(installer).toContain("register_install_proxy_cleanup");
   });
 
   it("verify_pinned_release_assets accepts the six archives plus signed checksums and an SBOM", () => {
@@ -143,6 +254,66 @@ describe("binary release asset matching", () => {
     const result = runVerifyAssets(names.join("\n"));
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(error);
+  });
+
+  it("verify_pinned_release_assets rejects empty, non-JSON, and curl failures", () => {
+    const complete = [
+      "checksums.txt",
+      "checksums.txt.sigstore.json",
+      `llmentary_${version}_linux_amd64.tar.gz`,
+      `llmentary_${version}_linux_arm64.tar.gz`,
+      `llmentary_${version}_darwin_amd64.tar.gz`,
+      `llmentary_${version}_darwin_arm64.tar.gz`,
+      `llmentary_${version}_windows_amd64.zip`,
+      `llmentary_${version}_windows_arm64.zip`,
+      `llmentary_${version}_linux_amd64.tar.gz.sbom.json`,
+    ].join("\n");
+    expect(runVerifyAssets(complete, { body: "{" }).status).not.toBe(0);
+    expect(runVerifyAssets(complete, { body: JSON.stringify({ assets: [] }) }).stderr).toMatch(/listed no assets/);
+    expect(runVerifyAssets(complete, { curlExit: 22 }).status).not.toBe(0);
+  });
+
+  it("verify_pinned_release_assets never invokes gh", () => {
+    const complete = [
+      "checksums.txt",
+      "checksums.txt.sigstore.json",
+      `llmentary_${version}_linux_amd64.tar.gz`,
+      `llmentary_${version}_linux_arm64.tar.gz`,
+      `llmentary_${version}_darwin_amd64.tar.gz`,
+      `llmentary_${version}_darwin_arm64.tar.gz`,
+      `llmentary_${version}_windows_amd64.zip`,
+      `llmentary_${version}_windows_arm64.zip`,
+      `llmentary_${version}_linux_amd64.tar.gz.sbom.json`,
+    ].join("\n");
+    const result = runVerifyAssets(complete);
+    expect(result.status, String(result.stderr)).toBe(0);
+    expect(result.stderr).not.toMatch(/unexpected gh|gh must not be called/);
+  });
+
+  it("sends Authorization only when a rate-limit token is set", () => {
+    const complete = [
+      "checksums.txt",
+      "checksums.txt.sigstore.json",
+      `llmentary_${version}_linux_amd64.tar.gz`,
+      `llmentary_${version}_linux_arm64.tar.gz`,
+      `llmentary_${version}_darwin_amd64.tar.gz`,
+      `llmentary_${version}_darwin_arm64.tar.gz`,
+      `llmentary_${version}_windows_amd64.zip`,
+      `llmentary_${version}_windows_arm64.zip`,
+      `llmentary_${version}_linux_amd64.tar.gz.sbom.json`,
+    ].join("\n");
+    const anonymous = runVerifyAssetsKeepingLogs(complete);
+    expect(anonymous.result.status, String(anonymous.result.stderr)).toBe(0);
+    expect(anonymous.args).not.toMatch(/Authorization:/);
+    const authed = runVerifyAssetsKeepingLogs(complete, { token: "rate-limit-only" });
+    expect(authed.result.status, String(authed.result.stderr)).toBe(0);
+    const argv = authed.args
+      .split("\n")
+      .filter((line) => line.startsWith("argv:"))
+      .join("\n");
+    expect(argv).toMatch(/-H @/);
+    expect(argv).not.toMatch(/rate-limit-only/);
+    expect(authed.args).toMatch(/^header:Authorization: Bearer rate-limit-only$/m);
   });
 
   it("matches GoReleaser-style Linux x64 tarballs", () => {
