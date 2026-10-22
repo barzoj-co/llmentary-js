@@ -236,13 +236,16 @@ describe("real Go proxy with fake upstream", () => {
       }),
     });
     expect(response.ok).toBe(true);
-    await expect(lm.expect().noSpecViolations()).resolves.toMatchObject({ pass: true });
+    await expect(lm.expect().noSpecViolations({ side: "request" })).resolves.toMatchObject({ pass: true });
     const ignored = await lm.expect().soft().noIgnoredFields();
     expect(ignored.pass).toBe(false);
     expect(ignored.message).toMatch(/foo|vendor_field/);
     const trace = await lm.session();
     expect(trace.calls[0]?.validation?.target).toBe("openai-compatible");
-    expect(trace.calls[0]?.ignoredFields?.some((field) => field.kind === "vendor_field")).toBe(true);
+    expect(trace.calls[0]?.ignoredFields?.some((field) => field.kind === "vendor_field" && field.path === "foo")).toBe(
+      true,
+    );
+    expect(trace.calls[0]?.specViolations?.some((violation) => violation.pointer === "/foo")).toBeFalsy();
     await lm.cleanup();
   });
 
@@ -425,6 +428,7 @@ async function handleChat(request: IncomingMessage, response: ServerResponse): P
     JSON.stringify({
       id: "chatcmpl_fake",
       object: "chat.completion",
+      created: 1_700_000_000,
       model: body.model,
       choices: [
         {
@@ -432,6 +436,7 @@ async function handleChat(request: IncomingMessage, response: ServerResponse): P
           finish_reason: "tool_calls",
           message: {
             role: "assistant",
+            content: null,
             tool_calls: [
               {
                 id: "call_fake",
