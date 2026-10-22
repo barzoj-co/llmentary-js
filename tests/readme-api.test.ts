@@ -43,7 +43,7 @@ describe("README public API snippets", () => {
     expect(readme).toContain("GET /openapi.yaml");
     expect(readme).toContain("contractPath");
     expect(readme).not.toContain("github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml");
-    expect(readme).toContain("v0.4.0");
+    expect(readme).toContain("v0.4.1");
   });
 
   it("does not document removed factory or handle names", () => {

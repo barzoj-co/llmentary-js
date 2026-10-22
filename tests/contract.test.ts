@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { contractPath } from "../src/contract.js";
+import { bundledContractForServe, contractPath } from "../src/contract.js";
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -16,6 +16,35 @@ afterEach(() => {
   else process.env.LLMENTARY_OPENAPI_PATH = previousOpenapi;
   if (previousBin === undefined) delete process.env.LLMENTARY_BIN;
   else process.env.LLMENTARY_BIN = previousBin;
+});
+
+describe("bundledContractForServe", () => {
+  it("strips the release-please comment that proxy v0.4.1 stamps off info.version", () => {
+    const bundled = [
+      "openapi: 3.1.0",
+      "info:",
+      "  title: llmentary control API",
+      "  version: 0.4.1 # x-release-please-version",
+      "paths: {}",
+      "",
+    ].join("\n");
+    expect(bundledContractForServe(bundled)).toBe(
+      ["openapi: 3.1.0", "info:", "  title: llmentary control API", "  version: 0.4.1", "paths: {}", ""].join("\n"),
+    );
+  });
+
+  it("leaves a clean stamped document and unrelated comments unchanged", () => {
+    const clean = "openapi: 3.1.0\ninfo:\n  version: 0.4.1\n# keep\n";
+    expect(bundledContractForServe(clean)).toBe(clean);
+    const other = "info:\n  version: 0.4.1 # other-annotation\n";
+    expect(bundledContractForServe(other)).toBe(other);
+  });
+
+  it("does not rewrite a different pin hiding in the release-please comment", () => {
+    const drift = "info:\n  version: 0.4.0 # x-release-please-version\n";
+    expect(bundledContractForServe(drift)).toBe("info:\n  version: 0.4.0\n");
+    expect(bundledContractForServe(drift)).not.toContain("0.4.1");
+  });
 });
 
 describe("contractPath", () => {

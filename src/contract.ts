@@ -7,6 +7,14 @@ import { thisModuleHref } from "./module-href.js";
 const CONTRACT_NAME = "openapi.yaml";
 
 /**
+ * The proxy serves the bundled contract with `info.version` stamped clean
+ * (DOG-37). Proxy v0.4.1 keeps `# x-release-please-version` in the file (#47).
+ */
+export function bundledContractForServe(yaml: string): string {
+  return yaml.replace(/^([ \t]*version:[ \t]*\S+)[ \t]+#\s*x-release-please-version[ \t]*$/m, "$1");
+}
+
+/**
  * Path to the bundled control-API contract, when this install shipped one.
  *
  * Lookup order:

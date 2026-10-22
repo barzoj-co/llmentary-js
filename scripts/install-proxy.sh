@@ -12,7 +12,7 @@ COSIGN_IDENTITY="${COSIGN_IDENTITY:-https://github.com/barzoj-co/llmentary/.gith
 COSIGN_ISSUER="${COSIGN_ISSUER:-https://token.actions.githubusercontent.com}"
 
 usage() {
-  echo "Usage: $0 [--self-test]" >&2
+  echo "Usage: $0 [--self-test|--verify-assets]" >&2
   exit 2
 }
 
@@ -67,11 +67,58 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
 fi
 
+pinned_release_assets() {
+  local version="$1"
+  cat <<EOF
+checksums.txt
+checksums.txt.sigstore.json
+$(proxy_archive_name linux amd64 "$version")
+$(proxy_archive_name linux arm64 "$version")
+$(proxy_archive_name darwin amd64 "$version")
+$(proxy_archive_name darwin arm64 "$version")
+$(proxy_archive_name windows amd64 "$version")
+$(proxy_archive_name windows arm64 "$version")
+EOF
+}
+
+# Fail if the pinned GitHub Release is missing checksums, the Sigstore bundle,
+# any of the six platform archives, or an SBOM. Used by install and --verify-assets.
+verify_pinned_release_assets() {
+  local tag="$1" version="$2"
+  local names missing=0 required
+  names="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name')"
+  if [[ -z "$names" ]]; then
+    echo "release $tag listed no assets" >&2
+    return 1
+  fi
+  while IFS= read -r required; do
+    [[ -n "$required" ]] || continue
+    if ! grep -Fxq "$required" <<<"$names"; then
+      echo "release $tag missing asset $required" >&2
+      missing=1
+    fi
+  done < <(pinned_release_assets "$version")
+  if ! grep -qi 'sbom' <<<"$names"; then
+    echo "release $tag has no SBOM assets" >&2
+    missing=1
+  fi
+  # Corner cases: a previous pin's archives, or zip/tarball suffix swapped.
+  if grep -Fxq "llmentary_${version}_windows_amd64.tar.gz" <<<"$names"; then
+    echo "release $tag has windows archive with tar.gz suffix" >&2
+    missing=1
+  fi
+  if grep -Fxq "llmentary_${version}_linux_amd64.zip" <<<"$names"; then
+    echo "release $tag has linux archive with zip suffix" >&2
+    missing=1
+  fi
+  return "$missing"
+}
+
 if [[ "${1:-}" == "--self-test" ]]; then
   tag="$(read_proxy_tag)"
   version="${tag#v}"
-  [[ "$tag" == "v0.4.0" ]] || {
-    echo "PROXY_VERSION must be v0.4.0, got $tag" >&2
+  [[ "$tag" == "v0.4.1" ]] || {
+    echo "PROXY_VERSION must be v0.4.1, got $tag" >&2
     exit 1
   }
   [[ "$(goreleaser_os linux)" == "linux" ]]
@@ -79,14 +126,31 @@ if [[ "${1:-}" == "--self-test" ]]; then
   [[ "$(goreleaser_os win32)" == "windows" ]]
   [[ "$(goreleaser_arch x86_64)" == "amd64" ]]
   [[ "$(goreleaser_arch arm64)" == "arm64" ]]
-  [[ "$(proxy_archive_name linux amd64 "$version")" == "llmentary_0.4.0_linux_amd64.tar.gz" ]]
-  [[ "$(proxy_archive_name darwin arm64 "$version")" == "llmentary_0.4.0_darwin_arm64.tar.gz" ]]
-  [[ "$(proxy_archive_name windows amd64 "$version")" == "llmentary_0.4.0_windows_amd64.zip" ]]
-  [[ "$(proxy_archive_name windows arm64 "$version")" == "llmentary_0.4.0_windows_arm64.zip" ]]
+  [[ "$(proxy_archive_name linux amd64 "$version")" == "llmentary_0.4.1_linux_amd64.tar.gz" ]]
+  [[ "$(proxy_archive_name linux arm64 "$version")" == "llmentary_0.4.1_linux_arm64.tar.gz" ]]
+  [[ "$(proxy_archive_name darwin amd64 "$version")" == "llmentary_0.4.1_darwin_amd64.tar.gz" ]]
+  [[ "$(proxy_archive_name darwin arm64 "$version")" == "llmentary_0.4.1_darwin_arm64.tar.gz" ]]
+  [[ "$(proxy_archive_name windows amd64 "$version")" == "llmentary_0.4.1_windows_amd64.zip" ]]
+  [[ "$(proxy_archive_name windows arm64 "$version")" == "llmentary_0.4.1_windows_arm64.zip" ]]
+  expected_assets="$(pinned_release_assets "$version")"
+  [[ "$(grep -c . <<<"$expected_assets")" == "8" ]]
+  grep -Fxq "checksums.txt" <<<"$expected_assets"
+  grep -Fxq "checksums.txt.sigstore.json" <<<"$expected_assets"
+  grep -Fxq "llmentary_0.4.1_linux_amd64.tar.gz" <<<"$expected_assets"
+  grep -Fxq "llmentary_0.4.1_windows_amd64.zip" <<<"$expected_assets"
+  ! grep -Fxq "llmentary_0.4.0_linux_amd64.tar.gz" <<<"$expected_assets"
   empty="$(mktemp)"
   [[ "$(file_sha256 "$empty")" == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]]
   rm -f "$empty"
   echo "install-proxy self-test: ok (pin $tag)"
+  exit 0
+fi
+
+if [[ "${1:-}" == "--verify-assets" ]]; then
+  tag="$(read_proxy_tag)"
+  version="${tag#v}"
+  verify_pinned_release_assets "$tag" "$version"
+  echo "install-proxy verify-assets: ok (pin $tag)"
   exit 0
 fi
 
@@ -105,6 +169,7 @@ if [[ -z "$TAG" ]]; then
   exit 1
 fi
 VERSION="${TAG#v}"
+verify_pinned_release_assets "$TAG" "$VERSION"
 
 HOST_OS="$(uname -s)"
 HOST_ARCH="$(uname -m)"

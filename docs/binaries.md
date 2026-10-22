@@ -10,7 +10,7 @@ npm installs one optional platform package matching the current OS/CPU when it i
 - `@llmentary/darwin-arm64`
 - `@llmentary/win32-x64`
 
-Those packages are version-pinned to the bundled proxy release in `PROXY_VERSION` (currently `v0.4.0`). This client has its own semver; `optionalDependencies` pins the matching platform packages. There is no `postinstall` download.
+Those packages are version-pinned to the bundled proxy release in `PROXY_VERSION` (currently `v0.4.1`). This client has its own semver; `optionalDependencies` pins the matching platform packages. There is no `postinstall` download.
 
 ## Resolution order
 

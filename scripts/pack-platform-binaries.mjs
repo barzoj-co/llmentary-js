@@ -135,7 +135,7 @@ async function main() {
   const proxyVersion = await readProxyVersion(ROOT);
   const tag = resolveTag({ env: process.env, proxyVersion });
   if (!tag) {
-    throw new Error("LLMENTARY_TAG, GITHUB_REF_NAME, or PROXY_VERSION is required (for example v0.4.0).");
+    throw new Error("LLMENTARY_TAG, GITHUB_REF_NAME, or PROXY_VERSION is required (for example v0.4.1).");
   }
   const keepRootVersion = Boolean(process.env.LLMENTARY_ROOT_VERSION);
   const work = await mkdtemp(join(tmpdir(), "llmentary-rel-"));

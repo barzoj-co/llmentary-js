@@ -33,6 +33,24 @@ test("assetPatterns accept goreleaser llmentary_<ver>_<os>_<arch> names and reje
   assert.equal(linux.some((pattern) => pattern.test(`${compact}_Linux_x86_64.tar.gz`)), false);
 });
 
+test("assetPatterns accept every PROXY_VERSION platform archive and reject suffix swaps", async () => {
+  const pin = await readProxyVersion();
+  const version = pin.replace(/^v/, "");
+  assert.equal(pin, "v0.4.1");
+  const cases = [
+    ["linux", "x64", `llmentary_${version}_linux_amd64.tar.gz`, `llmentary_${version}_linux_amd64.zip`],
+    ["linux", "arm64", `llmentary_${version}_linux_arm64.tar.gz`, `llmentary_${version}_linux_arm64.zip`],
+    ["darwin", "x64", `llmentary_${version}_darwin_amd64.tar.gz`, `llmentary_${version}_darwin_amd64.zip`],
+    ["darwin", "arm64", `llmentary_${version}_darwin_arm64.tar.gz`, `llmentary_${version}_darwin_arm64.zip`],
+    ["win32", "x64", `llmentary_${version}_windows_amd64.zip`, `llmentary_${version}_windows_amd64.tar.gz`],
+  ];
+  for (const [os, cpu, ok, bad] of cases) {
+    const patterns = assetPatterns(os, cpu);
+    assert.equal(patterns.some((pattern) => pattern.test(ok)), true, `${os}/${cpu} should match ${ok}`);
+    assert.equal(patterns.some((pattern) => pattern.test(bad)), false, `${os}/${cpu} should reject ${bad}`);
+  }
+});
+
 test("Option B keeps the root version and pins optionalDependencies to PROXY_VERSION", () => {
   const { version, rootPkg } = applyVersions(sampleRoot, "v9.9.9", { keepRootVersion: true });
   assert.equal(version, "9.9.9");

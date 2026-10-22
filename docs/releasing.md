@@ -10,7 +10,7 @@ not treat `packages/*` as release-please packages.
 Renovate watches GitHub releases of `barzoj-co/llmentary` and opens a PR
 that updates `PROXY_VERSION`. Those PRs do not automerge. After merge, the
 next client release packs platform packages at that proxy tag. The current
-pin is `v0.4.0`.
+pin is `v0.4.1`.
 
 ## Automatic flow
 

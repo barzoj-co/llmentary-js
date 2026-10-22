@@ -34,10 +34,11 @@ describe("real Go proxy with fake upstream", () => {
     delete process.env.LLMENTARY_CONTROL_URL;
   });
 
-  it("reports bundled proxy --version 0.4.0", () => {
-    expect(proxyPin).toBe("v0.4.0");
+  it("reports bundled proxy --version 0.4.1", () => {
+    expect(proxyPin).toBe("v0.4.1");
+    const version = proxyPin.replace(/^v/, "");
     const out = execFileSync(process.env.LLMENTARY_BIN!, ["--version"], { encoding: "utf8" });
-    expect(out).toMatch(/^llmentary 0\.4\.0 \(f970baf/);
+    expect(out).toMatch(new RegExp(`^llmentary ${version.replaceAll(".", "\\.")} \\([0-9a-f]+`));
   });
 
   it("honours wait quiet=100ms after one finished call", async () => {
