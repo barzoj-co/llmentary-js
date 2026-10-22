@@ -51,6 +51,14 @@ describe("jest and vitest session adapters", () => {
     });
     expect(configured.sessionId).toBe("vitest-one");
   });
+
+  it("creates a vitest singleton when no current session exists", async () => {
+    vi.resetModules();
+    const { llmentary } = await import("../src/vitest.js");
+    const first = llmentary();
+    const again = llmentary();
+    expect(again).toBe(first);
+  });
 });
 
 describe("setupVitest", () => {
@@ -132,6 +140,8 @@ describe("jest setup and lifecycle modules", () => {
     const extendArg = extend.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(extendArg).toHaveProperty("toHaveToolCalled");
     expect(extendArg).toHaveProperty("toHaveNoSpecViolations");
+    const cleanup = afterEachHook.mock.calls[0]?.[0] as (() => Promise<void>) | undefined;
+    await cleanup?.();
   });
 
   it("jest globalSetup writes state and globalTeardown stops an owned proxy", async () => {

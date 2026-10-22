@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   formatGoDurationMs,
   formatWaitTimeoutError,
+  mergeWaitOptions,
   parseWaitDuration,
   parseWaitDurationMs,
   resetWaitEnvDeprecationWarnings,
   resolveWait,
+  resolvedWaitToOptions,
 } from "../src/wait.js";
 
 const WAIT_ENV = [
@@ -145,5 +147,49 @@ describe("formatWaitTimeoutError", () => {
     expect(formatWaitTimeoutError("sess-1", "30s", 3, 1)).toBe(
       "wait timed out after 30s on session sess-1 (3 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
     );
+  });
+});
+
+describe("wait duration edge cases", () => {
+  it("rejects negative and non-finite explicit values", () => {
+    expect(() => resolveWait({ timeout: -1 })).toThrow(/invalid LLMENTARY_WAIT_TIMEOUT/);
+    expect(() => resolveWait({ timeoutMs: -5 })).toThrow(/invalid LLMENTARY_WAIT_TIMEOUT/);
+    expect(() => resolveWait({ timeoutMs: Number.POSITIVE_INFINITY })).toThrow(/invalid LLMENTARY_WAIT_TIMEOUT/);
+    expect(() => resolveWait({ quiet: -0.1 })).toThrow(/invalid LLMENTARY_WAIT_QUIET/);
+    expect(() => formatGoDurationMs(-1)).toThrow(/cannot format wait duration/);
+    expect(() => formatGoDurationMs(Number.NaN)).toThrow(/cannot format wait duration/);
+    expect(() => parseWaitDurationMs("-1", "LLMENTARY_WAIT_TIMEOUT_MS")).toThrow(/LLMENTARY_WAIT_TIMEOUT_MS/);
+  });
+
+  it("parses stacked Go units including ns/us/h and rejects gaps", () => {
+    expect(parseWaitDuration("1h2m3s", "LLMENTARY_WAIT_TIMEOUT")).toBe(3_723_000);
+    expect(parseWaitDuration("500us", "LLMENTARY_WAIT_QUIET")).toBe(1);
+    expect(parseWaitDuration("1000ns", "LLMENTARY_WAIT_QUIET")).toBe(0);
+    expect(() => parseWaitDuration("1s 2s", "LLMENTARY_WAIT_TIMEOUT")).toThrow(/LLMENTARY_WAIT_TIMEOUT/);
+    expect(() => parseWaitDuration("1x", "LLMENTARY_WAIT_TIMEOUT")).toThrow(/LLMENTARY_WAIT_TIMEOUT/);
+  });
+
+  it("omits minCalls from resolvedWaitToOptions unless set", () => {
+    expect(resolvedWaitToOptions(resolveWait())).not.toHaveProperty("minCalls");
+    expect(resolvedWaitToOptions(resolveWait({ minCalls: 3 }))).toMatchObject({ minCalls: 3 });
+  });
+
+  it("replaces timeout/quiet pairs independently and keeps an override signal", () => {
+    const signal = new AbortController().signal;
+    const merged = mergeWaitOptions(
+      { timeout: "30s", timeoutMs: 30_000, quiet: "500ms", idleMs: 500, minCalls: 1 },
+      { timeoutMs: 5_000, idleMs: 100, signal, minCalls: 4 },
+    );
+    expect(merged).toMatchObject({ timeoutMs: 5_000, idleMs: 100, minCalls: 4 });
+    expect(merged).not.toHaveProperty("timeout");
+    expect(merged).not.toHaveProperty("quiet");
+    expect(merged.signal).toBe(signal);
+
+    const timeoutOnly = mergeWaitOptions({ timeout: "30s", quiet: "500ms" }, { timeout: "10s" });
+    expect(timeoutOnly).toMatchObject({ timeout: "10s", quiet: "500ms" });
+    const quietOnly = mergeWaitOptions({ timeout: "30s", idleMs: 500 }, { quiet: "200ms" });
+    expect(quietOnly).toMatchObject({ timeout: "30s", quiet: "200ms" });
+    expect(quietOnly).not.toHaveProperty("idleMs");
+    expect(mergeWaitOptions({ timeout: "30s" })).toMatchObject({ timeout: "30s" });
   });
 });
