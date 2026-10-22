@@ -232,6 +232,13 @@ export interface CallRecord {
   sessionSource?: string;
   /** Upstream URL the proxy forwarded to (the `/s/{session}` prefix is not forwarded). */
   upstreamUrl?: string;
+  /**
+   * Top-level `upstream_called`. True after the outbound request was written
+   * (`httptrace.WroteRequest`). A header timeout or cancel can leave this false.
+   */
+  upstreamCalled?: boolean;
+  /** `normalized.error.source` (`proxy` for DOG-39 upstream timeouts). */
+  errorSource?: string;
   /** Joined text for each user-role message (Chat `messages`, Responses `input`). */
   userTexts?: string[];
   raw: JsonValue;

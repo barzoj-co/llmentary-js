@@ -102,6 +102,9 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     stringAt(objectAt(object, "upstream"), "url") ??
     stringAt(object, "upstream_url") ??
     stringAt(object, "upstreamUrl");
+  const upstreamCalled =
+    booleanAt(object, "upstream_called") ?? booleanAt(object, "upstreamCalled");
+  const errorSource = stringAt(asObject(error), "source");
   return {
     raw,
     ...(id ? { id } : {}),
@@ -133,6 +136,8 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     ...(responseText ? { responseText } : {}),
     ...(sessionSource ? { sessionSource } : {}),
     ...(upstreamUrl ? { upstreamUrl } : {}),
+    ...(upstreamCalled !== undefined ? { upstreamCalled } : {}),
+    ...(errorSource ? { errorSource } : {}),
   };
 }
 

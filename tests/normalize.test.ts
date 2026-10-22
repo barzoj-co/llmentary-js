@@ -375,6 +375,8 @@ describe("sessionSource and upstreamUrl", () => {
     expect(record.upstreamUrl).toBeUndefined();
     expect(record.reasoningIn).toBeUndefined();
     expect(record.validation?.target).toBeUndefined();
+    expect(record.upstreamCalled).toBeUndefined();
+    expect(record.errorSource).toBeUndefined();
   });
 });
 
@@ -410,6 +412,51 @@ describe("v0.5.0 spec target, reasoning_in, and in_flight", () => {
       normalized: { validation: { target: "", mode: "warn" } },
     });
     expect(emptyTarget.validation?.target).toBeUndefined();
+  });
+
+  it("reads upstream_called and error.source including timeout corners", () => {
+    const written = normalizeCallRecord({
+      upstream_called: true,
+      normalized: { validation: { target: "openai" } },
+    });
+    expect(written.upstreamCalled).toBe(true);
+    expect(written.errorSource).toBeUndefined();
+    const camel = normalizeCallRecord({ upstreamCalled: false });
+    expect(camel.upstreamCalled).toBe(false);
+    const headerTimeout = normalizeCallRecord({
+      http_status: 504,
+      upstream_called: false,
+      normalized: {
+        error: {
+          type: "upstream_timeout",
+          code: "upstream_timeout",
+          normalized: "upstream_timeout",
+          source: "proxy",
+          mid_stream: false,
+        },
+      },
+    });
+    expect(headerTimeout.upstreamCalled).toBe(false);
+    expect(headerTimeout.errorSource).toBe("proxy");
+    expect(headerTimeout.error).toMatchObject({ normalized: "upstream_timeout", source: "proxy", mid_stream: false });
+    const idleTimeout = normalizeCallRecord({
+      http_status: 200,
+      upstream_called: true,
+      normalized: {
+        stream_truncated: true,
+        error: { normalized: "upstream_idle_timeout", source: "proxy", mid_stream: false },
+      },
+    });
+    expect(idleTimeout.upstreamCalled).toBe(true);
+    expect(idleTimeout.errorSource).toBe("proxy");
+    expect(idleTimeout.error).toMatchObject({ normalized: "upstream_idle_timeout", source: "proxy" });
+    const emptySource = normalizeCallRecord({
+      normalized: { error: { source: "", message: "boom" } },
+    });
+    expect(emptySource.errorSource).toBeUndefined();
+    expect(emptySource.error).toMatchObject({ message: "boom" });
+    const notBool = normalizeCallRecord({ upstream_called: "yes" });
+    expect(notBool.upstreamCalled).toBeUndefined();
   });
 
   it("reads reasoning_in including encrypted-only chars=0", () => {

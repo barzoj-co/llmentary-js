@@ -193,6 +193,8 @@ describe("real Go proxy with fake upstream", () => {
     expect(Array.isArray(withFlight.inFlight)).toBe(true);
     expect(withFlight.calls.length).toBeGreaterThanOrEqual(1);
     expect(withFlight.calls[0]?.validation?.target).toBe("openai-compatible");
+    expect(withFlight.calls[0]?.upstreamCalled).toBe(true);
+    expect(withFlight.calls[0]?.errorSource).toBeUndefined();
     await lm.cleanup();
   });
 
