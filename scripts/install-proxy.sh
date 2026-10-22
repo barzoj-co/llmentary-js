@@ -86,11 +86,7 @@ EOF
 verify_pinned_release_assets() {
   local tag="$1" version="$2"
   local names missing=0 required
-  if [[ -n "${LLMENTARY_RELEASE_ASSETS:-}" ]]; then
-    names="$LLMENTARY_RELEASE_ASSETS"
-  else
-    names="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name')"
-  fi
+  names="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name')"
   if [[ -z "$names" ]]; then
     echo "release $tag listed no assets" >&2
     return 1

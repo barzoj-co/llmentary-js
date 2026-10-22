@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -17,11 +17,32 @@ import { formatUpstreamSpec, looksLikeLlmentaryProxy, originForGoUpstream, redac
 
 function runVerifyAssets(assets: string): ReturnType<typeof spawnSync> {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-  return spawnSync("bash", ["scripts/install-proxy.sh", "--verify-assets"], {
-    encoding: "utf8",
-    cwd: root,
-    env: { ...process.env, LLMENTARY_RELEASE_ASSETS: assets },
-  });
+  const dir = mkdtempSync(join(tmpdir(), "llmentary-gh-"));
+  const gh = join(dir, "gh");
+  const assetList = join(dir, "assets.txt");
+  writeFileSync(assetList, assets.endsWith("\n") ? assets : `${assets}\n`);
+  writeFileSync(
+    gh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "release" && "\${2:-}" == "view" ]]; then
+  cat ${JSON.stringify(assetList)}
+  exit 0
+fi
+echo "unexpected gh $*" >&2
+exit 1
+`,
+  );
+  chmodSync(gh, 0o755);
+  try {
+    return spawnSync("bash", ["scripts/install-proxy.sh", "--verify-assets"], {
+      encoding: "utf8",
+      cwd: root,
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` },
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 describe("binary release asset matching", () => {
@@ -47,6 +68,7 @@ describe("binary release asset matching", () => {
     expect(installer).toContain(`llmentary_${version}_darwin_arm64.tar.gz`);
     expect(installer).toContain(`llmentary_${version}_windows_amd64.zip`);
     expect(installer).toContain(`llmentary_${version}_windows_arm64.zip`);
+    expect(installer).not.toContain("LLMENTARY_RELEASE_ASSETS");
     expect(packer).toContain(`for example ${pin}`);
     expect(binaries).toContain(`currently \`${pin}\``);
     expect(releasing).toContain(`pin is \`${pin}\``);
