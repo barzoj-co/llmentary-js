@@ -15,19 +15,112 @@ import {
 } from "../src/binary.js";
 import { formatUpstreamSpec, looksLikeLlmentaryProxy, originForGoUpstream, redactArgs, resolveUpstreamSpec } from "../src/proxy.js";
 
+function runVerifyAssets(assets: string): ReturnType<typeof spawnSync> {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  return spawnSync("bash", ["scripts/install-proxy.sh", "--verify-assets"], {
+    encoding: "utf8",
+    cwd: root,
+    env: { ...process.env, LLMENTARY_RELEASE_ASSETS: assets },
+  });
+}
+
 describe("binary release asset matching", () => {
-  it("pins PROXY_VERSION to v0.4.0", () => {
-    const pin = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "PROXY_VERSION"), "utf8").trim();
-    expect(pin).toBe("v0.4.0");
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const pin = readFileSync(join(root, "PROXY_VERSION"), "utf8").trim();
+  const version = pin.replace(/^v/, "");
+
+  it("pins PROXY_VERSION to v0.4.1", () => {
+    expect(pin).toBe("v0.4.1");
+    expect(pin).toMatch(/^v\d+\.\d+\.\d+$/);
+  });
+
+  it("keeps installer self-test, pack example, and current-pin docs on PROXY_VERSION", () => {
+    const installer = readFileSync(join(root, "scripts/install-proxy.sh"), "utf8");
+    const packer = readFileSync(join(root, "scripts/pack-platform-binaries.mjs"), "utf8");
+    const binaries = readFileSync(join(root, "docs/binaries.md"), "utf8");
+    const releasing = readFileSync(join(root, "docs/releasing.md"), "utf8");
+    const readme = readFileSync(join(root, "README.md"), "utf8");
+    expect(installer).toContain(`[[ "$tag" == "${pin}" ]]`);
+    expect(installer).toContain(`llmentary_${version}_linux_amd64.tar.gz`);
+    expect(installer).toContain(`llmentary_${version}_linux_arm64.tar.gz`);
+    expect(installer).toContain(`llmentary_${version}_darwin_amd64.tar.gz`);
+    expect(installer).toContain(`llmentary_${version}_darwin_arm64.tar.gz`);
+    expect(installer).toContain(`llmentary_${version}_windows_amd64.zip`);
+    expect(installer).toContain(`llmentary_${version}_windows_arm64.zip`);
+    expect(packer).toContain(`for example ${pin}`);
+    expect(binaries).toContain(`currently \`${pin}\``);
+    expect(releasing).toContain(`pin is \`${pin}\``);
+    expect(readme).toContain(`proxy **${pin}**`);
+    expect(readme).toContain(`Bundled proxy **${pin}**`);
   });
 
   it("install-proxy.sh --self-test accepts the current pin and archive names", () => {
     const result = spawnSync("bash", ["scripts/install-proxy.sh", "--self-test"], {
       encoding: "utf8",
-      cwd: join(dirname(fileURLToPath(import.meta.url)), ".."),
+      cwd: root,
     });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("v0.4.0");
+    expect(result.status, String(result.stderr)).toBe(0);
+    expect(result.stdout).toContain(pin);
+  });
+
+  it("rejects a PROXY_VERSION that does not match the installer pin", () => {
+    const mismatch = spawnSync(
+      "bash",
+      [
+        "-c",
+        'root="$1"; tmp="$(mktemp -d)"; trap \'rm -rf "$tmp"\' EXIT; mkdir -p "$tmp/scripts"; cp "$root/scripts/install-proxy.sh" "$tmp/scripts/install-proxy.sh"; printf "%s\\n" "v0.0.0" > "$tmp/PROXY_VERSION"; bash "$tmp/scripts/install-proxy.sh" --self-test',
+        "mismatch",
+        root,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(mismatch.status).not.toBe(0);
+    expect(mismatch.stderr).toMatch(/PROXY_VERSION must be v0\.4\.1, got v0\.0\.0/);
+  });
+
+  it("verify_pinned_release_assets accepts the six archives plus signed checksums and an SBOM", () => {
+    const assets = [
+      "checksums.txt",
+      "checksums.txt.sigstore.json",
+      `llmentary_${version}_linux_amd64.tar.gz`,
+      `llmentary_${version}_linux_arm64.tar.gz`,
+      `llmentary_${version}_darwin_amd64.tar.gz`,
+      `llmentary_${version}_darwin_arm64.tar.gz`,
+      `llmentary_${version}_windows_amd64.zip`,
+      `llmentary_${version}_windows_arm64.zip`,
+      `llmentary_${version}_linux_amd64.tar.gz.sbom.json`,
+    ].join("\n");
+    const result = runVerifyAssets(assets);
+    expect(result.status, String(result.stderr)).toBe(0);
+  });
+
+  it.each([
+    ["missing checksums.txt", { drop: "checksums.txt" }, /missing asset checksums\.txt/],
+    [
+      "missing linux amd64 archive",
+      { drop: `llmentary_${version}_linux_amd64.tar.gz` },
+      /missing asset llmentary_.*_linux_amd64\.tar\.gz/,
+    ],
+    ["no SBOM", { drop: `llmentary_${version}_linux_amd64.tar.gz.sbom.json` }, /has no SBOM assets/],
+    ["windows archive with tar.gz suffix", { add: `llmentary_${version}_windows_amd64.tar.gz` }, /windows archive with tar\.gz suffix/],
+    ["linux archive with zip suffix", { add: `llmentary_${version}_linux_amd64.zip` }, /linux archive with zip suffix/],
+  ] as const)("verify_pinned_release_assets rejects %s", (_label, tweak, error) => {
+    const complete = [
+      "checksums.txt",
+      "checksums.txt.sigstore.json",
+      `llmentary_${version}_linux_amd64.tar.gz`,
+      `llmentary_${version}_linux_arm64.tar.gz`,
+      `llmentary_${version}_darwin_amd64.tar.gz`,
+      `llmentary_${version}_darwin_arm64.tar.gz`,
+      `llmentary_${version}_windows_amd64.zip`,
+      `llmentary_${version}_windows_arm64.zip`,
+      `llmentary_${version}_linux_amd64.tar.gz.sbom.json`,
+    ];
+    const names = complete.filter((name) => name !== ("drop" in tweak ? tweak.drop : ""));
+    if ("add" in tweak) names.push(tweak.add);
+    const result = runVerifyAssets(names.join("\n"));
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(error);
   });
 
   it("matches GoReleaser-style Linux x64 tarballs", () => {
