@@ -459,13 +459,13 @@ describe("ControlClient", () => {
       if (url.includes("/openapi.yaml")) {
         return new Response("missing", { status: 404, statusText: "Not Found" });
       }
-      if (url.includes("/sessions/%E0%A4%A")) {
+      if (url.includes("/sessions/%25E0%25A4%25A")) {
         return new Response("nope", { status: 404, statusText: "Not Found" });
       }
       if (url.includes("/sessions/s1")) {
         return new Response("broken", { status: 500, statusText: "Internal Server Error" });
       }
-      return new Response("nope", { status: 404, statusText: "Not Found" });
+      return new Response("nope", { status: 500, statusText: "Internal Server Error" });
     };
     const client = new ControlClient({
       controlUrl: "http://127.0.0.1:9/",

@@ -24,6 +24,8 @@ const envKeys = [
   "LLMENTARY_UPSTREAM_NAME",
   "LLMENTARY_UPSTREAM_BASE_URL",
   "LLMENTARY_HOST",
+  "FAKE_PROXY_NO_HELP",
+  "FAKE_PROXY_HANG_HELP",
 ] as const;
 const previous: Record<string, string | undefined> = {};
 const servers: Array<{ close(): Promise<void> }> = [];
@@ -239,10 +241,10 @@ describe("startProxy launch with a fake binary", () => {
   it("falls back to canonical flags when help output is empty", async () => {
     stash("LLMENTARY_PROXY_URL", undefined);
     stash("LLMENTARY_CONTROL_URL", undefined);
+    stash("FAKE_PROXY_NO_HELP", "1");
     const handle = await startProxy({
       binaryPath: FAKE_PROXY,
       healthTimeoutMs: 4_000,
-      env: { FAKE_PROXY_NO_HELP: "1" },
     });
     try {
       expect(handle.controlUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
@@ -254,10 +256,10 @@ describe("startProxy launch with a fake binary", () => {
   it("kills a hung -h probe and still starts from canonical flags", async () => {
     stash("LLMENTARY_PROXY_URL", undefined);
     stash("LLMENTARY_CONTROL_URL", undefined);
+    stash("FAKE_PROXY_HANG_HELP", "1");
     const handle = await startProxy({
       binaryPath: FAKE_PROXY,
       healthTimeoutMs: 6_000,
-      env: { FAKE_PROXY_HANG_HELP: "1" },
     });
     try {
       expect(handle.pid).toBeTypeOf("number");

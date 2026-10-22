@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 const args = process.argv.slice(2);
 if (process.env.FAKE_PROXY_HANG_HELP === "1" && args.includes("-h")) {
   setInterval(() => {}, 60_000);
+  await new Promise(() => {});
 } else if (process.env.FAKE_PROXY_NO_HELP === "1" && (args.includes("-h") || args.includes("--help") || args[0] === "help")) {
   process.exit(0);
 } else if (args.includes("-h") || args.includes("--help") || args[0] === "help") {
