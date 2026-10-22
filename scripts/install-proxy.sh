@@ -293,47 +293,72 @@ if [[ "${1:-}" == "--self-test" ]]; then
     [[ "$printed" != *should-not-appear-on-argv* ]]
     [[ "$printed" == *"-H"*$'\n'"@"* ]] || [[ "$printed" == *"@"* ]]
   )
-  fake_bin="$(mktemp -d)"
-  hold="$(mktemp)"
-  ready="$(mktemp)"
-  rm -f "$ready"
-  printf '%s\n' '#!/usr/bin/env bash' 'if [[ -n "${CURL_FAKE_READY:-}" ]]; then : >"$CURL_FAKE_READY"; fi' 'exec sleep 30' >"$fake_bin/curl"
-  chmod +x "$fake_bin/curl"
-  (
-    unset GITHUB_TOKEN
-    export GH_TOKEN="hold-token"
-    export CURL_GITHUB_HOLD_FILE="$hold"
-    export CURL_FAKE_READY="$ready"
-    export PATH="$fake_bin:$PATH"
-    curl_github "https://example.test/x"
-  ) &
-  hold_pid=$!
-  header=""
-  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
-    if [[ -s "$hold" && -f "$ready" ]]; then
-      header="$(cat "$hold")"
-      [[ -n "$header" && -f "$header" ]] && break
+  assert_blocked_curl_stops() {
+    local sig="$1" with_token="$2"
+    local fake_bin hold ready hold_pid header="" start elapsed
+    fake_bin="$(mktemp -d)"
+    hold="$(mktemp)"
+    ready="$(mktemp)"
+    rm -f "$ready"
+    printf '%s\n' '#!/usr/bin/env bash' 'if [[ -n "${CURL_FAKE_READY:-}" ]]; then : >"$CURL_FAKE_READY"; fi' 'exec sleep 30' >"$fake_bin/curl"
+    chmod +x "$fake_bin/curl"
+    (
+      # Background jobs start with SIGINT ignored; restore it so the INT trap runs.
+      trap - INT
+      register_install_proxy_cleanup
+      unset GITHUB_TOKEN
+      if [[ "$with_token" == "1" ]]; then
+        export GH_TOKEN="hold-token"
+        export CURL_GITHUB_HOLD_FILE="$hold"
+      else
+        unset GH_TOKEN
+      fi
+      export CURL_FAKE_READY="$ready"
+      export PATH="$fake_bin:$PATH"
+      curl_github "https://example.test/x"
+    ) &
+    hold_pid=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+      if [[ -f "$ready" ]]; then
+        if [[ "$with_token" != "1" ]]; then
+          break
+        fi
+        header="$(cat "$hold" 2>/dev/null || true)"
+        [[ -n "$header" && -f "$header" ]] && break
+      fi
+      sleep 0.05
+    done
+    if [[ ! -f "$ready" ]]; then
+      kill -TERM "$hold_pid" 2>/dev/null || true
+      wait "$hold_pid" 2>/dev/null || true
+      rm -rf "$fake_bin" "$hold" "$ready"
+      echo "blocking fake curl did not start ($sig token=$with_token)" >&2
+      exit 1
     fi
-    sleep 0.05
-  done
-  if [[ -z "$header" || ! -f "$header" || ! -f "$ready" ]]; then
-    kill -TERM "$hold_pid" 2>/dev/null || true
+    if [[ "$with_token" == "1" && ( -z "$header" || ! -f "$header" ) ]]; then
+      kill -TERM "$hold_pid" 2>/dev/null || true
+      wait "$hold_pid" 2>/dev/null || true
+      rm -rf "$fake_bin" "$hold" "$ready"
+      echo "header file missing before $sig" >&2
+      exit 1
+    fi
+    start=$SECONDS
+    kill -s "$sig" "$hold_pid" 2>/dev/null || true
     wait "$hold_pid" 2>/dev/null || true
+    elapsed=$((SECONDS - start))
+    if [[ "$elapsed" -ge 2 ]]; then
+      rm -rf "$fake_bin" "$hold" "$ready"
+      echo "$sig did not stop a blocked curl in time (${elapsed}s token=$with_token)" >&2
+      exit 1
+    fi
+    if [[ "$with_token" == "1" ]]; then
+      [[ ! -f "$header" ]]
+    fi
     rm -rf "$fake_bin" "$hold" "$ready"
-    echo "blocking fake curl did not start" >&2
-    exit 1
-  fi
-  start=$SECONDS
-  kill -TERM "$hold_pid" 2>/dev/null || true
-  wait "$hold_pid" 2>/dev/null || true
-  elapsed=$((SECONDS - start))
-  if [[ "$elapsed" -ge 2 ]]; then
-    rm -rf "$fake_bin" "$hold" "$ready"
-    echo "TERM did not stop a blocked curl in time (${elapsed}s)" >&2
-    exit 1
-  fi
-  [[ ! -f "$header" ]]
-  rm -rf "$fake_bin" "$hold" "$ready"
+  }
+  assert_blocked_curl_stops TERM 1
+  assert_blocked_curl_stops INT 1
+  assert_blocked_curl_stops TERM 0
   echo "install-proxy self-test: ok (pin $tag)"
   exit 0
 fi

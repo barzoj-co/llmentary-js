@@ -162,6 +162,9 @@ describe("binary release asset matching", () => {
     expect(installer).toContain(`llmentary_${version}_windows_arm64.zip`);
     expect(installer).not.toContain("LLMENTARY_RELEASE_ASSETS");
     expect(packer).toContain(`for example ${pin}`);
+    expect(packer).toContain(`export const BUNDLED_PROXY_TAG = "${pin}"`);
+    expect(packer).toContain("resolveDownloadTag");
+    expect(installer).toContain("assert_blocked_curl_stops");
     expect(binaries).toContain(`currently \`${pin}\``);
     expect(releasing).toContain(`pin is \`${pin}\``);
     expect(readme).toContain(`proxy **${pin}**`);

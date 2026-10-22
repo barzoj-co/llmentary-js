@@ -7,7 +7,13 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const REPO = process.env.LLMENTARY_REPO ?? "barzoj-co/llmentary";
+/** Keep in sync with PROXY_VERSION. Download URLs use this literal, not file bytes. */
+export const BUNDLED_PROXY_TAG = "v0.4.1";
+export const PUBLIC_RELEASE_REPO = "barzoj-co/llmentary";
+export const GITHUB_API_ORIGIN = "https://api.github.com";
+export const GITHUB_DOWNLOAD_ORIGIN = "https://github.com";
+export const MAX_RELEASE_ASSET_BYTES = 80 * 1024 * 1024;
+const REPO = process.env.LLMENTARY_REPO ?? PUBLIC_RELEASE_REPO;
 
 export const PACKAGES = [
   { dir: "linux-x64", os: "linux", cpu: "x64", bin: "llmentary" },
@@ -31,6 +37,22 @@ export async function readProxyVersion(root = ROOT) {
 
 export function resolveTag({ env = process.env, proxyVersion = "" } = {}) {
   return env.LLMENTARY_TAG || env.GITHUB_REF_NAME || proxyVersion || "";
+}
+
+/**
+ * Tag that may enter a GitHub URL. Env overrides win. A PROXY_VERSION file pin
+ * is accepted only when it equals BUNDLED_PROXY_TAG; the returned string is
+ * always that literal (or a regex-validated env tag), never the file bytes.
+ */
+export function resolveDownloadTag({ env = process.env, filePin = "" } = {}) {
+  const fromEnv = env.LLMENTARY_TAG || env.GITHUB_REF_NAME || "";
+  if (fromEnv) {
+    return assertPublicReleaseRef(PUBLIC_RELEASE_REPO, fromEnv).tag;
+  }
+  if (filePin && filePin !== BUNDLED_PROXY_TAG) {
+    throw new Error(`PROXY_VERSION ${filePin} does not match bundled pin ${BUNDLED_PROXY_TAG}`);
+  }
+  return BUNDLED_PROXY_TAG;
 }
 
 /**
@@ -96,17 +118,49 @@ export function releaseAssetName(name) {
 
 export function destFile(dest, name) {
   const safe = releaseAssetName(name);
+  if (safe === "." || safe === "..") {
+    throw new Error(`refusing to write outside dest: ${name}`);
+  }
   const root = resolve(dest);
   const out = resolve(root, safe);
-  if (out !== join(root, safe)) {
+  if (out !== join(root, safe) || dirname(out) !== root) {
     throw new Error(`refusing to write outside dest: ${name}`);
   }
   return out;
 }
 
+function lockedGithubUrl(origin, pathname) {
+  const url = new URL(pathname, origin);
+  if (url.origin !== origin || url.username || url.password) {
+    throw new Error(`refusing non-GitHub origin ${url.origin}`);
+  }
+  return url.href;
+}
+
+export function publicReleaseApiUrl(repo, tag) {
+  const ref = assertPublicReleaseRef(repo, tag);
+  return lockedGithubUrl(
+    GITHUB_API_ORIGIN,
+    `/repos/${ref.repo}/releases/tags/${encodeURIComponent(ref.tag)}`,
+  );
+}
+
 export function publicReleaseAssetUrl(repo, tag, name) {
   const ref = assertPublicReleaseRef(repo, tag);
-  return `https://github.com/${ref.repo}/releases/download/${ref.tag}/${releaseAssetName(name)}`;
+  return lockedGithubUrl(
+    GITHUB_DOWNLOAD_ORIGIN,
+    `/${ref.repo}/releases/download/${ref.tag}/${releaseAssetName(name)}`,
+  );
+}
+
+export async function writeReleaseAsset(dest, name, bytes) {
+  const path = destFile(dest, name);
+  const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? []);
+  if (buf.byteLength > MAX_RELEASE_ASSET_BYTES) {
+    throw new Error(`release asset ${name} exceeds ${MAX_RELEASE_ASSET_BYTES} bytes`);
+  }
+  await writeFile(path, buf);
+  return path;
 }
 
 export async function downloadPublicRelease({
@@ -118,7 +172,7 @@ export async function downloadPublicRelease({
 } = {}) {
   const ref = assertPublicReleaseRef(repo, tag);
   const token = githubToken(env);
-  const api = `https://api.github.com/repos/${ref.repo}/releases/tags/${encodeURIComponent(ref.tag)}`;
+  const api = publicReleaseApiUrl(ref.repo, ref.tag);
   const metaRes = await fetchImpl(api, { headers: githubHeaders(token) });
   if (!metaRes.ok) {
     throw new Error(`Could not read public release ${tag} for ${repo}: ${metaRes.status}`);
@@ -147,7 +201,7 @@ export async function downloadPublicRelease({
     if (!fileRes.ok) {
       throw new Error(`Could not download ${name}: ${fileRes.status}`);
     }
-    await writeFile(destFile(dest, name), Buffer.from(await fileRes.arrayBuffer()));
+    await writeReleaseAsset(dest, name, Buffer.from(await fileRes.arrayBuffer()));
   }
 }
 
@@ -222,8 +276,8 @@ async function setPackageVersion(root, dir, version) {
 }
 
 async function main() {
-  const proxyVersion = await readProxyVersion(ROOT);
-  const tag = resolveTag({ env: process.env, proxyVersion });
+  const filePin = await readProxyVersion(ROOT);
+  const tag = resolveDownloadTag({ env: process.env, filePin });
   if (!tag) {
     throw new Error("LLMENTARY_TAG, GITHUB_REF_NAME, or PROXY_VERSION is required (for example v0.4.1).");
   }
