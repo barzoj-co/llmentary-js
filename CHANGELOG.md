@@ -24,16 +24,6 @@
 * enforce coverage floors and sync the 0.4.0 lockfile ([#32](https://github.com/barzoj-co/llmentary-js/issues/32)) ([d14690d](https://github.com/barzoj-co/llmentary-js/commit/d14690de02449c0019bdfc63211ba63bfaebe9bd))
 * fail isolatedFrom on empty other and introduce later-call user texts ([#37](https://github.com/barzoj-co/llmentary-js/issues/37)) ([e9f2b83](https://github.com/barzoj-co/llmentary-js/commit/e9f2b83e21f8b312c66fa09db3d22a3aedb4a9c3))
 
-## [Unreleased]
-
-### Bug Fixes
-
-* drop the private-repo token crutch now that GitHub Releases are public
-* list in-flight calls on `WaitTimeoutError` from a 504 `wait_timeout` (DOG-38)
-* compare served and packaged OpenAPI with the proxy stamp-then-sha256 check (DOG-44)
-* fail `isolatedFrom` on an empty or unknown other session unless `allowEmpty` (DOG-32)
-* treat every new user-role message on a later call as introduced (DOG-33)
-
 ## [0.4.0](https://github.com/barzoj-co/llmentary-js/compare/v0.3.0...v0.4.0) (2026-10-21)
 
 
