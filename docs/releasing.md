@@ -3,7 +3,9 @@
 This client has its own semver. The bundled proxy binary is pinned separately
 in the committed `PROXY_VERSION` file (Option B). release-please bumps the
 root `package.json` / `package-lock.json` and writes `CHANGELOG.md`. It does
-not treat `packages/*` as release-please packages.
+not treat `packages/*` as release-please packages. While the client is `0.x`,
+conventional `feat` commits bump the patch
+(`bump-patch-for-minor-pre-major`), not the minor.
 
 ## Proxy pin
 

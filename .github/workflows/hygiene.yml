@@ -187,13 +187,36 @@ jobs:
           RELEASE_PLEASE_TOKEN: ${{ github.token }}
           RELEASE_PLEASE_TARGET: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || github.base_ref || github.ref_name }}
         run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/release-please-dry-run.log"
           npx --yes "release-please@${RELEASE_PLEASE_VERSION}" release-pr \
             --dry-run \
             --repo-url=barzoj-co/llmentary-js \
             --target-branch="${RELEASE_PLEASE_TARGET}" \
             --config-file=release-please-config.json \
             --manifest-file=.release-please-manifest.json \
-            --token="${RELEASE_PLEASE_TOKEN}"
+            --token="${RELEASE_PLEASE_TOKEN}" 2>&1 | tee "$log"
+          title="$(sed -n 's/.*title: chore([^)]*): release \([0-9][0-9.]*\).*/\1/p' "$log" | head -1)"
+          proposed="$(sed -n 's/.*updating from \([0-9][0-9.]*\) to \([0-9][0-9.]*\).*/\1 \2/p' "$log" | head -1)"
+          from="${proposed%% *}"
+          to="${proposed##* }"
+          version="${title:-$to}"
+          if [ -z "$version" ]; then
+            echo "release-please dry-run proposed no version bump"
+            exit 0
+          fi
+          echo "release-please dry-run: title=${title:-none} updating from ${from:-unknown} to ${to:-unknown}"
+          if [ "$from" = "0.4.3" ] && [ "$version" != "0.4.4" ]; then
+            echo "::error::expected 0.4.3 -> 0.4.4, got ${from} -> ${version}"
+            exit 1
+          fi
+          case "$version" in
+            0.4.*) ;;
+            *)
+              echo "::error::expected a 0.4.x patch, got ${version}"
+              exit 1
+              ;;
+          esac
 
   publish-dry-run:
     name: publish (dry run)
