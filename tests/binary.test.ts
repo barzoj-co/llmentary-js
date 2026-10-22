@@ -65,6 +65,7 @@ exit 1
   delete env.GITHUB_TOKEN;
   delete env.CURL_GITHUB_HOLD_FILE;
   delete env.CURL_GITHUB_PRINT_ARGS;
+  delete env.CURL_FAKE_READY;
   if (options.token !== undefined) {
     env.GH_TOKEN = options.token;
   }
@@ -124,6 +125,7 @@ exit 1
   delete env.GITHUB_TOKEN;
   delete env.CURL_GITHUB_HOLD_FILE;
   delete env.CURL_GITHUB_PRINT_ARGS;
+  delete env.CURL_FAKE_READY;
   if (options.token !== undefined) env.GH_TOKEN = options.token;
   const result = spawnSync("bash", ["scripts/install-proxy.sh", "--verify-assets"], {
     encoding: "utf8",
@@ -199,8 +201,10 @@ describe("binary release asset matching", () => {
     expect(installer).toContain("https://api.github.com/repos/${REPO}/releases/tags/");
     expect(installer).toContain('args+=(-H "@${header_file}")');
     expect(installer).not.toContain('args+=(-H "Authorization: Bearer ${token}")');
-    expect(installer).toContain("trap 'install_proxy_cleanup; exit 130' INT");
-    expect(installer).toContain("trap 'install_proxy_cleanup; exit 143' TERM");
+    expect(installer).toContain("trap 'interrupt_install_proxy 130' INT");
+    expect(installer).toContain("trap 'interrupt_install_proxy 143' TERM");
+    expect(installer).toContain("stop_curl_pid");
+    expect(installer).toContain("setsid curl");
     expect(installer).toContain("register_install_proxy_cleanup");
   });
 

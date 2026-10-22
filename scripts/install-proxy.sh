@@ -70,8 +70,21 @@ github_token() {
 
 WORK=""
 CURL_GITHUB_HEADER=""
+CURL_PID=""
+
+stop_curl_pid() {
+  local pid="${CURL_PID:-}" child
+  CURL_PID=""
+  [[ -n "$pid" ]] || return 0
+  for child in $(ps -o pid= --ppid "$pid" 2>/dev/null || true); do
+    kill -TERM "$child" 2>/dev/null || true
+  done
+  kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
 
 install_proxy_cleanup() {
+  stop_curl_pid
   if [[ -n "${CURL_GITHUB_HEADER:-}" ]]; then
     rm -f "$CURL_GITHUB_HEADER"
     CURL_GITHUB_HEADER=""
@@ -82,10 +95,15 @@ install_proxy_cleanup() {
   fi
 }
 
+interrupt_install_proxy() {
+  install_proxy_cleanup
+  exit "$1"
+}
+
 register_install_proxy_cleanup() {
   trap 'install_proxy_cleanup' EXIT
-  trap 'install_proxy_cleanup; exit 130' INT
-  trap 'install_proxy_cleanup; exit 143' TERM
+  trap 'interrupt_install_proxy 130' INT
+  trap 'interrupt_install_proxy 143' TERM
 }
 
 register_install_proxy_cleanup
@@ -109,15 +127,19 @@ curl_github() {
   fi
   if [[ -n "${CURL_GITHUB_HOLD_FILE:-}" && -n "$header_file" ]]; then
     printf '%s\n' "$header_file" >"$CURL_GITHUB_HOLD_FILE"
-    # Stay in this shell so SIGINT/SIGTERM hit the trap, not a child `sleep`.
-    end=$((SECONDS + 3))
-    while ((SECONDS < end)); do
-      :
-    done
-  elif [[ "${CURL_GITHUB_PRINT_ARGS:-}" == "1" ]]; then
+  fi
+  if [[ "${CURL_GITHUB_PRINT_ARGS:-}" == "1" ]]; then
     printf '%s\n' "${args[@]}" "$@" "$url"
   else
-    curl "${args[@]}" "$@" "$url" || status=$?
+    # Background so INT/TERM can fire while curl is blocked, then wait.
+    if command -v setsid >/dev/null 2>&1; then
+      setsid curl "${args[@]}" "$@" "$url" &
+    else
+      curl "${args[@]}" "$@" "$url" &
+    fi
+    CURL_PID=$!
+    wait "$CURL_PID" || status=$?
+    CURL_PID=""
   fi
   if [[ -n "$header_file" ]]; then
     rm -f "$header_file"
@@ -271,33 +293,47 @@ if [[ "${1:-}" == "--self-test" ]]; then
     [[ "$printed" != *should-not-appear-on-argv* ]]
     [[ "$printed" == *"-H"*$'\n'"@"* ]] || [[ "$printed" == *"@"* ]]
   )
+  fake_bin="$(mktemp -d)"
   hold="$(mktemp)"
+  ready="$(mktemp)"
+  rm -f "$ready"
+  printf '%s\n' '#!/usr/bin/env bash' 'if [[ -n "${CURL_FAKE_READY:-}" ]]; then : >"$CURL_FAKE_READY"; fi' 'exec sleep 30' >"$fake_bin/curl"
+  chmod +x "$fake_bin/curl"
   (
     unset GITHUB_TOKEN
-    GH_TOKEN="hold-token"
-    CURL_GITHUB_HOLD_FILE="$hold"
+    export GH_TOKEN="hold-token"
+    export CURL_GITHUB_HOLD_FILE="$hold"
+    export CURL_FAKE_READY="$ready"
+    export PATH="$fake_bin:$PATH"
     curl_github "https://example.test/x"
   ) &
   hold_pid=$!
   header=""
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
-    if [[ -s "$hold" ]]; then
+    if [[ -s "$hold" && -f "$ready" ]]; then
       header="$(cat "$hold")"
       [[ -n "$header" && -f "$header" ]] && break
     fi
     sleep 0.05
   done
-  if [[ -z "$header" || ! -f "$header" ]]; then
+  if [[ -z "$header" || ! -f "$header" || ! -f "$ready" ]]; then
     kill -TERM "$hold_pid" 2>/dev/null || true
     wait "$hold_pid" 2>/dev/null || true
-    rm -f "$hold"
-    echo "hold-file header was not created" >&2
+    rm -rf "$fake_bin" "$hold" "$ready"
+    echo "blocking fake curl did not start" >&2
     exit 1
   fi
+  start=$SECONDS
   kill -TERM "$hold_pid" 2>/dev/null || true
   wait "$hold_pid" 2>/dev/null || true
+  elapsed=$((SECONDS - start))
+  if [[ "$elapsed" -ge 2 ]]; then
+    rm -rf "$fake_bin" "$hold" "$ready"
+    echo "TERM did not stop a blocked curl in time (${elapsed}s)" >&2
+    exit 1
+  fi
   [[ ! -f "$header" ]]
-  rm -f "$hold"
+  rm -rf "$fake_bin" "$hold" "$ready"
   echo "install-proxy self-test: ok (pin $tag)"
   exit 0
 fi
