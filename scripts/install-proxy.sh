@@ -72,12 +72,24 @@ curl_github() {
   local url="$1"
   shift
   local args=(-fsSL -L -H "User-Agent: llmentary-js-install-proxy")
-  local token
+  local token header_file="" status=0
   token="$(github_token)"
   if [[ -n "$token" ]]; then
-    args+=(-H "Authorization: Bearer ${token}")
+    # Keep the bearer token out of curl's process arguments (ps/argv).
+    header_file="$(mktemp "${TMPDIR:-/tmp}/llmentary-gh-auth.XXXXXX")"
+    chmod 0600 "$header_file"
+    printf 'Authorization: Bearer %s\n' "$token" >"$header_file"
+    args+=(-H "@${header_file}")
   fi
-  curl "${args[@]}" "$@" "$url"
+  if [[ "${CURL_GITHUB_PRINT_ARGS:-}" == "1" ]]; then
+    printf '%s\n' "${args[@]}" "$@" "$url"
+  else
+    curl "${args[@]}" "$@" "$url" || status=$?
+  fi
+  if [[ -n "$header_file" ]]; then
+    rm -f "$header_file"
+  fi
+  return "$status"
 }
 
 list_release_assets() {
@@ -215,6 +227,13 @@ if [[ "${1:-}" == "--self-test" ]]; then
     unset GH_TOKEN
     GITHUB_TOKEN="fallback-token"
     [[ "$(github_token)" == "fallback-token" ]]
+  )
+  (
+    unset GITHUB_TOKEN
+    GH_TOKEN="should-not-appear-on-argv"
+    printed="$(CURL_GITHUB_PRINT_ARGS=1 curl_github "https://example.test/x")"
+    [[ "$printed" != *should-not-appear-on-argv* ]]
+    [[ "$printed" == *"-H"*$'\n'"@"* ]] || [[ "$printed" == *"@"* ]]
   )
   echo "install-proxy self-test: ok (pin $tag)"
   exit 0

@@ -94,7 +94,14 @@ function runVerifyAssetsKeepingLogs(
     curl,
     `#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\\n' "$*" >> ${JSON.stringify(seen)}
+printf 'argv:%s\\n' "$*" >> ${JSON.stringify(seen)}
+prev=""
+for arg in "$@"; do
+  if [[ "$prev" == "-H" && "$arg" == @* ]]; then
+    printf 'header:%s\\n' "$(cat "\${arg#@}")" >> ${JSON.stringify(seen)}
+  fi
+  prev="$arg"
+done
 url=""
 for arg in "$@"; do
   if [[ "$arg" == http://* || "$arg" == https://* ]]; then
@@ -186,7 +193,8 @@ describe("binary release asset matching", () => {
     expect(installer).not.toContain("LLMTESTLAB_REPO_TOKEN");
     expect(installer).toContain("https://github.com/${REPO}/releases/download/");
     expect(installer).toContain("https://api.github.com/repos/${REPO}/releases/tags/");
-    expect(installer).toContain('Authorization: Bearer ${token}');
+    expect(installer).toContain('args+=(-H "@${header_file}")');
+    expect(installer).not.toContain('args+=(-H "Authorization: Bearer ${token}")');
   });
 
   it("verify_pinned_release_assets accepts the six archives plus signed checksums and an SBOM", () => {
@@ -285,7 +293,13 @@ describe("binary release asset matching", () => {
     expect(anonymous.args).not.toMatch(/Authorization:/);
     const authed = runVerifyAssetsKeepingLogs(complete, { token: "rate-limit-only" });
     expect(authed.result.status, String(authed.result.stderr)).toBe(0);
-    expect(authed.args).toMatch(/Authorization: Bearer rate-limit-only/);
+    const argv = authed.args
+      .split("\n")
+      .filter((line) => line.startsWith("argv:"))
+      .join("\n");
+    expect(argv).toMatch(/-H @/);
+    expect(argv).not.toMatch(/rate-limit-only/);
+    expect(authed.args).toMatch(/^header:Authorization: Bearer rate-limit-only$/m);
   });
 
   it("matches GoReleaser-style Linux x64 tarballs", () => {
