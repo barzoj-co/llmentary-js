@@ -251,6 +251,23 @@ describe("binary release asset matching", () => {
     expect(runVerifyAssets(complete, { curlExit: 22 }).status).not.toBe(0);
   });
 
+  it("verify_pinned_release_assets never invokes gh", () => {
+    const complete = [
+      "checksums.txt",
+      "checksums.txt.sigstore.json",
+      `llmentary_${version}_linux_amd64.tar.gz`,
+      `llmentary_${version}_linux_arm64.tar.gz`,
+      `llmentary_${version}_darwin_amd64.tar.gz`,
+      `llmentary_${version}_darwin_arm64.tar.gz`,
+      `llmentary_${version}_windows_amd64.zip`,
+      `llmentary_${version}_windows_arm64.zip`,
+      `llmentary_${version}_linux_amd64.tar.gz.sbom.json`,
+    ].join("\n");
+    const result = runVerifyAssets(complete);
+    expect(result.status, String(result.stderr)).toBe(0);
+    expect(result.stderr).not.toMatch(/unexpected gh|gh must not be called/);
+  });
+
   it("sends Authorization only when a rate-limit token is set", () => {
     const complete = [
       "checksums.txt",
@@ -269,33 +286,6 @@ describe("binary release asset matching", () => {
     const authed = runVerifyAssetsKeepingLogs(complete, { token: "rate-limit-only" });
     expect(authed.result.status, String(authed.result.stderr)).toBe(0);
     expect(authed.args).toMatch(/Authorization: Bearer rate-limit-only/);
-  });
-
-  it("lists the pinned public release anonymously without gh", () => {
-    const binDir = mkdtempSync(join(tmpdir(), "llmentary-no-gh-"));
-    writeFileSync(
-      join(binDir, "gh"),
-      `#!/usr/bin/env bash
-echo "gh must not be called" >&2
-exit 1
-`,
-    );
-    chmodSync(join(binDir, "gh"), 0o755);
-    const env = { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` };
-    delete env.GH_TOKEN;
-    delete env.GITHUB_TOKEN;
-    delete env.LLMTESTLAB_REPO_TOKEN;
-    try {
-      const result = spawnSync("bash", ["scripts/install-proxy.sh", "--verify-assets"], {
-        encoding: "utf8",
-        cwd: root,
-        env,
-      });
-      expect(result.status, String(result.stderr)).toBe(0);
-      expect(result.stdout).toContain(pin);
-    } finally {
-      rmSync(binDir, { recursive: true, force: true });
-    }
   });
 
   it("matches GoReleaser-style Linux x64 tarballs", () => {

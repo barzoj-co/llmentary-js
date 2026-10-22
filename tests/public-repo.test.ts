@@ -38,12 +38,9 @@ describe("public GitHub Releases — no private-repo token crutch", () => {
     expect(ci).not.toContain("Require LLMTESTLAB_REPO_TOKEN");
     expect(ci).toContain("      - name: Install released proxy");
     expect(ci).toContain("      - name: Real Go proxy tests");
-    const installIdx = ci.indexOf("      - name: Install released proxy");
-    const firstInstall = ci.slice(installIdx, installIdx + 400);
-    expect(firstInstall).not.toContain("if: ${{ github.event_name != 'pull_request'");
-    const proxyIdx = ci.indexOf("      - name: Real Go proxy tests");
-    const proxyBlock = ci.slice(proxyIdx, proxyIdx + 280);
-    expect(proxyBlock).not.toContain("if:");
+    expect(ci).not.toMatch(/- name: Install released proxy\n\s+if:/);
+    expect(ci).not.toMatch(/- name: Real Go proxy tests\n\s+if:/);
+    expect(ci).not.toMatch(/- name: Require installed proxy binary\n\s+if:/);
     expect(ci).toContain("GH_TOKEN: ${{ github.token }}");
   });
 

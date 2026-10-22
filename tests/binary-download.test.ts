@@ -284,7 +284,12 @@ describe("downloadBinary", () => {
   it("maps 401/403/404 to a public-release / rate-limit hint", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 404, statusText: "Not Found" })));
     const dir = await scratch("llmentary-404-");
-    const error = await downloadBinary({ cacheDir: dir, repo: "barzoj-co/llmentary" }).catch((cause) => cause);
+    const error = await downloadBinary({ cacheDir: dir, repo: "barzoj-co/llmentary" }).then(
+      () => {
+        throw new Error("expected downloadBinary to reject");
+      },
+      (cause: unknown) => cause,
+    );
     expect(error).toBeInstanceOf(Error);
     expect(String(error)).toMatch(/public release|rate-limited/);
     expect(String(error)).toMatch(/LLMENTARY_BIN/);
