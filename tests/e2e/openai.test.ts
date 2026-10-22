@@ -1077,7 +1077,9 @@ describe("OpenAI E2E through llmentary", () => {
             headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}` },
           });
           if (!response.ok) {
-            throw new Error(`GET /v1/models failed: ${response.status} overloaded`);
+            throw Object.assign(new Error(`GET /v1/models failed: ${response.status}`), {
+              status: response.status,
+            });
           }
           const body = (await response.json()) as { data?: unknown };
           expect(Array.isArray(body.data)).toBe(true);
