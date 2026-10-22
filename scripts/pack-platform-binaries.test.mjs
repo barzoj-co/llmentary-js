@@ -10,7 +10,9 @@ import {
   downloadPublicRelease,
   githubHeaders,
   githubToken,
+  publicReleaseAssetUrl,
   readProxyVersion,
+  releaseAssetName,
   resolveTag,
   writePackageVersions,
 } from "./pack-platform-binaries.mjs";
@@ -78,6 +80,19 @@ test("githubToken and githubHeaders treat a PAT as optional rate-limit auth", ()
   assert.equal(githubHeaders("abc").accept, "application/vnd.github+json");
 });
 
+test("release asset names and URLs reject path traversal", () => {
+  assert.equal(releaseAssetName("checksums.txt"), "checksums.txt");
+  assert.equal(
+    publicReleaseAssetUrl("barzoj-co/llmentary", "v0.4.1", "checksums.txt"),
+    "https://github.com/barzoj-co/llmentary/releases/download/v0.4.1/checksums.txt",
+  );
+  assert.throws(() => releaseAssetName("../etc/passwd"), /invalid release asset name/);
+  assert.throws(() => releaseAssetName("dir/checksums.txt"), /invalid release asset name/);
+  assert.throws(() => releaseAssetName(""), /invalid release asset name/);
+  assert.throws(() => publicReleaseAssetUrl("https://evil.test/x", "v0.4.1", "checksums.txt"), /invalid repo/);
+  assert.throws(() => publicReleaseAssetUrl("barzoj-co/llmentary", "v0.4.1/../../../x", "checksums.txt"), /invalid tag/);
+});
+
 test("downloadPublicRelease fetches anonymously and writes assets", async () => {
   const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-"));
   const calls = [];
@@ -93,8 +108,8 @@ test("downloadPublicRelease fetches anonymously and writes assets", async () => 
           return new Response(
             JSON.stringify({
               assets: [
-                { name: "checksums.txt", browser_download_url: "https://example.test/checksums.txt" },
-                { name: "skip-me" },
+                { name: "checksums.txt" },
+                { name: "../etc/passwd" },
               ],
             }),
             { status: 200 },
@@ -105,7 +120,11 @@ test("downloadPublicRelease fetches anonymously and writes assets", async () => 
     });
     assert.equal(await readFile(join(dest, "checksums.txt"), "utf8"), "abc  checksums.txt\n");
     assert.equal(calls[0].auth, undefined);
-    assert.equal(calls.some((call) => call.url.includes("example.test/checksums.txt")), true);
+    assert.equal(
+      calls.some((call) => call.url === "https://github.com/barzoj-co/llmentary/releases/download/v0.4.1/checksums.txt"),
+      true,
+    );
+    assert.equal(calls.some((call) => String(call.url).includes("etc/passwd")), false);
   } finally {
     await rm(dest, { recursive: true, force: true });
   }

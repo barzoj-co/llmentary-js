@@ -67,6 +67,16 @@ describe("public GitHub Releases — no private-repo token crutch", () => {
     expect(result.stdout).toContain("self-test: ok");
   });
 
+  it("does not mention private project names", () => {
+    const needles = [["heal", "sens"].join(""), ["live", "kit"].join(""), ["chat", "service"].join("")];
+    const result = spawnSync("git", ["grep", "-i", "-n", "-E", needles.join("|")], {
+      encoding: "utf8",
+      cwd: root,
+    });
+    expect(result.status, result.stdout || result.stderr).toBe(1);
+    expect(result.stdout).toBe("");
+  });
+
   it("e2e-gate passes fork+skipped and fails same-repo+skipped", () => {
     const fork = spawnSync("bash", ["scripts/e2e-gate.sh"], {
       encoding: "utf8",

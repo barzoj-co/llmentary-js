@@ -73,6 +73,28 @@ export function githubHeaders(token) {
   };
 }
 
+export function assertPublicReleaseRef(repo, tag) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
+    throw new Error(`invalid repo ${repo}`);
+  }
+  if (!tag || !/^v?[A-Za-z0-9._-]+$/.test(tag)) {
+    throw new Error(tag ? `invalid tag ${tag}` : "tag is required");
+  }
+}
+
+export function releaseAssetName(name) {
+  const base = basename(String(name ?? ""));
+  if (!base || base !== name || base === "." || base === ".." || /[\\/]/.test(String(name))) {
+    throw new Error(`invalid release asset name ${name}`);
+  }
+  return base;
+}
+
+export function publicReleaseAssetUrl(repo, tag, name) {
+  assertPublicReleaseRef(repo, tag);
+  return `https://github.com/${repo}/releases/download/${tag}/${releaseAssetName(name)}`;
+}
+
 export async function downloadPublicRelease({
   repo = REPO,
   tag,
@@ -80,7 +102,7 @@ export async function downloadPublicRelease({
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
-  if (!tag) throw new Error("tag is required");
+  assertPublicReleaseRef(repo, tag);
   const token = githubToken(env);
   const api = `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`;
   const metaRes = await fetchImpl(api, { headers: githubHeaders(token) });
@@ -93,8 +115,15 @@ export async function downloadPublicRelease({
   }
   await mkdir(dest, { recursive: true });
   for (const asset of meta.assets) {
-    if (!asset?.name || !asset.browser_download_url) continue;
-    const fileRes = await fetchImpl(asset.browser_download_url, {
+    if (!asset?.name) continue;
+    let name;
+    try {
+      name = releaseAssetName(asset.name);
+    } catch {
+      continue;
+    }
+    const url = publicReleaseAssetUrl(repo, tag, name);
+    const fileRes = await fetchImpl(url, {
       headers: {
         "user-agent": "llmentary-js-pack-platform-binaries",
         ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -102,9 +131,9 @@ export async function downloadPublicRelease({
       redirect: "follow",
     });
     if (!fileRes.ok) {
-      throw new Error(`Could not download ${asset.name}: ${fileRes.status}`);
+      throw new Error(`Could not download ${name}: ${fileRes.status}`);
     }
-    await writeFile(join(dest, asset.name), Buffer.from(await fileRes.arrayBuffer()));
+    await writeFile(join(dest, name), Buffer.from(await fileRes.arrayBuffer()));
   }
 }
 
