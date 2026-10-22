@@ -167,8 +167,8 @@ describe("binary release asset matching", () => {
       const entry = lock.packages[`node_modules/${name}`];
       expect(entry, `Missing: ${name}@${expected} from lock file`).toBeDefined();
       expect(entry?.version, name).toBe(expected);
-      const tarball = `${name.split("/")[1]}-${expected}.tgz`;
-      expect(entry?.resolved, name).toMatch(new RegExp(`/${tarball.replace(/\./g, "\\.")}$`));
+      const tarball = `${name.slice(name.indexOf("/") + 1)}-${expected}.tgz`;
+      expect(entry?.resolved, name).toBe(`https://registry.npmjs.org/${name}/-/${tarball}`);
       expect(entry?.integrity, name).toMatch(/^sha512-/);
     }
   });
