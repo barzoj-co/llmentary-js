@@ -1,13 +1,23 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import OpenAI from "openai";
-import { ControlClient, SessionNotFound, llmentary, startProxy, type ProxyHandle, type Session } from "../src/index.js";
+import {
+  ControlClient,
+  SessionNotFound,
+  llmentary,
+  openapiSha256,
+  packagedMatchesServed,
+  stampOpenAPI,
+  startProxy,
+  type ProxyHandle,
+  type Session,
+} from "../src/index.js";
 
 const proxyPin = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "PROXY_VERSION"), "utf8").trim();
 
@@ -39,6 +49,25 @@ describe("real Go proxy with fake upstream", () => {
     const version = proxyPin.replace(/^v/, "");
     const out = execFileSync(process.env.LLMENTARY_BIN!, ["--version"], { encoding: "utf8" });
     expect(out).toMatch(new RegExp(`^llmentary ${version.replaceAll(".", "\\.")} \\([0-9a-f]+`));
+  });
+
+  it("matches GET /openapi.yaml to the packaged contract after stamp-then-sha256", async () => {
+    const bin = process.env.LLMENTARY_BIN!;
+    const packagedPath = [join(dirname(bin), "openapi.yaml"), join(dirname(bin), "..", "openapi.yaml")].find((path) =>
+      existsSync(path),
+    );
+    expect(packagedPath).toBeDefined();
+    const packaged = readFileSync(packagedPath!, "utf8");
+    const client = new ControlClient({
+      controlUrl: proxy.controlUrl,
+      ...(proxy.bearerToken ? { bearerToken: proxy.bearerToken } : {}),
+    });
+    const served = await client.openapi();
+    expect(served).toMatch(/openapi:\s*['"]?3\./);
+    expect(Buffer.byteLength(packaged)).toBeGreaterThanOrEqual(Buffer.byteLength(served));
+    expect(stampOpenAPI(packaged)).toBe(served);
+    expect(packagedMatchesServed(packaged, served)).toBe(true);
+    expect(openapiSha256(stampOpenAPI(packaged))).toBe(openapiSha256(served));
   });
 
   it("honours wait quiet=100ms after one finished call", async () => {

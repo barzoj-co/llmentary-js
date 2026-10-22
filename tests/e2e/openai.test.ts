@@ -8,6 +8,9 @@ import {
   SessionNotFound,
   bundledContractForServe,
   contractPath,
+  openapiSha256,
+  packagedMatchesServed,
+  stampOpenAPI,
   formatTraceSummary,
   llmentary,
   SessionAssertionError,
@@ -1309,7 +1312,11 @@ describe("OpenAI E2E through llmentary", () => {
       }
       const bundled = contractPath();
       if (bundled) {
-        expect(bundledContractForServe(readFileSync(bundled, "utf8"))).toBe(served);
+        const packaged = readFileSync(bundled, "utf8");
+        expect(bundledContractForServe(packaged)).toBe(served);
+        expect(stampOpenAPI(packaged)).toBe(served);
+        expect(packagedMatchesServed(packaged, served)).toBe(true);
+        expect(openapiSha256(stampOpenAPI(packaged))).toBe(openapiSha256(served));
       }
       const trace = await lm.session();
       expect(trace.id).toBe(lm.sessionId);

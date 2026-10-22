@@ -42,6 +42,8 @@ describe("README public API snippets", () => {
     expect(readme).toContain("openapi.yaml");
     expect(readme).toContain("GET /openapi.yaml");
     expect(readme).toContain("contractPath");
+    expect(readme).toContain("packagedMatchesServed");
+    expect(readme).toContain("stamp-then-sha256");
     expect(readme).not.toContain("github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml");
     expect(readme).toContain("v0.4.1");
   });

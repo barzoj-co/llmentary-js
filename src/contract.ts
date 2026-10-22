@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -6,12 +7,37 @@ import { thisModuleHref } from "./module-href.js";
 
 const CONTRACT_NAME = "openapi.yaml";
 
+/** Release-please leaves this on the on-disk `info.version` line; serve stamps it off. */
+const RELEASE_PLEASE_VERSION_COMMENT = /^([ \t]*version:[ \t]*\S+)[ \t]+#[ \t]*x-release-please-version[ \t]*\r?$/gm;
+
+/**
+ * Apply the same serve-time stamp the proxy uses on `GET /openapi.yaml`
+ * (DOG-37 / proxy #47 / #60): strip `# x-release-please-version` from the
+ * `info.version` line. Does not rewrite the version value.
+ */
+export function stampOpenAPI(yaml: string): string {
+  return yaml.replace(RELEASE_PLEASE_VERSION_COMMENT, "$1");
+}
+
 /**
  * The proxy serves the bundled contract with `info.version` stamped clean
  * (DOG-37). Proxy v0.4.1 keeps `# x-release-please-version` in the file (#47).
  */
 export function bundledContractForServe(yaml: string): string {
-  return yaml.replace(/^([ \t]*version:[ \t]*\S+)[ \t]+#\s*x-release-please-version[ \t]*$/m, "$1");
+  return stampOpenAPI(yaml);
+}
+
+/** SHA-256 hex of UTF-8 bytes — same digest the proxy uses after stamping. */
+export function openapiSha256(yaml: string): string {
+  return createHash("sha256").update(Buffer.from(yaml, "utf8")).digest("hex");
+}
+
+/**
+ * True when the packaged contract, after the serve stamp, has the same
+ * SHA-256 as the body of `GET /openapi.yaml` (DOG-44 / proxy #60).
+ */
+export function packagedMatchesServed(packaged: string, served: string): boolean {
+  return openapiSha256(stampOpenAPI(packaged)) === openapiSha256(served);
 }
 
 /**
