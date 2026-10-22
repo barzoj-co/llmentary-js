@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
@@ -109,6 +109,9 @@ export function assertPublicReleaseRef(repo, tag) {
 
 export function releaseAssetName(name) {
   const raw = String(name ?? "");
+  if (isAbsolute(raw) || raw.includes("/") || raw.includes("\\")) {
+    throw new Error(`invalid release asset name ${name}`);
+  }
   const match = ASSET_RE.exec(raw);
   if (!match || basename(raw) !== raw) {
     throw new Error(`invalid release asset name ${name}`);
@@ -118,12 +121,12 @@ export function releaseAssetName(name) {
 
 export function destFile(dest, name) {
   const safe = releaseAssetName(name);
-  if (safe === "." || safe === "..") {
+  if (safe === "." || safe === ".." || isAbsolute(safe)) {
     throw new Error(`refusing to write outside dest: ${name}`);
   }
   const root = resolve(dest);
   const out = resolve(root, safe);
-  if (out !== join(root, safe) || dirname(out) !== root) {
+  if (dirname(out) !== root || out !== join(root, safe)) {
     throw new Error(`refusing to write outside dest: ${name}`);
   }
   return out;
@@ -153,14 +156,128 @@ export function publicReleaseAssetUrl(repo, tag, name) {
   );
 }
 
-export async function writeReleaseAsset(dest, name, bytes) {
-  const path = destFile(dest, name);
+const SHA256_RE = /^[a-f0-9]{64}$/;
+
+export function githubAssetSize(asset, name = asset?.name) {
+  const size = Number(asset?.size);
+  if (!Number.isInteger(size) || size < 0) {
+    throw new Error(`trusted size required for ${name ?? "asset"}`);
+  }
+  if (size > MAX_RELEASE_ASSET_BYTES) {
+    throw new Error(`release asset ${name} exceeds ${MAX_RELEASE_ASSET_BYTES} bytes`);
+  }
+  return size;
+}
+
+export function githubAssetDigest(asset) {
+  const raw = String(asset?.digest ?? "").trim();
+  const match = /^(?:sha256:)?([a-fA-F0-9]{64})$/.exec(raw);
+  return match ? match[1].toLowerCase() : "";
+}
+
+export function parseChecksumManifest(checksums) {
+  const map = new Map();
+  for (const line of String(checksums ?? "").split(/\r?\n/)) {
+    const match = /^(?:sha256:)?([a-fA-F0-9]{64})\s+\*?(\S+)\s*$/.exec(line.trim());
+    if (!match) continue;
+    try {
+      map.set(releaseAssetName(match[2]), match[1].toLowerCase());
+    } catch {
+      // skip traversal / absolute names in the manifest
+    }
+  }
+  return map;
+}
+
+export function parseChecksum(checksums, fileName) {
+  try {
+    return parseChecksumManifest(checksums).get(releaseAssetName(basename(fileName)));
+  } catch {
+    return undefined;
+  }
+}
+
+export function trustedManifest(name, asset, checksums = new Map()) {
+  const size = githubAssetSize(asset, name);
+  const fromApi = githubAssetDigest(asset);
+  const fromManifest = checksums.get(name) ?? "";
+  if (fromApi && fromManifest && fromApi !== fromManifest) {
+    throw new Error(`digest disagreement for ${name}`);
+  }
+  const sha256 = fromManifest || fromApi;
+  if (!SHA256_RE.test(sha256)) {
+    throw new Error(`trusted sha256 required for ${name}`);
+  }
+  return { sha256, size };
+}
+
+export function assertVerifiedAsset(name, bytes, expected) {
+  const sha256 = String(expected?.sha256 ?? "").toLowerCase();
+  const size = Number(expected?.size);
+  if (!SHA256_RE.test(sha256)) {
+    throw new Error(`trusted sha256 required for ${name}`);
+  }
+  if (!Number.isInteger(size) || size < 0) {
+    throw new Error(`trusted size required for ${name}`);
+  }
+  if (size > MAX_RELEASE_ASSET_BYTES) {
+    throw new Error(`release asset ${name} exceeds ${MAX_RELEASE_ASSET_BYTES} bytes`);
+  }
   const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? []);
+  if (buf.byteLength !== size) {
+    const kind = buf.byteLength < size ? "truncated download" : "size mismatch";
+    throw new Error(`${kind} for ${name}: expected ${size}, got ${buf.byteLength}`);
+  }
+  const actual = createHash("sha256").update(buf).digest("hex");
+  if (actual !== sha256) {
+    throw new Error(`sha256 mismatch for ${name}: expected ${sha256}, got ${actual}`);
+  }
+  return buf;
+}
+
+export async function writeReleaseAsset(dest, name, bytes, expected) {
+  const verified = assertVerifiedAsset(name, bytes, expected);
+  const finalPath = destFile(dest, name);
+  const partPath = destFile(dest, `.${releaseAssetName(name)}.part`);
+  try {
+    await writeFile(partPath, verified);
+    await rename(partPath, finalPath);
+  } catch (err) {
+    await rm(partPath, { force: true });
+    throw err;
+  }
+  return finalPath;
+}
+
+async function fetchReleaseBytes(fetchImpl, url, token, name) {
+  const fileRes = await fetchImpl(url, {
+    headers: {
+      "user-agent": "llmentary-js-pack-platform-binaries",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    redirect: "follow",
+  });
+  if (!fileRes.ok) {
+    throw new Error(`Could not download ${name}: ${fileRes.status}`);
+  }
+  const buf = Buffer.from(await fileRes.arrayBuffer());
   if (buf.byteLength > MAX_RELEASE_ASSET_BYTES) {
     throw new Error(`release asset ${name} exceeds ${MAX_RELEASE_ASSET_BYTES} bytes`);
   }
-  await writeFile(path, buf);
-  return path;
+  return buf;
+}
+
+function listedReleaseAssets(assets) {
+  const listed = [];
+  for (const asset of assets) {
+    if (!asset?.name) continue;
+    try {
+      listed.push({ asset, name: releaseAssetName(asset.name) });
+    } catch {
+      // skip path traversal / absolute names
+    }
+  }
+  return listed;
 }
 
 export async function downloadPublicRelease({
@@ -181,27 +298,34 @@ export async function downloadPublicRelease({
   if (!Array.isArray(meta.assets) || meta.assets.length === 0) {
     throw new Error(`release ${tag} listed no assets`);
   }
+  const listed = listedReleaseAssets(meta.assets);
+  const checksum = listed.find(({ name }) => /^checksums?\.txt$/i.test(name));
+  if (!checksum) {
+    throw new Error("GoReleaser checksums.txt was not in the release assets.");
+  }
   await mkdir(dest, { recursive: true });
-  for (const asset of meta.assets) {
-    if (!asset?.name) continue;
-    let name;
-    try {
-      name = releaseAssetName(asset.name);
-    } catch {
-      continue;
-    }
+  const checksumUrl = publicReleaseAssetUrl(ref.repo, ref.tag, checksum.name);
+  const checksumBytes = await fetchReleaseBytes(fetchImpl, checksumUrl, token, checksum.name);
+  const checksumSize = githubAssetSize(checksum.asset, checksum.name);
+  const parsedChecksums = parseChecksumManifest(checksumBytes.toString("utf8"));
+  const checksumExpected = trustedManifest(checksum.name, checksum.asset, parsedChecksums);
+  if (checksumBytes.byteLength !== checksumSize) {
+    const kind = checksumBytes.byteLength < checksumSize ? "truncated download" : "size mismatch";
+    throw new Error(`${kind} for ${checksum.name}: expected ${checksumSize}, got ${checksumBytes.byteLength}`);
+  }
+  // Size/digest come from the GitHub API listing (and a self-hash if the
+  // manifest lists itself). The body is checked before any persist, then used
+  // as the sha256 map for the remaining assets.
+  const verifiedChecksums = assertVerifiedAsset(checksum.name, checksumBytes, checksumExpected);
+  const checksums = parseChecksumManifest(verifiedChecksums.toString("utf8"));
+  await writeReleaseAsset(dest, checksum.name, verifiedChecksums, checksumExpected);
+
+  for (const { asset, name } of listed) {
+    if (name === checksum.name) continue;
+    const expected = trustedManifest(name, asset, checksums);
     const url = publicReleaseAssetUrl(ref.repo, ref.tag, name);
-    const fileRes = await fetchImpl(url, {
-      headers: {
-        "user-agent": "llmentary-js-pack-platform-binaries",
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-      },
-      redirect: "follow",
-    });
-    if (!fileRes.ok) {
-      throw new Error(`Could not download ${name}: ${fileRes.status}`);
-    }
-    await writeReleaseAsset(dest, name, Buffer.from(await fileRes.arrayBuffer()));
+    const bytes = await fetchReleaseBytes(fetchImpl, url, token, name);
+    await writeReleaseAsset(dest, name, bytes, expected);
   }
 }
 
@@ -214,18 +338,6 @@ export function assetPatterns(os, cpu) {
     new RegExp(`^llmentary_[^/]+_${goreleaserOs}_${machine}${ext}$`, "i"),
     new RegExp(`^llmentary_${goreleaserOs}_${machine}${ext}$`, "i"),
   ];
-}
-
-function parseChecksum(checksums, fileName) {
-  const name = basename(fileName);
-  const line = checksums
-    .split(/\r?\n/)
-    .map((candidate) => candidate.trim())
-    .find(
-      (candidate) =>
-        candidate.endsWith(`  ${name}`) || candidate.endsWith(` *${name}`) || candidate.split(/\s+/).includes(name),
-    );
-  return line?.split(/\s+/)[0];
 }
 
 async function run(command, args, cwd) {

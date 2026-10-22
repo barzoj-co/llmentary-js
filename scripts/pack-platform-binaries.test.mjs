@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,19 +14,56 @@ import {
   PUBLIC_RELEASE_REPO,
   assetPatterns,
   assertPublicReleaseRef,
+  assertVerifiedAsset,
   destFile,
   downloadPublicRelease,
   githubHeaders,
   githubToken,
+  parseChecksumManifest,
   publicReleaseApiUrl,
   publicReleaseAssetUrl,
   readProxyVersion,
   releaseAssetName,
   resolveDownloadTag,
   resolveTag,
+  trustedManifest,
   writePackageVersions,
   writeReleaseAsset,
 } from "./pack-platform-binaries.mjs";
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function pinnedAsset(name, body, extra = {}) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+  return {
+    name,
+    size: buf.byteLength,
+    digest: `sha256:${sha256(buf)}`,
+    body: buf,
+    ...extra,
+  };
+}
+
+function releaseFetch(assets, { mutate } = {}) {
+  const byUrlName = new Map(assets.map((asset) => [asset.name, asset]));
+  return async (url, init = {}) => {
+    if (String(url).includes("/releases/tags/")) {
+      return new Response(
+        JSON.stringify({
+          assets: assets.map(({ name, size, digest }) => ({ name, size, digest })),
+        }),
+        { status: 200 },
+      );
+    }
+    const name = decodeURIComponent(String(url).split("/").pop() ?? "");
+    const asset = byUrlName.get(name);
+    if (!asset) return new Response("gone", { status: 404 });
+    const body = mutate ? mutate(asset) : asset.body;
+    return new Response(body, { status: 200, headers: { authorization: init.headers?.authorization ?? "" } });
+  };
+}
 
 const sampleRoot = {
   name: "llmentary",
@@ -111,12 +149,14 @@ test("release asset names and URLs reject path traversal", async () => {
   try {
     assert.equal(destFile(dest, "checksums.txt"), join(dest, "checksums.txt"));
     assert.throws(() => destFile(dest, "../passwd"), /invalid release asset name/);
+    assert.throws(() => destFile(dest, "/etc/passwd"), /invalid release asset name/);
     assert.throws(() => destFile(dest, ".."), /refusing to write outside dest/);
     assert.throws(() => destFile(dest, "."), /refusing to write outside dest/);
   } finally {
     await rm(dest, { recursive: true, force: true });
   }
   assert.throws(() => releaseAssetName("../etc/passwd"), /invalid release asset name/);
+  assert.throws(() => releaseAssetName("/etc/passwd"), /invalid release asset name/);
   assert.throws(() => releaseAssetName("dir/checksums.txt"), /invalid release asset name/);
   assert.throws(() => releaseAssetName(""), /invalid release asset name/);
   assert.throws(() => releaseAssetName("checksums.txt;curl"), /invalid release asset name/);
@@ -138,6 +178,7 @@ test("release asset names and URLs reject path traversal", async () => {
 test("downloadPublicRelease fetches anonymously and writes assets", async () => {
   const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-"));
   const calls = [];
+  const checksums = pinnedAsset("checksums.txt", "abc  checksums.txt\n");
   try {
     await downloadPublicRelease({
       repo: "barzoj-co/llmentary",
@@ -146,18 +187,7 @@ test("downloadPublicRelease fetches anonymously and writes assets", async () => 
       env: {},
       fetchImpl: async (url, init = {}) => {
         calls.push({ url: String(url), auth: init.headers?.authorization });
-        if (String(url).includes("/releases/tags/")) {
-          return new Response(
-            JSON.stringify({
-              assets: [
-                { name: "checksums.txt" },
-                { name: "../etc/passwd" },
-              ],
-            }),
-            { status: 200 },
-          );
-        }
-        return new Response("abc  checksums.txt\n", { status: 200 });
+        return releaseFetch([checksums, { name: "../etc/passwd", size: 3, digest: "sha256:" + "ab".repeat(32) }])(url, init);
       },
     });
     assert.equal(await readFile(join(dest, "checksums.txt"), "utf8"), "abc  checksums.txt\n");
@@ -167,6 +197,7 @@ test("downloadPublicRelease fetches anonymously and writes assets", async () => 
       true,
     );
     assert.equal(calls.some((call) => String(call.url).includes("etc/passwd")), false);
+    assert.equal((await readdir(dest)).includes("passwd"), false);
   } finally {
     await rm(dest, { recursive: true, force: true });
   }
@@ -221,7 +252,12 @@ test("downloadPublicRelease sends a rate-limit token and fails on empty/HTTP err
           env: {},
           fetchImpl: async (url) => {
             if (String(url).includes("/releases/tags/")) {
-              return new Response(JSON.stringify({ assets: [{ name: "checksums.txt" }] }), { status: 200 });
+              return new Response(
+                JSON.stringify({
+                  assets: [{ name: "checksums.txt", size: 4, digest: `sha256:${"ab".repeat(32)}` }],
+                }),
+                { status: 200 },
+              );
             }
             return new Response("gone", { status: 404 });
           },
@@ -236,6 +272,8 @@ test("downloadPublicRelease sends a rate-limit token and fails on empty/HTTP err
 test("downloadPublicRelease skips junk names, ignores browser_download_url, and rejects oversized bytes", async () => {
   const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-corners-"));
   const calls = [];
+  const notes = pinnedAsset("ok+notes.txt", "ok\n");
+  const checksums = pinnedAsset("checksums.txt", `${notes.digest.slice("sha256:".length)}  ok+notes.txt\n`);
   try {
     await downloadPublicRelease({
       repo: "barzoj-co/llmentary",
@@ -244,25 +282,17 @@ test("downloadPublicRelease skips junk names, ignores browser_download_url, and 
       env: {},
       fetchImpl: async (url) => {
         calls.push(String(url));
-        if (String(url).includes("/releases/tags/")) {
-          return new Response(
-            JSON.stringify({
-              assets: [
-                { name: "" },
-                { name: null },
-                {},
-                { name: "../etc/passwd", browser_download_url: "https://evil.test/passwd" },
-                { name: "checksums.txt", browser_download_url: "https://evil.test/checksums.txt" },
-                { name: "ok+notes.txt" },
-              ],
-            }),
-            { status: 200 },
-          );
-        }
-        return new Response("ok\n", { status: 200 });
+        return releaseFetch([
+          { name: "", size: 1, digest: `sha256:${"ab".repeat(32)}` },
+          { name: null, size: 1, digest: `sha256:${"ab".repeat(32)}` },
+          {},
+          { name: "../etc/passwd", size: 3, digest: `sha256:${"cd".repeat(32)}`, browser_download_url: "https://evil.test/passwd" },
+          { ...checksums, browser_download_url: "https://evil.test/checksums.txt" },
+          { ...notes, browser_download_url: "https://evil.test/ok+notes.txt" },
+        ])(url);
       },
     });
-    assert.equal(await readFile(join(dest, "checksums.txt"), "utf8"), "ok\n");
+    assert.equal(await readFile(join(dest, "checksums.txt"), "utf8"), checksums.body.toString("utf8"));
     assert.equal(await readFile(join(dest, "ok+notes.txt"), "utf8"), "ok\n");
     assert.equal(calls.includes("https://api.github.com/repos/barzoj-co/llmentary/releases/tags/v0.4.1"), true);
     assert.equal(
@@ -283,16 +313,148 @@ test("downloadPublicRelease skips junk names, ignores browser_download_url, and 
           env: {},
           fetchImpl: async (url) => {
             if (String(url).includes("/releases/tags/")) {
-              return new Response(JSON.stringify({ assets: [{ name: "huge.bin" }] }), { status: 200 });
+              return new Response(
+                JSON.stringify({
+                  assets: [{ name: "huge.bin", size: MAX_RELEASE_ASSET_BYTES + 1, digest: `sha256:${"ab".repeat(32)}` }],
+                }),
+                { status: 200 },
+              );
             }
             return new Response(Buffer.alloc(MAX_RELEASE_ASSET_BYTES + 1), { status: 200 });
           },
         }),
+      /checksums\.txt was not in the release assets|exceeds/,
+    );
+    await assert.rejects(
+      () =>
+        writeReleaseAsset(dest, "huge.bin", Buffer.alloc(MAX_RELEASE_ASSET_BYTES + 1), {
+          sha256: "ab".repeat(32),
+          size: MAX_RELEASE_ASSET_BYTES + 1,
+        }),
       /exceeds/,
     );
-    await assert.rejects(() => writeReleaseAsset(dest, "huge.bin", Buffer.alloc(MAX_RELEASE_ASSET_BYTES + 1)), /exceeds/);
-    await writeReleaseAsset(dest, "empty.txt", Buffer.alloc(0));
+    const empty = Buffer.alloc(0);
+    await writeReleaseAsset(dest, "empty.txt", empty, { sha256: sha256(empty), size: 0 });
     assert.equal((await readFile(join(dest, "empty.txt"))).byteLength, 0);
+  } finally {
+    await rm(dest, { recursive: true, force: true });
+  }
+});
+
+test("writeReleaseAsset verifies sha256 and size before persist and rejects corners", async () => {
+  const dest = await mkdtemp(join(tmpdir(), "ltl-verified-write-"));
+  const body = Buffer.from("payload\n");
+  const expected = { sha256: sha256(body), size: body.byteLength };
+  try {
+    assert.equal(await writeReleaseAsset(dest, "ok.bin", body, expected), join(dest, "ok.bin"));
+    assert.equal(await readFile(join(dest, "ok.bin"), "utf8"), "payload\n");
+    assert.equal((await readdir(dest)).some((name) => name.endsWith(".part")), false);
+
+    await assert.rejects(
+      () => writeReleaseAsset(dest, "bad.bin", Buffer.from("PAYLOAD\n"), expected),
+      /sha256 mismatch/,
+    );
+    assert.equal((await readdir(dest)).includes("bad.bin"), false);
+    assert.equal((await readdir(dest)).some((name) => name.includes("bad.bin")), false);
+
+    await assert.rejects(
+      () => writeReleaseAsset(dest, "trunc.bin", body.subarray(0, 3), { sha256: expected.sha256, size: body.byteLength }),
+      /truncated download/,
+    );
+    assert.equal((await readdir(dest)).includes("trunc.bin"), false);
+
+    await assert.rejects(
+      () => writeReleaseAsset(dest, "big.bin", Buffer.concat([body, Buffer.from("x")]), expected),
+      /size mismatch/,
+    );
+    assert.equal((await readdir(dest)).includes("big.bin"), false);
+
+    await assert.rejects(() => writeReleaseAsset(dest, "../passwd", body, expected), /invalid release asset name/);
+    await assert.rejects(() => writeReleaseAsset(dest, "/tmp/passwd", body, expected), /invalid release asset name/);
+    await assert.rejects(() => writeReleaseAsset(dest, "..", body, expected), /refusing to write outside dest|invalid/);
+    await assert.rejects(() => writeReleaseAsset(dest, "ok.bin", body), /trusted sha256 required/);
+
+    const manifest = parseChecksumManifest(`${expected.sha256}  ok.bin\n../etc/passwd  nope\n`);
+    assert.equal(manifest.get("ok.bin"), expected.sha256);
+    assert.equal(manifest.has("passwd"), false);
+    assert.deepEqual(trustedManifest("ok.bin", { size: expected.size, digest: `sha256:${expected.sha256}` }), expected);
+    assert.throws(() => assertVerifiedAsset("ok.bin", Buffer.from("PAYLOAD\n"), expected), /sha256 mismatch/);
+  } finally {
+    await rm(dest, { recursive: true, force: true });
+  }
+});
+
+test("downloadPublicRelease rejects bad checksum, truncated body, size mismatch, and traversal names", async () => {
+  const dest = await mkdtemp(join(tmpdir(), "ltl-download-verify-"));
+  const archive = pinnedAsset("llmentary_0.4.1_linux_amd64.tar.gz", "archive-bytes");
+  const checksums = pinnedAsset(
+    "checksums.txt",
+    `${archive.digest.slice("sha256:".length)}  llmentary_0.4.1_linux_amd64.tar.gz\n`,
+  );
+  try {
+    await downloadPublicRelease({
+      repo: "barzoj-co/llmentary",
+      tag: "v0.4.1",
+      dest,
+      env: {},
+      fetchImpl: releaseFetch([checksums, archive]),
+    });
+    assert.deepEqual(await readFile(join(dest, archive.name)), archive.body);
+
+    await assert.rejects(
+      () =>
+        downloadPublicRelease({
+          repo: "barzoj-co/llmentary",
+          tag: "v0.4.1",
+          dest,
+          env: {},
+          fetchImpl: releaseFetch([checksums, archive], {
+            mutate: (asset) => (asset.name === archive.name ? Buffer.from("ARCHIVE-BYTES") : asset.body),
+          }),
+        }),
+      /sha256 mismatch/,
+    );
+
+    await assert.rejects(
+      () =>
+        downloadPublicRelease({
+          repo: "barzoj-co/llmentary",
+          tag: "v0.4.1",
+          dest,
+          env: {},
+          fetchImpl: releaseFetch([checksums, archive], {
+            mutate: (asset) => (asset.name === archive.name ? archive.body.subarray(0, 3) : asset.body),
+          }),
+        }),
+      /truncated download/,
+    );
+
+    const oversizedListing = {
+      ...archive,
+      size: archive.body.byteLength + 4,
+    };
+    await assert.rejects(
+      () =>
+        downloadPublicRelease({
+          repo: "barzoj-co/llmentary",
+          tag: "v0.4.1",
+          dest,
+          env: {},
+          fetchImpl: releaseFetch([checksums, oversizedListing]),
+        }),
+      /size mismatch|truncated download/,
+    );
+
+    const traversal = { name: "../etc/passwd", size: 3, digest: `sha256:${"ab".repeat(32)}` };
+    await downloadPublicRelease({
+      repo: "barzoj-co/llmentary",
+      tag: "v0.4.1",
+      dest,
+      env: {},
+      fetchImpl: releaseFetch([checksums, traversal]),
+    });
+    assert.equal((await readdir(dest)).includes("passwd"), false);
+    assert.equal((await readdir(dest)).some((name) => name.includes("etc")), false);
   } finally {
     await rm(dest, { recursive: true, force: true });
   }
