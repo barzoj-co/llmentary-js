@@ -1,5 +1,6 @@
 import type {
   CallRecord,
+  GetSessionOptions,
   InFlightCall,
   JsonValue,
   ListSessionsOptions,
@@ -8,7 +9,15 @@ import type {
   SessionTrace,
   WaitOptions,
 } from "./types.js";
-import { asArray, asObject, normalizeSessionTrace, numberAt, stringAt, valueAt } from "./normalize.js";
+import {
+  asArray,
+  asObject,
+  normalizeSessionTrace,
+  numberAt,
+  parseInFlightCalls,
+  stringAt,
+  valueAt,
+} from "./normalize.js";
 import { WAIT_HTTP_PADDING_MS, WaitTimeoutError, resolveWait } from "./wait.js";
 
 export type ControlFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -56,8 +65,11 @@ export class ControlClient {
     return normalizeSessionList(body);
   }
 
-  async getSession(sessionId: string): Promise<SessionTrace> {
-    const body = await this.request(`/sessions/${encodeURIComponent(sessionId)}`);
+  async getSession(sessionId: string, options: GetSessionOptions = {}): Promise<SessionTrace> {
+    const params = new URLSearchParams();
+    if (options.include) params.set("include", options.include);
+    const query = params.toString();
+    const body = await this.request(`/sessions/${encodeURIComponent(sessionId)}${query ? `?${query}` : ""}`);
     return normalizeSessionTrace(sessionId, body);
   }
 
@@ -261,42 +273,7 @@ export function parseControlError(text: string): ControlErrorBody | undefined {
   }
 }
 
-export function parseInFlightCalls(raw: JsonValue | undefined): InFlightCall[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  return raw
-    .map((value) => parseInFlightCall(value))
-    .filter((call): call is InFlightCall => call !== undefined);
-}
-
-function parseInFlightCall(raw: JsonValue): InFlightCall | undefined {
-  const object = asObject(raw);
-  const callId = stringAt(object, "call_id") ?? stringAt(object, "callId") ?? stringAt(object, "id");
-  const method = stringAt(object, "method");
-  const path = stringAt(object, "path");
-  const phase = stringAt(object, "phase");
-  if (!callId && !method && !path && !phase) return undefined;
-  const seq = numberAt(object, "seq");
-  const apiFamily =
-    stringAt(object, "api_family") ?? stringAt(object, "apiFamily") ?? stringAt(object, "api_type");
-  const upstream = stringAt(object, "upstream");
-  const startedAt = stringAt(object, "started_at") ?? stringAt(object, "startedAt");
-  const elapsedMs = numberAt(object, "elapsed_ms") ?? numberAt(object, "elapsedMs");
-  const bytesReceived = numberAt(object, "bytes_received") ?? numberAt(object, "bytesReceived");
-  const httpStatus = numberAt(object, "http_status") ?? numberAt(object, "httpStatus");
-  return {
-    ...(callId ? { callId } : {}),
-    ...(seq !== undefined ? { seq } : {}),
-    ...(method ? { method } : {}),
-    ...(path ? { path } : {}),
-    ...(apiFamily ? { apiFamily } : {}),
-    ...(upstream ? { upstream } : {}),
-    ...(startedAt ? { startedAt } : {}),
-    ...(elapsedMs !== undefined ? { elapsedMs } : {}),
-    ...(phase ? { phase } : {}),
-    ...(bytesReceived !== undefined ? { bytesReceived } : {}),
-    ...(httpStatus !== undefined ? { httpStatus } : {}),
-  };
-}
+export { parseInFlightCalls } from "./normalize.js";
 
 export function normalizeSessionList(raw: JsonValue): SessionSummary[] {
   const object = asObject(raw);
@@ -344,11 +321,34 @@ export function normalizeProxyConfig(raw: JsonValue): ProxyConfig {
   const object = asObject(raw);
   const version = stringAt(object, "version") ?? stringAt(object, "Version");
   const upstreams = valueAt(object, "upstreams") ?? valueAt(object, "Upstreams");
+  const specTargets = parseSpecTargets(
+    valueAt(object, "spec_targets") ?? valueAt(object, "specTargets") ?? valueAt(object, "SpecTargets"),
+  );
+  const upstreamHeaderTimeout =
+    stringAt(object, "upstream_header_timeout") ??
+    stringAt(object, "upstreamHeaderTimeout") ??
+    stringAt(object, "UpstreamHeaderTimeout");
+  const upstreamIdleTimeout =
+    stringAt(object, "upstream_idle_timeout") ??
+    stringAt(object, "upstreamIdleTimeout") ??
+    stringAt(object, "UpstreamIdleTimeout");
   return {
     ...(version ? { version } : {}),
     ...(upstreams !== undefined ? { upstreams } : {}),
+    ...(specTargets !== undefined ? { specTargets } : {}),
+    ...(upstreamHeaderTimeout ? { upstreamHeaderTimeout } : {}),
+    ...(upstreamIdleTimeout ? { upstreamIdleTimeout } : {}),
     raw,
   };
+}
+
+function parseSpecTargets(raw: JsonValue | undefined): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(raw)) {
+    if (typeof value === "string" && value) out[name] = value;
+  }
+  return out;
 }
 
 function sessionLookupId(path: string): string | undefined {

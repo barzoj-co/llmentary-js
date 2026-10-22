@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("bundledContractForServe", () => {
-  it("strips the release-please comment that proxy v0.4.1 stamps off info.version", () => {
+  it("strips the release-please comment that proxy v0.5.0 stamps off info.version", () => {
     const bundled = [
       "openapi: 3.1.0",
       "info:",

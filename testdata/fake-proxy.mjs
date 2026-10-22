@@ -60,6 +60,7 @@ const server = createServer((req, res) => {
 
 server.listen(port, host, () => {
   process.stdout.write(`fake-proxy listening control=${controlListen}\n`);
+  process.stdout.write(`fake-proxy args=${JSON.stringify(args)}\n`);
   process.stderr.write(`fake-proxy stderr ready\n`);
 });
 

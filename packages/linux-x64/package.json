@@ -1,6 +1,6 @@
 {
   "name": "@llmentary/linux-x64",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Linux x64 llmentary proxy binary (optionalDependency of llmentary).",
   "license": "MIT AND AGPL-3.0-only",
   "repository": {

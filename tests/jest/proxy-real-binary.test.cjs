@@ -76,6 +76,7 @@ async function startFakeUpstream() {
       JSON.stringify({
         id: "chatcmpl_fake",
         object: "chat.completion",
+        created: 1700000000,
         model: body.model,
         choices: [
           {
@@ -83,6 +84,7 @@ async function startFakeUpstream() {
             finish_reason: "tool_calls",
             message: {
               role: "assistant",
+              content: null,
               tool_calls: [
                 {
                   id: "call_fake",

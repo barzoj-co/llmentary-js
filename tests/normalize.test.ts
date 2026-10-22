@@ -373,5 +373,137 @@ describe("sessionSource and upstreamUrl", () => {
     });
     expect(record.sessionSource).toBeUndefined();
     expect(record.upstreamUrl).toBeUndefined();
+    expect(record.reasoningIn).toBeUndefined();
+    expect(record.validation?.target).toBeUndefined();
+    expect(record.upstreamCalled).toBeUndefined();
+    expect(record.errorSource).toBeUndefined();
+  });
+});
+
+describe("v0.5.0 spec target, reasoning_in, and in_flight", () => {
+  it("reads validation.target and compatible-target lint fields", () => {
+    const compatible = normalizeCallRecord({
+      normalized: {
+        validation: { mode: "warn", profile: "relaxed", target: "openai-compatible", request_checked: true },
+        spec_violations: [
+          {
+            side: "request",
+            keyword: "enum",
+            pointer: "/tool_choice",
+            severity: "warning",
+            count: 2,
+          },
+        ],
+        ignored_fields: [{ kind: "vendor_field", severity: "info", action: "report_only", path: "top_k" }],
+      },
+    });
+    expect(compatible.validation?.target).toBe("openai-compatible");
+    expect(compatible.specViolations?.[0]).toMatchObject({ severity: "warning", count: 2 });
+    expect(compatible.ignoredFields?.[0]).toMatchObject({
+      kind: "vendor_field",
+      severity: "info",
+      action: "report_only",
+    });
+    const openai = normalizeCallRecord({
+      normalized: { validation: { target: "openai", mode: "enforce" } },
+    });
+    expect(openai.validation?.target).toBe("openai");
+    const emptyTarget = normalizeCallRecord({
+      normalized: { validation: { target: "", mode: "warn" } },
+    });
+    expect(emptyTarget.validation?.target).toBeUndefined();
+  });
+
+  it("reads upstream_called and error.source including timeout corners", () => {
+    const written = normalizeCallRecord({
+      upstream_called: true,
+      normalized: { validation: { target: "openai" } },
+    });
+    expect(written.upstreamCalled).toBe(true);
+    expect(written.errorSource).toBeUndefined();
+    const camel = normalizeCallRecord({ upstreamCalled: false });
+    expect(camel.upstreamCalled).toBe(false);
+    const headerTimeout = normalizeCallRecord({
+      http_status: 504,
+      upstream_called: false,
+      normalized: {
+        error: {
+          type: "upstream_timeout",
+          code: "upstream_timeout",
+          normalized: "upstream_timeout",
+          source: "proxy",
+          mid_stream: false,
+        },
+      },
+    });
+    expect(headerTimeout.upstreamCalled).toBe(false);
+    expect(headerTimeout.errorSource).toBe("proxy");
+    expect(headerTimeout.error).toMatchObject({ normalized: "upstream_timeout", source: "proxy", mid_stream: false });
+    const idleTimeout = normalizeCallRecord({
+      http_status: 200,
+      upstream_called: true,
+      normalized: {
+        stream_truncated: true,
+        error: { normalized: "upstream_idle_timeout", source: "proxy", mid_stream: false },
+      },
+    });
+    expect(idleTimeout.upstreamCalled).toBe(true);
+    expect(idleTimeout.errorSource).toBe("proxy");
+    expect(idleTimeout.error).toMatchObject({ normalized: "upstream_idle_timeout", source: "proxy" });
+    const emptySource = normalizeCallRecord({
+      normalized: { error: { source: "", message: "boom" } },
+    });
+    expect(emptySource.errorSource).toBeUndefined();
+    expect(emptySource.error).toMatchObject({ message: "boom" });
+    const notBool = normalizeCallRecord({ upstream_called: "yes" });
+    expect(notBool.upstreamCalled).toBeUndefined();
+  });
+
+  it("reads reasoning_in including encrypted-only chars=0", () => {
+    const echoed = normalizeCallRecord({
+      normalized: { reasoning_in: { assistant_turns: 2, with_reasoning: 1, chars: 12 } },
+    });
+    expect(echoed.reasoningIn).toMatchObject({ assistantTurns: 2, withReasoning: 1, chars: 12 });
+    const camel = normalizeCallRecord({
+      normalized: { reasoningIn: { assistantTurns: 1, withReasoning: 1, chars: 0 } },
+    });
+    expect(camel.reasoningIn).toMatchObject({ assistantTurns: 1, withReasoning: 1, chars: 0 });
+    const empty = normalizeCallRecord({ normalized: { reasoning_in: {} } });
+    expect(empty.reasoningIn).toBeUndefined();
+    const notObject = normalizeCallRecord({ normalized: { reasoning_in: "nope" } });
+    expect(notObject.reasoningIn).toBeUndefined();
+  });
+
+  it("keeps in_flight next to settled calls and omits it when absent", () => {
+    const withFlight = normalizeSessionTrace("s1", {
+      id: "s1",
+      calls: [{ id: "call_1", ended_at: "2026-10-22T00:00:01Z" }],
+      in_flight: [
+        {
+          call_id: "call_2",
+          method: "POST",
+          path: "/v1/chat/completions",
+          phase: "streaming",
+          http_status: 200,
+          elapsed_ms: 40,
+          bytes_received: 8,
+        },
+      ],
+    });
+    expect(withFlight.calls).toHaveLength(1);
+    expect(withFlight.inFlight).toEqual([
+      expect.objectContaining({
+        callId: "call_2",
+        phase: "streaming",
+        httpStatus: 200,
+        elapsedMs: 40,
+      }),
+    ]);
+    const emptyFlight = normalizeSessionTrace("s1", { id: "s1", calls: [], in_flight: [] });
+    expect(emptyFlight.inFlight).toEqual([]);
+    const omitted = normalizeSessionTrace("s1", { id: "s1", calls: [] });
+    expect(omitted.inFlight).toBeUndefined();
+    const junk = normalizeSessionTrace("s1", { id: "s1", calls: [], in_flight: [{ foo: 1 }] });
+    expect(junk.inFlight).toEqual([]);
   });
 });

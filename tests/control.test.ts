@@ -12,6 +12,7 @@ import {
   parseControlBody,
   parseControlError,
   parseInFlightCalls,
+  normalizeProxyConfig,
   normalizeSessionList,
   type ControlFetch,
 } from "../src/control.js";
@@ -615,6 +616,84 @@ describe("ControlClient", () => {
       fetch: async () => failingText,
     });
     await expect(client.openapi()).rejects.toMatchObject({ status: 503, body: "" });
+  });
+});
+
+describe("v0.5.0 config and include=in_flight", () => {
+  it("maps spec_targets and timeout strings including 0s", () => {
+    expect(
+      normalizeProxyConfig({
+        version: "0.5.0",
+        spec_targets: { openai: "openai-compatible", azure: "openai" },
+        upstream_header_timeout: "0s",
+        upstream_idle_timeout: "2s",
+      }),
+    ).toMatchObject({
+      version: "0.5.0",
+      specTargets: { openai: "openai-compatible", azure: "openai" },
+      upstreamHeaderTimeout: "0s",
+      upstreamIdleTimeout: "2s",
+    });
+    const camel = normalizeProxyConfig({
+      specTargets: { local: "openai-compatible" },
+      upstreamHeaderTimeout: "500ms",
+      upstreamIdleTimeout: "0s",
+    });
+    expect(camel.specTargets).toEqual({ local: "openai-compatible" });
+    expect(camel.upstreamHeaderTimeout).toBe("500ms");
+    expect(camel.upstreamIdleTimeout).toBe("0s");
+    expect(normalizeProxyConfig({ spec_targets: {} }).specTargets).toEqual({});
+    expect(
+      normalizeProxyConfig({ specTargets: { skip: 1, keep: "openai" }, upstream_header_timeout: "" }).specTargets,
+    ).toEqual({ keep: "openai" });
+    expect(normalizeProxyConfig({ specTargets: { skip: 1, keep: "openai" } }).upstreamHeaderTimeout).toBeUndefined();
+    expect(normalizeProxyConfig({ SpecTargets: { azure: "openai" } }).specTargets).toEqual({ azure: "openai" });
+    expect(normalizeProxyConfig({ spec_targets: "openai" }).specTargets).toBeUndefined();
+    expect(normalizeProxyConfig({ spec_targets: null }).specTargets).toBeUndefined();
+    expect(normalizeProxyConfig({ version: "0.5.0" }).specTargets).toBeUndefined();
+    expect(normalizeProxyConfig(null).version).toBeUndefined();
+  });
+
+  it("sends include=in_flight only when requested", async () => {
+    const seen: string[] = [];
+    const fetchImpl: ControlFetch = async (input) => {
+      const url = requestUrl(input);
+      seen.push(url);
+      if (url.includes("/sessions/live")) {
+        return new Response(
+          JSON.stringify({
+            id: "live",
+            calls: [{ id: "call_1", ended_at: "2026-10-22T00:00:01Z" }],
+            in_flight: [
+              {
+                call_id: "call_2",
+                seq: 2,
+                method: "POST",
+                path: "/v1/responses",
+                phase: "awaiting_headers",
+                started_at: "2026-10-22T00:00:00Z",
+                elapsed_ms: 12,
+                bytes_received: 0,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("nope", { status: 404 });
+    };
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    const settled = await client.getSession("live");
+    expect(seen.some((url) => url.includes("include="))).toBe(false);
+    expect(settled.inFlight).toHaveLength(1);
+    const inflight = await client.getSession("live", { include: "in_flight" });
+    expect(seen.some((url) => url.includes("include=in_flight"))).toBe(true);
+    expect(inflight.inFlight?.[0]).toMatchObject({
+      callId: "call_2",
+      phase: "awaiting_headers",
+      elapsedMs: 12,
+    });
+    expect(inflight.calls).toHaveLength(1);
   });
 });
 

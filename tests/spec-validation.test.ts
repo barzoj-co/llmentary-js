@@ -3,8 +3,8 @@ import { AssertionScope, formatTraceSummary } from "../src/assertions.js";
 import { normalizeCallRecord, normalizeSessionTrace, specStatusForRecord } from "../src/normalize.js";
 import type { QueryOptions, SessionTrace } from "../src/types.js";
 
-/** chat-service live run 1: validation metadata is not a violation. */
-const CHAT_SERVICE_RUN1 = {
+/** Sample live run: validation metadata is not a violation. */
+const SAMPLE_CLEAN_RUN = {
   api_family: "openai.chat",
   normalized: {
     validation: {
@@ -62,8 +62,8 @@ const UNCHECKED = {
 };
 
 describe("spec validation accessors", () => {
-  it("parses clean, present, absent, and the chat-service run-1 payload", () => {
-    const clean = normalizeCallRecord(CHAT_SERVICE_RUN1);
+  it("parses clean, present, absent, and a sample clean-run payload", () => {
+    const clean = normalizeCallRecord(SAMPLE_CLEAN_RUN);
     expect(clean.validation).toMatchObject({
       mode: "warn",
       profile: "relaxed",
@@ -92,7 +92,7 @@ describe("spec validation accessors", () => {
     expect(ignored.ignoredFields).toHaveLength(1);
     expect(ignored.ignoredFields?.[0]).toMatchObject({ kind: "enumDescriptions", severity: "warning" });
 
-    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [CHAT_SERVICE_RUN1, VIOLATION_FOO] });
+    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [SAMPLE_CLEAN_RUN, VIOLATION_FOO] });
     expect(trace.specViolations()).toHaveLength(1);
     expect(trace.ignoredFields()).toEqual([]);
 
@@ -148,14 +148,14 @@ describe("spec validation accessors", () => {
     expect(absent.ignoredFields).toBeUndefined();
   });
 
-  it("treats chat-service run-1 as clean, not as a violation", async () => {
-    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [CHAT_SERVICE_RUN1] });
+  it("treats a sample clean run as clean, not as a violation", async () => {
+    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [SAMPLE_CLEAN_RUN] });
     await expect(scopeFor(trace).noSpecViolations()).resolves.toMatchObject({ pass: true });
     await expect(scopeFor(trace).soft().noSpecViolations()).resolves.toMatchObject({ pass: true });
   });
 
   it("fails noSpecViolations with the contract message and options table", async () => {
-    const dirty = normalizeSessionTrace("s1", { id: "s1", calls: [VIOLATION_FOO, CHAT_SERVICE_RUN1] });
+    const dirty = normalizeSessionTrace("s1", { id: "s1", calls: [VIOLATION_FOO, SAMPLE_CLEAN_RUN] });
     const failed = await scopeFor(dirty).soft().noSpecViolations();
     expect(failed.pass).toBe(false);
     expect(failed.message).toBe(
@@ -183,7 +183,7 @@ describe("spec validation accessors", () => {
   });
 
   it("asserts noIgnoredFields with the same option table", async () => {
-    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [IGNORED_ENUM, CHAT_SERVICE_RUN1] });
+    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [IGNORED_ENUM, SAMPLE_CLEAN_RUN] });
     const failed = await scopeFor(trace).soft().noIgnoredFields();
     expect(failed.pass).toBe(false);
     expect(failed.message).toMatch(/^1 openai.chat request .*enumDescriptions.* — enumDescriptions$/);
@@ -198,12 +198,12 @@ describe("spec validation accessors", () => {
       message: "validation was not run",
     });
     await expect(
-      scopeFor(normalizeSessionTrace("s1", { id: "s1", calls: [CHAT_SERVICE_RUN1] })).noIgnoredFields(),
+      scopeFor(normalizeSessionTrace("s1", { id: "s1", calls: [SAMPLE_CLEAN_RUN] })).noIgnoredFields(),
     ).resolves.toMatchObject({ pass: true });
   });
 
   it("includes spec status on the generated trace summary", () => {
-    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [CHAT_SERVICE_RUN1, VIOLATION_FOO, UNCHECKED] });
+    const trace = normalizeSessionTrace("s1", { id: "s1", calls: [SAMPLE_CLEAN_RUN, VIOLATION_FOO, UNCHECKED] });
     const summary = formatTraceSummary(trace);
     expect(summary).toMatch(/spec=clean/);
     expect(summary).toMatch(/spec=1 violation/);
