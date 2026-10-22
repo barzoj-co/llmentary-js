@@ -2,7 +2,7 @@
 
 Trace assertions are deterministic: they read the recorded request and response, not the model's free text. Free-text helpers (`mentionsAny`, `finalResponseMentionsAny`) are probabilistic and belong on answers you already decided to accept.
 
-See the proxy guide for the full split: [docs/assertions-guide.md](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md) (private until the proxy repo is public).
+See the proxy guide for the full split: [docs/assertions-guide.md](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
 
 ## Negative tests: asserting zero LLM calls
 

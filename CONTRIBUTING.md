@@ -84,8 +84,8 @@ Live OpenAI e2e (must not skip; needs `OPENAI_API_KEY`):
 npm run test:e2e:openai
 ```
 
-Never print, log, or commit `OPENAI_API_KEY`, `LLMTESTLAB_REPO_TOKEN`, or any
-`Authorization` / `api-key` value.
+Never print, log, or commit `OPENAI_API_KEY` or any `Authorization` / `api-key`
+value.
 
 ## Binary resolution and releasing
 
@@ -98,35 +98,30 @@ Trusted publishing, provenance, and the `NPM_PUBLISH_ENABLED` gate are in
 
 The included CI workflow expects:
 
-- `LLMTESTLAB_REPO_TOKEN`: a GitHub token that can read the private
-  `barzoj-co/llmentary` repo so CI can download the `PROXY_VERSION` GitHub
-  Release (`scripts/install-proxy.sh`). Remove this secret/workflow usage
-  once that repo is public. Keep the secret name as-is; it is an existing
-  org secret.
 - `OPENAI_API_KEY`: required for real OpenAI E2E tests on same-repo PRs and
-  pushes. Fork PRs skip the released-binary install and this E2E step because
-  secrets are unavailable.
+  pushes. Fork PRs skip only this live job because environment secrets are
+  unavailable. The released proxy is public: `scripts/install-proxy.sh`
+  downloads it anonymously (optional `github.token` for API rate limits),
+  so fork PRs still run the real-proxy tests.
 
 Prefix-cache hits are required for Chat Completions (up to 3 attempts) and
 optional for Responses; both always check that recorded `cached_tokens` match
 the nested value in the raw upstream body. See [docs/api.md](docs/api.md).
 
 Live OpenAI e2e runs in a dedicated `e2e-openai` job (`OpenAI E2E`). That job
-holds every `secrets.OPENAI_API_KEY` reference in `ci.yml`. Secrets reach only
-the steps that need them: `GH_TOKEN` on `Install released proxy` for
-`LLMTESTLAB_REPO_TOKEN`, and the `OpenAI E2E` step env for `OPENAI_API_KEY`.
-Presence checks use the boolean form (`secrets.X != ''`) so the raw value
-never enters those processes. `npm ci` and the rest of the `test` job run
-with no secret in env.
+holds every `secrets.OPENAI_API_KEY` reference in `ci.yml`. The raw key
+reaches only the `OpenAI E2E` step env. Presence checks use the boolean form
+(`secrets.X != ''`) so the raw value never enters those processes. `npm ci`
+and the rest of the `test` job run with no secret in env.
 
-`e2e-gate` always runs and is green only when `e2e-openai` succeeded. Fork
-PRs skip the live job (no secrets), so the gate fails. That is intended:
-GitHub would otherwise treat a skipped required check as passing.
+`e2e-gate` always runs. Same-repo PRs and pushes are green only when
+`e2e-openai` succeeded. Fork PRs skip the live job (no secrets); the gate
+then exits 0 with `skipped (fork, no secrets)`. A skipped live job on a
+same-repo PR still fails the gate.
 
 **Known limitation:** on `pull_request`, GitHub runs the workflow and scripts
 from the PR's own merge commit, so a PR that edits `ci.yml` or
-`scripts/e2e-gate.sh` can make the gate pass. The gate catches the normal
-fork case (e2e skipped, nobody tampered with CI). Tampering is caught by
+`scripts/e2e-gate.sh` can make the gate pass. Tampering is caught by
 review of every `.github/**` and `scripts/**` diff. Never "fix" this with
 `pull_request_target`.
 

@@ -59,10 +59,9 @@ jobs:
           npm run lint
           npm run build
 
-      # TODO: remove LLMTESTLAB_REPO_TOKEN once llmentary is public
       - name: Pack optional platform binaries from GoReleaser
         env:
-          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           proxy_tag="$(tr -d '[:space:]' < PROXY_VERSION)"
           root_version="$(node -p "require('./package.json').version")"

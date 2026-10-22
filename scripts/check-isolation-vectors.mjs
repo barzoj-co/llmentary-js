@@ -6,11 +6,11 @@
  * 1. LLMENTARY_ISOLATION_VECTORS_DIR (must exist when set)
  * 2. .proxy-testdata/isolation
  * 3. GitHub testdata/isolation on LLMENTARY_ISOLATION_VECTORS_REF
- *    (default main) when a GitHub token is set
+ *    (default main). The repo is public; fetch is anonymous. GH_TOKEN /
+ *    GITHUB_TOKEN are optional and only used for API rate limits.
  *
  * A 404/403 from GitHub is a visible SKIP (stderr), never a silent pass
  * and never reported as a match. Other fetch errors fail the check.
- * No token and no local checkout: visible SKIP.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -54,16 +54,19 @@ function skip(reason, localCount) {
   process.exit(0);
 }
 
-async function fetchProxyVectors() {
-  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || process.env.LLMTESTLAB_REPO_TOKEN;
-  if (!token) return { skip: "no GH_TOKEN/GITHUB_TOKEN" };
-  const listUrl = `https://api.github.com/repos/${PROXY_REPO}/contents/${PROXY_PATH}?ref=${encodeURIComponent(PROXY_REF)}`;
-  const headers = {
-    Authorization: `Bearer ${token}`,
+function githubHeaders(token) {
+  return {
     Accept: "application/vnd.github+json",
     "User-Agent": "llmentary-js-isolation-vectors",
     "X-GitHub-Api-Version": "2022-11-28",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+async function fetchProxyVectors() {
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  const listUrl = `https://api.github.com/repos/${PROXY_REPO}/contents/${PROXY_PATH}?ref=${encodeURIComponent(PROXY_REF)}`;
+  const headers = githubHeaders(token);
   const listRes = await fetch(listUrl, { headers });
   if (listRes.status === 404 || listRes.status === 403) {
     return { skip: `HTTP ${listRes.status} from ${listUrl}` };
@@ -84,7 +87,10 @@ async function fetchProxyVectors() {
     if (!entry.name.endsWith(".json") && entry.name !== "README.md") continue;
     const fileRes = await fetch(entry.download_url || entry.url, {
       headers: entry.download_url
-        ? { "User-Agent": headers["User-Agent"], Authorization: headers.Authorization }
+        ? {
+            "User-Agent": headers["User-Agent"],
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          }
         : headers,
     });
     if (fileRes.status === 404 || fileRes.status === 403) {

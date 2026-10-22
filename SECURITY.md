@@ -27,4 +27,4 @@ In scope for this repository:
 
 Reports are handled on a best-effort basis. There is no SLA.
 
-Once the repository is public, npm trusted publishing generates provenance automatically. Consumers can verify the install tree with `npm audit signatures`.
+npm trusted publishing generates provenance automatically. Consumers can verify the install tree with `npm audit signatures`.

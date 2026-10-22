@@ -19,6 +19,7 @@
 
 ### Bug Fixes
 
+* drop the private-repo token crutch now that GitHub Releases are public
 * list in-flight calls on `WaitTimeoutError` from a 504 `wait_timeout` (DOG-38)
 * compare served and packaged OpenAPI with the proxy stamp-then-sha256 check (DOG-44)
 * fail `isolatedFrom` on an empty or unknown other session unless `allowEmpty` (DOG-32)

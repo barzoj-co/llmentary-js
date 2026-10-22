@@ -63,6 +63,66 @@ file_sha256() {
   fi
 }
 
+# Optional. Public releases download anonymously; a token only raises API rate limits.
+github_token() {
+  printf '%s' "${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+}
+
+curl_github() {
+  local url="$1"
+  shift
+  local args=(-fsSL -L -H "User-Agent: llmentary-js-install-proxy")
+  local token
+  token="$(github_token)"
+  if [[ -n "$token" ]]; then
+    args+=(-H "Authorization: Bearer ${token}")
+  fi
+  curl "${args[@]}" "$@" "$url"
+}
+
+list_release_assets() {
+  local tag="$1"
+  local json
+  json="$(curl_github "https://api.github.com/repos/${REPO}/releases/tags/${tag}" -H "Accept: application/vnd.github+json")" || {
+    echo "could not read public release $tag for $REPO" >&2
+    return 1
+  }
+  if ! command -v node >/dev/null 2>&1; then
+    echo "node is required to parse GitHub release metadata" >&2
+    return 1
+  fi
+  printf '%s' "$json" | node --input-type=commonjs -e '
+    let raw = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => {
+      raw += chunk;
+    });
+    process.stdin.on("end", () => {
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        process.stderr.write("release metadata is not JSON\n");
+        process.exit(1);
+      }
+      if (!data || !Array.isArray(data.assets) || data.assets.length === 0) {
+        process.stderr.write("release listed no assets\n");
+        process.exit(1);
+      }
+      for (const asset of data.assets) {
+        if (asset && typeof asset.name === "string" && asset.name) {
+          process.stdout.write(`${asset.name}\n`);
+        }
+      }
+    });
+  '
+}
+
+download_release_asset() {
+  local tag="$1" name="$2" dest="$3"
+  curl_github "https://github.com/${REPO}/releases/download/${tag}/${name}" -o "$dest"
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
 fi
@@ -86,7 +146,7 @@ EOF
 verify_pinned_release_assets() {
   local tag="$1" version="$2"
   local names missing=0 required
-  names="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name')"
+  names="$(list_release_assets "$tag")"
   if [[ -z "$names" ]]; then
     echo "release $tag listed no assets" >&2
     return 1
@@ -142,6 +202,20 @@ if [[ "${1:-}" == "--self-test" ]]; then
   empty="$(mktemp)"
   [[ "$(file_sha256 "$empty")" == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]]
   rm -f "$empty"
+  (
+    unset GH_TOKEN GITHUB_TOKEN
+    [[ -z "$(github_token)" ]]
+  )
+  (
+    unset GITHUB_TOKEN
+    GH_TOKEN="rate-limit-only"
+    [[ "$(github_token)" == "rate-limit-only" ]]
+  )
+  (
+    unset GH_TOKEN
+    GITHUB_TOKEN="fallback-token"
+    [[ "$(github_token)" == "fallback-token" ]]
+  )
   echo "install-proxy self-test: ok (pin $tag)"
   exit 0
 fi
@@ -156,11 +230,6 @@ fi
 
 if [[ $# -ne 0 ]]; then
   usage
-fi
-
-if ! command -v gh >/dev/null 2>&1; then
-  echo "gh is required to download the llmentary GitHub Release" >&2
-  exit 1
 fi
 
 TAG="$(read_proxy_tag)"
@@ -187,10 +256,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-gh release download "$TAG" --repo "$REPO" --dir "$WORK" \
-  --pattern "checksums.txt" \
-  --pattern "checksums.txt.sigstore.json" \
-  --pattern "$ASSET"
+download_release_asset "$TAG" "checksums.txt" "$WORK/checksums.txt"
+download_release_asset "$TAG" "checksums.txt.sigstore.json" "$WORK/checksums.txt.sigstore.json"
+download_release_asset "$TAG" "$ASSET" "$WORK/$ASSET"
 
 if [[ ! -f "$WORK/$ASSET" ]]; then
   echo "release $TAG did not contain $ASSET" >&2

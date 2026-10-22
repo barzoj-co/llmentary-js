@@ -61,6 +61,53 @@ export async function writePackageVersions(root, tag, { keepRootVersion = false 
   return { version, rootPkg: nextRoot };
 }
 
+export function githubToken(env = process.env) {
+  return env.GH_TOKEN || env.GITHUB_TOKEN || "";
+}
+
+export function githubHeaders(token) {
+  return {
+    accept: "application/vnd.github+json",
+    "user-agent": "llmentary-js-pack-platform-binaries",
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+export async function downloadPublicRelease({
+  repo = REPO,
+  tag,
+  dest,
+  env = process.env,
+  fetchImpl = fetch,
+} = {}) {
+  if (!tag) throw new Error("tag is required");
+  const token = githubToken(env);
+  const api = `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`;
+  const metaRes = await fetchImpl(api, { headers: githubHeaders(token) });
+  if (!metaRes.ok) {
+    throw new Error(`Could not read public release ${tag} for ${repo}: ${metaRes.status}`);
+  }
+  const meta = await metaRes.json();
+  if (!Array.isArray(meta.assets) || meta.assets.length === 0) {
+    throw new Error(`release ${tag} listed no assets`);
+  }
+  await mkdir(dest, { recursive: true });
+  for (const asset of meta.assets) {
+    if (!asset?.name || !asset.browser_download_url) continue;
+    const fileRes = await fetchImpl(asset.browser_download_url, {
+      headers: {
+        "user-agent": "llmentary-js-pack-platform-binaries",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      redirect: "follow",
+    });
+    if (!fileRes.ok) {
+      throw new Error(`Could not download ${asset.name}: ${fileRes.status}`);
+    }
+    await writeFile(join(dest, asset.name), Buffer.from(await fileRes.arrayBuffer()));
+  }
+}
+
 export function assetPatterns(os, cpu) {
   // Match goreleaser archives llmentary_<ver>_<os>_<arch> from barzoj-co/llmentary.
   const goreleaserOs = os === "darwin" ? "darwin" : os === "win32" ? "windows" : "linux";
@@ -140,7 +187,7 @@ async function main() {
   const keepRootVersion = Boolean(process.env.LLMENTARY_ROOT_VERSION);
   const work = await mkdtemp(join(tmpdir(), "llmentary-rel-"));
   try {
-    await run("gh", ["release", "download", tag, "--repo", REPO, "--dir", work]);
+    await downloadPublicRelease({ repo: REPO, tag, dest: work });
     const files = await readdir(work);
     const checksumFile = files.find((name) => /checksums?\.txt$/i.test(name));
     if (!checksumFile) throw new Error("GoReleaser checksums.txt was not in the release assets.");

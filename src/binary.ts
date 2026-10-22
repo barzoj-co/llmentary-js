@@ -208,7 +208,7 @@ async function getRelease(repo: string, version: string | undefined, token: stri
   const response = await fetch(url, { headers: githubHeaders(token) });
   if (response.status === 401 || response.status === 403 || response.status === 404) {
     throw new Error(
-      `Could not download llmentary from GitHub Releases (${response.status}). The ${repo} repository is private; set LLMENTARY_BIN to a locally built binary or provide LLMENTARY_GITHUB_TOKEN/GITHUB_TOKEN with release access.`,
+      `Could not download llmentary from GitHub Releases (${response.status}). Set LLMENTARY_BIN to a locally built binary, check that ${repo} has a public release for this version, or set LLMENTARY_GITHUB_TOKEN/GITHUB_TOKEN if you are rate-limited.`,
     );
   }
   if (!response.ok) {

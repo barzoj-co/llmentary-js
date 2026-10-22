@@ -281,11 +281,24 @@ describe("downloadBinary", () => {
     );
   });
 
-  it("maps 401/403/404 to the private-repo hint", async () => {
+  it("maps 401/403/404 to a public-release / rate-limit hint", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 404, statusText: "Not Found" })));
     const dir = await scratch("llmentary-404-");
+    const error = await downloadBinary({ cacheDir: dir, repo: "barzoj-co/llmentary" }).catch((cause) => cause);
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toMatch(/public release|rate-limited/);
+    expect(String(error)).toMatch(/LLMENTARY_BIN/);
+    expect(String(error)).not.toMatch(/repository is private/);
+  });
+
+  it.each([401, 403, 404] as const)("does not call %s a private-repo failure", async (status) => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status, statusText: "Nope" })));
+    const dir = await scratch(`llmentary-${status}-`);
     await expect(downloadBinary({ cacheDir: dir, repo: "barzoj-co/llmentary" })).rejects.toThrow(
-      /repository is private/,
+      new RegExp(`GitHub Releases \\(${status}\\)`),
+    );
+    await expect(downloadBinary({ cacheDir: dir, repo: "barzoj-co/llmentary" })).rejects.toThrow(
+      /Set LLMENTARY_BIN/,
     );
   });
 

@@ -30,16 +30,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require LLMTESTLAB_REPO_TOKEN
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        env:
-          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
-        run: |
-          if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llmentary repository so CI can install the released proxy binary."
-            exit 1
-          fi
-
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -49,12 +39,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # TODO: remove LLMTESTLAB_REPO_TOKEN once llmentary is public
-      # Install and isolation-vector fetch share this one raw secret (hygiene).
+      # Public release download. github.token is optional and only used for API rate limits.
       - name: Install released proxy
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         env:
-          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           LLMENTARY_INSTALL_DIR: ${{ github.workspace }}/.bin
           LLMENTARY_ISOLATION_VECTORS_REF: main
         run: |
@@ -62,7 +50,6 @@ jobs:
           node scripts/check-isolation-vectors.mjs
 
       - name: Require installed proxy binary
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           if [ ! -x "$LLMENTARY_BIN" ]; then
             echo "::error::CI did not produce LLMENTARY_BIN; real Go proxy tests cannot run."
@@ -95,7 +82,6 @@ jobs:
           fi
 
       - name: Real Go proxy tests
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           if [ "${{ matrix.node }}" = "22" ]; then
             npm run test:jest:proxy
@@ -103,10 +89,6 @@ jobs:
             npm run test:proxy
             npm run test:jest:proxy
           fi
-
-      - name: Skip private-binary tests for fork PR
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: echo "Skipping private-binary tests on fork PR because secrets are unavailable."
 
       - name: Upload coverage
         if: ${{ matrix.node == 22 }}
@@ -132,19 +114,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require LLMTESTLAB_REPO_TOKEN
-        env:
-          HAS_REPO_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN != '' }}
-        run: |
-          if [ "$HAS_REPO_TOKEN" != "true" ]; then
-            echo "::error::Missing required secret LLMTESTLAB_REPO_TOKEN. It must read the private barzoj-co/llmentary repository so CI can install the released proxy binary."
-            exit 1
-          fi
-
-      # TODO: remove LLMTESTLAB_REPO_TOKEN once llmentary is public
       - name: Install released proxy
         env:
-          GH_TOKEN: ${{ secrets.LLMTESTLAB_REPO_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           LLMENTARY_INSTALL_DIR: ${{ github.workspace }}/.bin
         run: bash scripts/install-proxy.sh
 

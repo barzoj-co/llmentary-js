@@ -7,6 +7,9 @@ import {
   applyVersions,
   PACKAGES,
   assetPatterns,
+  downloadPublicRelease,
+  githubHeaders,
+  githubToken,
   readProxyVersion,
   resolveTag,
   writePackageVersions,
@@ -64,6 +67,82 @@ test("unset LLMENTARY_ROOT_VERSION keeps lockstep versions", () => {
   assert.equal(version, "9.9.9");
   assert.equal(rootPkg.version, "9.9.9");
   assert.equal(rootPkg.optionalDependencies["@llmentary/linux-x64"], "9.9.9");
+});
+
+test("githubToken and githubHeaders treat a PAT as optional rate-limit auth", () => {
+  assert.equal(githubToken({}), "");
+  assert.equal(githubToken({ GH_TOKEN: "abc", GITHUB_TOKEN: "def" }), "abc");
+  assert.equal(githubToken({ GITHUB_TOKEN: "def" }), "def");
+  assert.equal(githubHeaders("").authorization, undefined);
+  assert.equal(githubHeaders("abc").authorization, "Bearer abc");
+  assert.equal(githubHeaders("abc").accept, "application/vnd.github+json");
+});
+
+test("downloadPublicRelease fetches anonymously and writes assets", async () => {
+  const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-"));
+  const calls = [];
+  try {
+    await downloadPublicRelease({
+      repo: "barzoj-co/llmentary",
+      tag: "v0.4.1",
+      dest,
+      env: {},
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), auth: init.headers?.authorization });
+        if (String(url).includes("/releases/tags/")) {
+          return new Response(
+            JSON.stringify({
+              assets: [
+                { name: "checksums.txt", browser_download_url: "https://example.test/checksums.txt" },
+                { name: "skip-me" },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response("abc  checksums.txt\n", { status: 200 });
+      },
+    });
+    assert.equal(await readFile(join(dest, "checksums.txt"), "utf8"), "abc  checksums.txt\n");
+    assert.equal(calls[0].auth, undefined);
+    assert.equal(calls.some((call) => call.url.includes("example.test/checksums.txt")), true);
+  } finally {
+    await rm(dest, { recursive: true, force: true });
+  }
+});
+
+test("downloadPublicRelease sends a rate-limit token and fails on empty/HTTP errors", async () => {
+  const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-err-"));
+  try {
+    await assert.rejects(
+      () =>
+        downloadPublicRelease({
+          repo: "barzoj-co/llmentary",
+          tag: "v0.4.1",
+          dest,
+          env: { GH_TOKEN: "rate-limit-only" },
+          fetchImpl: async (_url, init = {}) => {
+            assert.equal(init.headers?.authorization, "Bearer rate-limit-only");
+            return new Response("nope", { status: 403 });
+          },
+        }),
+      /Could not read public release/,
+    );
+    await assert.rejects(
+      () =>
+        downloadPublicRelease({
+          repo: "barzoj-co/llmentary",
+          tag: "v0.4.1",
+          dest,
+          env: {},
+          fetchImpl: async () => new Response(JSON.stringify({ assets: [] }), { status: 200 }),
+        }),
+      /listed no assets/,
+    );
+    await assert.rejects(() => downloadPublicRelease({ dest, env: {} }), /tag is required/);
+  } finally {
+    await rm(dest, { recursive: true, force: true });
+  }
 });
 
 test("resolveTag prefers LLMENTARY_TAG, then GITHUB_REF_NAME, then PROXY_VERSION", () => {
