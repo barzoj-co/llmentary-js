@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.3](https://github.com/barzoj-co/llmentary-js/compare/v0.4.2...v0.4.3) (2026-10-22)
+
+
+### Bug Fixes
+
+* compare served and packaged OpenAPI after stamp-then-sha256 ([#41](https://github.com/barzoj-co/llmentary-js/issues/41)) ([ae840b4](https://github.com/barzoj-co/llmentary-js/commit/ae840b4ae761cba83af3e746e8fca8a4f6c0e23c))
+* drop private-repo token crutch ([#42](https://github.com/barzoj-co/llmentary-js/issues/42)) ([fdc5d93](https://github.com/barzoj-co/llmentary-js/commit/fdc5d93b29cf848ab3ec18a3146cba6b8d700879))
+* list in-flight calls on wait timeout ([#43](https://github.com/barzoj-co/llmentary-js/issues/43)) ([54081d9](https://github.com/barzoj-co/llmentary-js/commit/54081d9262e15406ef8b72846e6117c4a6011a5a))
+
 ## [0.4.2](https://github.com/barzoj-co/llmentary-js/compare/v0.4.1...v0.4.2) (2026-10-22)
 
 
