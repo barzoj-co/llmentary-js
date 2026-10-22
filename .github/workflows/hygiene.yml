@@ -212,8 +212,8 @@ jobs:
             echo "release-please dry-run attempt ${attempt} failed; retrying"
             sleep $((4 * attempt))
           done
-          title="$(awk 'match($0, /title: chore\([^)]*\): release ([0-9][0-9.]*)/, a) { print a[1]; exit }' "$log")"
-          proposed="$(awk 'match($0, /updating from ([0-9][0-9.]*) to ([0-9][0-9.]*)/, a) { print a[1], a[2]; exit }' "$log")"
+          title="$(awk 'match($0, /title: chore\([^)]*\): release [0-9][0-9.]*/) { value=substr($0, RSTART, RLENGTH); sub(/^.* release /, "", value); print value; exit }' "$log")"
+          proposed="$(awk 'match($0, /updating from [0-9][0-9.]* to [0-9][0-9.]*/) { value=substr($0, RSTART, RLENGTH); sub(/^updating from /, "", value); sub(/ to /, " ", value); print value; exit }' "$log")"
           from="${proposed%% *}"
           to="${proposed##* }"
           version="${title:-$to}"
