@@ -6,6 +6,7 @@ import OpenAI from "openai";
 import {
   ControlClient,
   SessionNotFound,
+  bundledContractForServe,
   contractPath,
   formatTraceSummary,
   llmentary,
@@ -1308,7 +1309,7 @@ describe("OpenAI E2E through llmentary", () => {
       }
       const bundled = contractPath();
       if (bundled) {
-        expect(readFileSync(bundled, "utf8")).toBe(served);
+        expect(bundledContractForServe(readFileSync(bundled, "utf8"))).toBe(served);
       }
       const trace = await lm.session();
       expect(trace.id).toBe(lm.sessionId);
