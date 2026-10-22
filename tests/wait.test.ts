@@ -148,6 +148,22 @@ describe("formatWaitTimeoutError", () => {
       "wait timed out after 30s on session sess-1 (3 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
     );
   });
+
+  it("lists in-flight calls when the proxy sent them", () => {
+    expect(
+      formatWaitTimeoutError("stall-example", "30s", 0, 1, [
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers" },
+      ]),
+    ).toBe(
+      "wait timed out after 30s on session stall-example (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+    );
+    expect(
+      formatWaitTimeoutError("stall-stream-example", "2s", 0, 1, [
+        { method: "POST", path: "/v1/chat/completions", phase: "streaming", httpStatus: 200 },
+      ]),
+    ).toContain("still active: 1 [POST /v1/chat/completions streaming 200]");
+    expect(formatWaitTimeoutError("quiet", "1s", 0, 0, [])).toContain("still active: 0)");
+  });
 });
 
 describe("wait duration edge cases", () => {

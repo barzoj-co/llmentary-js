@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ControlClient,
@@ -8,10 +11,18 @@ import {
   rewriteSessionNotFoundHint,
   parseControlBody,
   parseControlError,
+  parseInFlightCalls,
   normalizeSessionList,
   type ControlFetch,
 } from "../src/control.js";
 import { WaitTimeoutError, resetWaitEnvDeprecationWarnings } from "../src/wait.js";
+
+const PIN = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "testdata", "wait_timeout_inflight.json"), "utf8"),
+) as {
+  awaiting_headers: unknown;
+  streaming: unknown;
+};
 
 const WAIT_ENV = [
   "LLMENTARY_WAIT_TIMEOUT",
@@ -288,6 +299,103 @@ describe("ControlClient", () => {
     await expect(client.wait("s1")).rejects.not.toBeInstanceOf(WaitTimeoutError);
   });
 
+  it("lists in-flight calls from a 504 pin instead of a fake settled-call count", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      if (requestUrl(input).includes("/wait")) {
+        return new Response(JSON.stringify(PIN.awaiting_headers), { status: 504, statusText: "Gateway Timeout" });
+      }
+      throw new Error("getSession should not run when in_flight is on the 504");
+    };
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    const error = await client.wait("stall-example", { minCalls: 1 }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(WaitTimeoutError);
+    expect(error).toMatchObject({
+      sessionId: "stall-example",
+      calls: 0,
+      stillActive: 1,
+    });
+    expect((error as WaitTimeoutError).inFlight).toEqual([
+      expect.objectContaining({
+        callId: "call_1",
+        method: "POST",
+        path: "/v1/responses",
+        phase: "awaiting_headers",
+        bytesReceived: 0,
+      }),
+    ]);
+    expect((error as Error).message).toBe(
+      "wait timed out after 30s on session stall-example (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+    );
+  });
+
+  it("lists a streaming in-flight call with http_status from the pin", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      if (requestUrl(input).includes("/wait")) {
+        return new Response(JSON.stringify(PIN.streaming), { status: 504, statusText: "Gateway Timeout" });
+      }
+      throw new Error("getSession should not run when in_flight is on the 504");
+    };
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    await expect(client.wait("stall-stream-example", { minCalls: 1 })).rejects.toThrow(
+      "wait timed out after 30s on session stall-stream-example (0 calls so far, still active: 1 [POST /v1/chat/completions streaming 200]). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+    );
+  });
+
+  it("treats an empty in_flight array as still active 0", async () => {
+    const fetchImpl: ControlFetch = async (input) => {
+      if (requestUrl(input).includes("/wait")) {
+        return new Response(
+          JSON.stringify({
+            id: "quiet",
+            calls: [],
+            error: { type: "wait_timeout", calls_seen: 0, min_calls: 1, active: 0, in_flight: [] },
+          }),
+          { status: 504, statusText: "Gateway Timeout" },
+        );
+      }
+      throw new Error("getSession should not run");
+    };
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    const error = await client.wait("quiet", { minCalls: 1 }).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ calls: 0, stillActive: 0, inFlight: [] });
+    expect((error as Error).message).toContain("still active: 0)");
+  });
+
+  it("lists many in-flight calls and prefers error.active over the settled calls array", async () => {
+    const inFlight = Array.from({ length: 5 }, (_, index) => ({
+      call_id: `call_${index + 1}`,
+      seq: index + 1,
+      method: "POST",
+      path: index % 2 === 0 ? "/v1/responses" : "/v1/chat/completions",
+      phase: index % 2 === 0 ? "awaiting_headers" : "streaming",
+      ...(index % 2 === 1 ? { http_status: 200 } : {}),
+      bytes_received: index,
+    }));
+    const fetchImpl: ControlFetch = async (input) => {
+      if (requestUrl(input).includes("/wait")) {
+        return new Response(
+          JSON.stringify({
+            id: "busy",
+            calls: [],
+            error: { type: "wait_timeout", calls_seen: 0, min_calls: 3, active: 5, in_flight: inFlight },
+          }),
+          { status: 504, statusText: "Gateway Timeout" },
+        );
+      }
+      throw new Error("getSession should not run");
+    };
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    const error = await client.wait("busy", { minCalls: 3 }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(WaitTimeoutError);
+    expect((error as WaitTimeoutError).stillActive).toBe(5);
+    expect((error as WaitTimeoutError).inFlight).toHaveLength(5);
+    expect((error as Error).message).toContain("still active: 5 [POST /v1/responses awaiting_headers; POST /v1/chat/completions streaming 200; POST /v1/responses awaiting_headers; POST /v1/chat/completions streaming 200; POST /v1/responses awaiting_headers]");
+  });
+
   it("reads calls_seen from a wait_timeout JSON error when the session body is absent", async () => {
     const fetchImpl: ControlFetch = async (input) => {
       const url = requestUrl(input);
@@ -523,6 +631,23 @@ describe("control parsers", () => {
       callsSeen: 4,
       minCalls: 2,
     });
+    expect(parseControlError(JSON.stringify(PIN.awaiting_headers))).toEqual({
+      type: "wait_timeout",
+      message: "wait timed out",
+      callsSeen: 0,
+      minCalls: 1,
+      active: 1,
+      inFlight: [
+        expect.objectContaining({
+          callId: "call_1",
+          path: "/v1/responses",
+          phase: "awaiting_headers",
+        }),
+      ],
+    });
+    expect(parseInFlightCalls(undefined)).toBeUndefined();
+    expect(parseInFlightCalls("nope")).toBeUndefined();
+    expect(parseInFlightCalls([null, "x", {}, { path: "/v1/responses" }])).toEqual([{ path: "/v1/responses" }]);
   });
 
   it("normalizes config/list fallbacks and keeps rewritten 404 hints", () => {

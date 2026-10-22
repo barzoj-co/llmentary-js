@@ -39,6 +39,8 @@ describe("README public API snippets", () => {
     expect(readme).toContain("before_headers");
     expect(readme).toContain("SessionNotFound");
     expect(readme).toContain("WaitTimeoutError");
+    expect(readme).toContain("in_flight");
+    expect(readme).toContain("awaiting_headers");
     expect(readme).toContain("openapi.yaml");
     expect(readme).toContain("GET /openapi.yaml");
     expect(readme).toContain("contractPath");
