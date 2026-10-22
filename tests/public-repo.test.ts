@@ -22,6 +22,28 @@ describe("public GitHub Releases — no private-repo token crutch", () => {
     expect(ci).toContain("    name: OpenAI E2E");
     expect(ci).toContain("    name: e2e-gate");
     expect(ci).toContain("    name: Pack consumers");
+    expect(read(".github/workflows/hygiene.yml")).toContain("    name: release-please (dry run)");
+    expect(read(".github/workflows/release-please.yml")).toContain("    name: release-please");
+  });
+
+  it("bumps feat as a 0.x patch at top-level and package-level", () => {
+    const config = JSON.parse(read("release-please-config.json")) as {
+      "bump-minor-pre-major": boolean;
+      "bump-patch-for-minor-pre-major": boolean;
+      packages: Record<
+        string,
+        {
+          "bump-minor-pre-major": boolean;
+          "bump-patch-for-minor-pre-major": boolean;
+        }
+      >;
+    };
+    expect(config["bump-minor-pre-major"]).toBe(false);
+    expect(config["bump-patch-for-minor-pre-major"]).toBe(true);
+    const root = config.packages["."];
+    expect(root).toBeDefined();
+    expect(root?.["bump-minor-pre-major"]).toBe(false);
+    expect(root?.["bump-patch-for-minor-pre-major"]).toBe(true);
   });
 
   it("does not require LLMTESTLAB_REPO_TOKEN anywhere in workflows or installers", () => {
