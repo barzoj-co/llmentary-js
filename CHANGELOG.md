@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/barzoj-co/llmentary-js/compare/v0.4.4...v0.4.5) (2026-10-22)
+
+
+### Bug Fixes
+
+* honor ignored_fields context and count committed calls ([#48](https://github.com/barzoj-co/llmentary-js/issues/48)) ([213ad59](https://github.com/barzoj-co/llmentary-js/commit/213ad59bc445d67c70dcd2d5d50091011f8b47b4))
+
 ## [0.4.4](https://github.com/barzoj-co/llmentary-js/compare/v0.4.3...v0.4.4) (2026-10-22)
 
 
