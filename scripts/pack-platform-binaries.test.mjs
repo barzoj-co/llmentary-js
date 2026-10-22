@@ -206,6 +206,26 @@ test("downloadPublicRelease fetches anonymously and writes assets", async () => 
 test("downloadPublicRelease sends a rate-limit token and fails on empty/HTTP errors", async () => {
   const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-err-"));
   try {
+    const checksums = pinnedAsset("checksums.txt", "ok\n");
+    const calls = [];
+    await downloadPublicRelease({
+      repo: "barzoj-co/llmentary",
+      tag: "v0.4.1",
+      dest,
+      env: { GH_TOKEN: "rate-limit-only" },
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), auth: init.headers?.authorization });
+        return releaseFetch([checksums])(url, init);
+      },
+    });
+    assert.equal(
+      calls.find((call) => call.url.includes("/releases/tags/"))?.auth,
+      "Bearer rate-limit-only",
+    );
+    assert.equal(
+      calls.some((call) => call.url.includes("/releases/download/") && call.auth),
+      false,
+    );
     await assert.rejects(
       () =>
         downloadPublicRelease({
@@ -213,7 +233,8 @@ test("downloadPublicRelease sends a rate-limit token and fails on empty/HTTP err
           tag: "v0.4.1",
           dest,
           env: { GH_TOKEN: "rate-limit-only" },
-          fetchImpl: async (_url, init = {}) => {
+          fetchImpl: async (url, init = {}) => {
+            assert.equal(String(url).includes("/releases/tags/"), true);
             assert.equal(init.headers?.authorization, "Bearer rate-limit-only");
             return new Response("nope", { status: 403 });
           },

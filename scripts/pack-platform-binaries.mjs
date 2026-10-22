@@ -249,11 +249,10 @@ export async function writeReleaseAsset(dest, name, bytes, expected) {
   return finalPath;
 }
 
-async function fetchReleaseBytes(fetchImpl, url, token, name) {
+async function fetchReleaseBytes(fetchImpl, url, name) {
   const fileRes = await fetchImpl(url, {
     headers: {
       "user-agent": "llmentary-js-pack-platform-binaries",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
     redirect: "follow",
   });
@@ -305,7 +304,7 @@ export async function downloadPublicRelease({
   }
   await mkdir(dest, { recursive: true });
   const checksumUrl = publicReleaseAssetUrl(ref.repo, ref.tag, checksum.name);
-  const checksumBytes = await fetchReleaseBytes(fetchImpl, checksumUrl, token, checksum.name);
+  const checksumBytes = await fetchReleaseBytes(fetchImpl, checksumUrl, checksum.name);
   const checksumSize = githubAssetSize(checksum.asset, checksum.name);
   const parsedChecksums = parseChecksumManifest(checksumBytes.toString("utf8"));
   const checksumExpected = trustedManifest(checksum.name, checksum.asset, parsedChecksums);
@@ -324,7 +323,7 @@ export async function downloadPublicRelease({
     if (name === checksum.name) continue;
     const expected = trustedManifest(name, asset, checksums);
     const url = publicReleaseAssetUrl(ref.repo, ref.tag, name);
-    const bytes = await fetchReleaseBytes(fetchImpl, url, token, name);
+    const bytes = await fetchReleaseBytes(fetchImpl, url, name);
     await writeReleaseAsset(dest, name, bytes, expected);
   }
 }
