@@ -50,7 +50,7 @@ try {
 }
 ```
 
-`startProxy()` attaches when `LLMENTARY_PROXY_URL` is set (`LLMENTARY_CONTROL_URL` for the separate control port). Control auth is `LLMENTARY_CONTROL_TOKEN` or `LLMENTARY_BEARER_TOKEN`. Empty env values are treated as unset. If no upstream is given, the client omits `-upstream` and the proxy defaults to `openai=https://api.openai.com/v1`. Upstream URLs are passed through unchanged: the proxy owns the overlap join so `/v1` + `/v1/chat/completions` does not become `/v1/v1`. `OPENAI_BASE_URL` is not used as the upstream (it is the app's client base, often the proxy itself). Set `LLMENTARY_UPSTREAM_BASE_URL` or `upstreams` / `upstreamBaseUrl` when you need a non-default provider. If `OPENAI_BASE_URL` points at a llmentary proxy, the client warns.
+`startProxy()` attaches when `LLMENTARY_PROXY_URL` is set (`LLMENTARY_CONTROL_URL` for the separate control port). Control auth is `LLMENTARY_CONTROL_TOKEN` or `LLMENTARY_BEARER_TOKEN`. Empty env values are treated as unset. If no upstream is given, the client omits `-upstream` and the proxy defaults to `openai=https://api.openai.com/v1`. `specTargets` / `LLMENTARY_SPEC_TARGETS` set `--spec-target name=openai|openai-compatible`. `upstreamHeaderTimeout` / `upstreamIdleTimeout` and `allowPathPrefix` map to the matching proxy flags and env vars. Upstream URLs are passed through unchanged: the proxy owns the overlap join so `/v1` + `/v1/chat/completions` does not become `/v1/v1`. When the upstream base already has a version segment, a client `/v1` is dropped (COMPAT-6). `OPENAI_BASE_URL` is not used as the upstream (it is the app's client base, often the proxy itself). Set `LLMENTARY_UPSTREAM_BASE_URL` or `upstreams` / `upstreamBaseUrl` when you need a non-default provider. If `OPENAI_BASE_URL` points at a llmentary proxy, the client warns.
 
 When it starts a process, the binary is resolved as described in [binaries.md](binaries.md). The Go proxy CLI is:
 
@@ -257,7 +257,8 @@ import { ControlClient } from "llmentary";
 
 const control = new ControlClient({ controlUrl: "http://127.0.0.1:4011" });
 await control.health();
-await control.getConfig(); // includes proxy version
+await control.getConfig(); // version, specTargets, upstream timeouts
+await control.getSession("session-id", { include: "in_flight" }); // settled calls + in_flight
 await control.listSessions();
 await control.wait("session-id", { timeout: 30, quiet: 0.5, minCalls: 2 });
 // timeoutMs / idleMs still work (deprecated aliases of timeout / quiet)
@@ -269,7 +270,7 @@ await control.getOtlp("session-id");
 await control.deleteSession("session-id");
 ```
 
-`lm.listSessions()`, `lm.config()`, and `lm.proxyVersion()` are the same control calls on a `Session`.
+`lm.listSessions()`, `lm.config()`, and `lm.proxyVersion()` are the same control calls on a `Session`. `lm.session({ include: "in_flight" })` asks for in-flight snapshots next to settled `calls`. `GET /config` also exposes `spec_targets` (`specTargets`) and the effective `--upstream-header-timeout` / `--upstream-idle-timeout` Go durations (`0s` disables). Per-call `validation.target` is `openai` or `openai-compatible`; request-side reasoning echo is `reasoningIn`. On a localhost / named compatible upstream, vendor extras become `ignored_fields` `kind=vendor_field` instead of spec violations.
 
 The raw JSON returned by the proxy is preserved on `SessionTrace.raw` and `CallRecord.raw`. The client maps the Go control schema (`api_family`, base64 `raw_request`/`raw_response`, `normalized.model` / `tool_calls` / `output_text` / `usage` / `error.mid_stream`) plus common snake_case/camelCase envelopes for assertion convenience without mutating the raw shape.
 

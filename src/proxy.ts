@@ -152,13 +152,21 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     process.env.LLMENTARY_BEARER_TOKEN,
     process.env.LLMENTARY_CONTROL_TOKEN,
   );
-  const upstreamName = firstNonEmpty(options.upstreamName, process.env.LLMENTARY_UPSTREAM_NAME) ?? "openai";
+  const mergedEnv = { ...process.env, ...options.env };
+  const upstreamName = firstNonEmpty(options.upstreamName, mergedEnv.LLMENTARY_UPSTREAM_NAME) ?? "openai";
   const upstreamSpec = resolveUpstreamSpec({
     ...(options.upstreams !== undefined ? { upstreams: options.upstreams } : {}),
     upstreamName,
     ...(options.upstreamBaseUrl !== undefined ? { upstreamBaseUrl: options.upstreamBaseUrl } : {}),
-    env: { ...process.env, ...options.env },
+    env: mergedEnv,
   });
+  const specTargets = firstNonEmpty(options.specTargets, mergedEnv.LLMENTARY_SPEC_TARGETS);
+  const upstreamHeaderTimeout = firstNonEmpty(
+    options.upstreamHeaderTimeout,
+    mergedEnv.LLMENTARY_UPSTREAM_HEADER_TIMEOUT,
+  );
+  const upstreamIdleTimeout = firstNonEmpty(options.upstreamIdleTimeout, mergedEnv.LLMENTARY_UPSTREAM_IDLE_TIMEOUT);
+  const allowPathPrefix = firstNonEmpty(options.allowPathPrefix, mergedEnv.LLMENTARY_ALLOW_PATH_PREFIXES);
 
   const instanceId = randomUUID();
   const env = {
@@ -171,6 +179,10 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     LLMENTARY_UPSTREAM_NAME: upstreamName,
     LLMENTARY_INSTANCE_ID: instanceId,
     ...(upstreamSpec ? { LLMENTARY_UPSTREAMS: upstreamSpec } : {}),
+    ...(specTargets ? { LLMENTARY_SPEC_TARGETS: specTargets } : {}),
+    ...(upstreamHeaderTimeout ? { LLMENTARY_UPSTREAM_HEADER_TIMEOUT: upstreamHeaderTimeout } : {}),
+    ...(upstreamIdleTimeout ? { LLMENTARY_UPSTREAM_IDLE_TIMEOUT: upstreamIdleTimeout } : {}),
+    ...(allowPathPrefix ? { LLMENTARY_ALLOW_PATH_PREFIXES: allowPathPrefix } : {}),
     ...(bearerToken
       ? { LLMENTARY_BEARER_TOKEN: bearerToken, LLMENTARY_CONTROL_TOKEN: bearerToken }
       : {}),
@@ -182,6 +194,10 @@ export async function startProxy(options: ProxyLaunchOptions = {}): Promise<Prox
     port,
     controlListen,
     ...(upstreamSpec ? { upstreamSpec } : {}),
+    ...(specTargets ? { specTargets } : {}),
+    ...(upstreamHeaderTimeout ? { upstreamHeaderTimeout } : {}),
+    ...(upstreamIdleTimeout ? { upstreamIdleTimeout } : {}),
+    ...(allowPathPrefix ? { allowPathPrefix } : {}),
     ...(bearerToken ? { bearerToken } : {}),
     ...(options.args ? { extraArgs: options.args } : {}),
   });
@@ -300,6 +316,10 @@ interface ArgSetOptions {
   port: number;
   controlListen: string;
   upstreamSpec?: string;
+  specTargets?: string;
+  upstreamHeaderTimeout?: string;
+  upstreamIdleTimeout?: string;
+  allowPathPrefix?: string;
   bearerToken?: string;
   extraArgs?: string[];
 }
@@ -314,6 +334,10 @@ async function buildArgSets(options: ArgSetOptions): Promise<string[][]> {
     "-control",
     options.controlListen,
     ...(options.upstreamSpec ? ["-upstream", options.upstreamSpec] : []),
+    ...repeatableFlags("-spec-target", options.specTargets),
+    ...(options.upstreamHeaderTimeout ? ["-upstream-header-timeout", options.upstreamHeaderTimeout] : []),
+    ...(options.upstreamIdleTimeout ? ["-upstream-idle-timeout", options.upstreamIdleTimeout] : []),
+    ...repeatableFlags("-allow-path-prefix", options.allowPathPrefix),
     ...(options.bearerToken ? ["-control-token", options.bearerToken] : []),
   ];
   const detected = await detectArgsFromHelp(options.binaryPath, {
@@ -323,6 +347,15 @@ async function buildArgSets(options: ArgSetOptions): Promise<string[][]> {
     ...(options.bearerToken ? { bearerToken: options.bearerToken } : {}),
   });
   return uniqueArgSets([canonical, ...detected, []]);
+}
+
+function repeatableFlags(flag: string, value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .flatMap((part) => [flag, part]);
 }
 
 function uniqueArgSets(sets: string[][]): string[][] {

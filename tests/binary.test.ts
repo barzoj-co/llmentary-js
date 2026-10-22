@@ -142,8 +142,8 @@ describe("binary release asset matching", () => {
   const pin = readFileSync(join(root, "PROXY_VERSION"), "utf8").trim();
   const version = pin.replace(/^v/, "");
 
-  it("pins PROXY_VERSION to v0.4.1", () => {
-    expect(pin).toBe("v0.4.1");
+  it("pins PROXY_VERSION to v0.5.0", () => {
+    expect(pin).toBe("v0.5.0");
     expect(pin).toMatch(/^v\d+\.\d+\.\d+$/);
   });
 
@@ -192,7 +192,7 @@ describe("binary release asset matching", () => {
       { encoding: "utf8" },
     );
     expect(mismatch.status).not.toBe(0);
-    expect(mismatch.stderr).toMatch(/PROXY_VERSION must be v0\.4\.1, got v0\.0\.0/);
+    expect(mismatch.stderr).toMatch(/PROXY_VERSION must be v0\.5\.0, got v0\.0\.0/);
   });
 
   it("install-proxy.sh downloads public releases with curl, not gh", () => {

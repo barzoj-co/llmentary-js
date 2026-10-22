@@ -21,7 +21,7 @@ export function stampOpenAPI(yaml: string): string {
 
 /**
  * The proxy serves the bundled contract with `info.version` stamped clean
- * (DOG-37). Proxy v0.4.1 keeps `# x-release-please-version` in the file (#47).
+ * (DOG-37). Proxy v0.5.0 keeps `# x-release-please-version` in the file (#47).
  */
 export function bundledContractForServe(yaml: string): string {
   return stampOpenAPI(yaml);

@@ -3,8 +3,20 @@ export type ApiType = "chat_completions" | "responses" | (string & {});
 /** `before_headers` | `after_headers`. Omitted when the call is not aborted. */
 export type AbortPhase = "before_headers" | "after_headers";
 
+/** Per-upstream spec target (`GET /config` `spec_targets`, `validation.target`). */
+export type SpecTarget = "openai" | "openai-compatible" | (string & {});
+
 /** In-flight wait snapshot. `http_status` is present after upstream headers. */
 export type InFlightPhase = "awaiting_headers" | "streaming" | (string & {});
+
+/** Request-side assistant reasoning echo (`normalized.reasoning_in`). */
+export interface ReasoningIn {
+  assistantTurns?: number;
+  withReasoning?: number;
+  /** Unicode character count. `0` is valid for encrypted-only reasoning. */
+  chars?: number;
+  raw: JsonValue;
+}
 
 /** Settled-only `calls` omit these; they appear on `error.in_flight` / `include=in_flight`. */
 export interface InFlightCall {
@@ -79,6 +91,14 @@ export interface ProxyLaunchOptions {
   upstreamBaseUrl?: string;
   upstreamName?: string;
   upstreams?: string;
+  /** `name=openai` or `name=openai-compatible`. Repeatable / comma-separated. */
+  specTargets?: string;
+  /** Go duration. `0` / `0s` disables (default). */
+  upstreamHeaderTimeout?: string;
+  /** Go duration. `0` / `0s` disables (default). */
+  upstreamIdleTimeout?: string;
+  /** Extra first path segments after `/s/{session}` / `/u/{name}`. */
+  allowPathPrefix?: string;
   host?: string;
   port?: number;
   controlPort?: number;
@@ -101,6 +121,8 @@ export interface ProxyHandle {
 export interface Validation {
   mode?: string;
   profile?: string;
+  /** `openai` or `openai-compatible` when the proxy recorded a spec target. */
+  target?: SpecTarget;
   specSha?: string;
   requestChecked?: boolean;
   responseChecked?: boolean;
@@ -122,6 +144,8 @@ export interface SpecViolation {
   schemaRef?: string;
   offset?: number;
   eventIndex?: number;
+  severity?: string;
+  count?: number;
   raw: JsonValue;
 }
 
@@ -131,6 +155,8 @@ export interface IgnoredField {
   pointer?: string;
   kind?: string;
   severity?: string;
+  /** `report_only` for compatible-target vendor extras. */
+  action?: string;
   message?: string;
   raw: JsonValue;
 }
@@ -194,6 +220,8 @@ export interface CallRecord {
    */
   abortPhase?: AbortPhase;
   validation?: Validation;
+  /** Request-side reasoning echo (`normalized.reasoning_in`). */
+  reasoningIn?: ReasoningIn;
   /** `[]` means checked and clean; omitted means validation was not run. */
   specViolations?: SpecViolation[];
   /** `[]` means checked and clean; omitted means ignored fields were not recorded. */
@@ -212,6 +240,8 @@ export interface CallRecord {
 export interface SessionTrace {
   id: string;
   calls: CallRecord[];
+  /** Present when the proxy returned `in_flight` (`include=in_flight` or a 504 body). */
+  inFlight?: InFlightCall[];
   raw: JsonValue;
   summary?: string;
   specViolations(): SpecViolation[];
@@ -235,11 +265,22 @@ export interface SessionSummary {
 export interface ProxyConfig {
   version?: string;
   upstreams?: JsonValue;
+  /** Effective `--spec-target` map (`openai` / `openai-compatible` per upstream name). */
+  specTargets?: Record<string, string>;
+  /** Effective `--upstream-header-timeout` (`0s` disables). */
+  upstreamHeaderTimeout?: string;
+  /** Effective `--upstream-idle-timeout` (`0s` disables). */
+  upstreamIdleTimeout?: string;
   raw: JsonValue;
 }
 
 export interface ListSessionsOptions {
   source?: string;
+}
+
+export interface GetSessionOptions {
+  /** Settled-only by default. `in_flight` adds `in_flight` next to `calls` (DOG-36). */
+  include?: "in_flight";
 }
 
 export interface AssertionResult {

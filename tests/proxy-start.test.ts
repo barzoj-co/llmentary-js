@@ -23,6 +23,10 @@ const envKeys = [
   "LLMENTARY_UPSTREAMS",
   "LLMENTARY_UPSTREAM_NAME",
   "LLMENTARY_UPSTREAM_BASE_URL",
+  "LLMENTARY_SPEC_TARGETS",
+  "LLMENTARY_UPSTREAM_HEADER_TIMEOUT",
+  "LLMENTARY_UPSTREAM_IDLE_TIMEOUT",
+  "LLMENTARY_ALLOW_PATH_PREFIXES",
   "LLMENTARY_HOST",
   "FAKE_PROXY_NO_HELP",
   "FAKE_PROXY_HANG_HELP",
@@ -263,6 +267,81 @@ describe("startProxy launch with a fake binary", () => {
     });
     try {
       expect(handle.pid).toBeTypeOf("number");
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it("passes spec targets, upstream timeouts, and allow-path-prefix as flags", async () => {
+    stash("LLMENTARY_PROXY_URL", undefined);
+    stash("LLMENTARY_CONTROL_URL", undefined);
+    stash("LLMENTARY_SPEC_TARGETS", undefined);
+    stash("LLMENTARY_UPSTREAM_HEADER_TIMEOUT", undefined);
+    stash("LLMENTARY_UPSTREAM_IDLE_TIMEOUT", undefined);
+    stash("LLMENTARY_ALLOW_PATH_PREFIXES", undefined);
+    const logs: string[] = [];
+    const handle = await startProxy({
+      binaryPath: FAKE_PROXY,
+      specTargets: "openai=openai-compatible,azure=openai",
+      upstreamHeaderTimeout: "0s",
+      upstreamIdleTimeout: "2s",
+      allowPathPrefix: "v1,openai",
+      healthTimeoutMs: 4_000,
+      log: (line) => logs.push(line),
+    });
+    try {
+      const argsLine = logs.find((line) => line.startsWith("fake-proxy args="));
+      expect(argsLine).toBeTruthy();
+      const args = JSON.parse(argsLine!.slice("fake-proxy args=".length)) as string[];
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "-spec-target",
+          "openai=openai-compatible",
+          "-spec-target",
+          "azure=openai",
+          "-upstream-header-timeout",
+          "0s",
+          "-upstream-idle-timeout",
+          "2s",
+          "-allow-path-prefix",
+          "v1",
+          "-allow-path-prefix",
+          "openai",
+        ]),
+      );
+    } finally {
+      await handle.stop();
+    }
+  });
+
+  it("reads spec target and timeout env when launch options are omitted", async () => {
+    stash("LLMENTARY_PROXY_URL", undefined);
+    stash("LLMENTARY_CONTROL_URL", undefined);
+    stash("LLMENTARY_SPEC_TARGETS", "openai=openai");
+    stash("LLMENTARY_UPSTREAM_HEADER_TIMEOUT", "500ms");
+    stash("LLMENTARY_UPSTREAM_IDLE_TIMEOUT", "0s");
+    stash("LLMENTARY_ALLOW_PATH_PREFIXES", "compat");
+    const logs: string[] = [];
+    const handle = await startProxy({
+      binaryPath: FAKE_PROXY,
+      healthTimeoutMs: 4_000,
+      log: (line) => logs.push(line),
+    });
+    try {
+      const argsLine = logs.find((line) => line.startsWith("fake-proxy args="));
+      const args = JSON.parse(argsLine!.slice("fake-proxy args=".length)) as string[];
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "-spec-target",
+          "openai=openai",
+          "-upstream-header-timeout",
+          "500ms",
+          "-upstream-idle-timeout",
+          "0s",
+          "-allow-path-prefix",
+          "compat",
+        ]),
+      );
     } finally {
       await handle.stop();
     }

@@ -5,6 +5,7 @@ import { attachSessionTraceHelpers } from "./normalize.js";
 import { firstNonEmpty } from "./env.js";
 import type {
   AssertionResult,
+  GetSessionOptions,
   ListSessionsOptions,
   ProxyConfig,
   QueryOptions,
@@ -94,8 +95,8 @@ export class Session {
     return this.control.wait(this.sessionId, mergeWaitOptions(this.defaultWait, options));
   }
 
-  async session(): Promise<SessionTrace> {
-    return this.control.getSession(this.sessionId);
+  async session(options: GetSessionOptions = {}): Promise<SessionTrace> {
+    return this.control.getSession(this.sessionId, options);
   }
 
   async listSessions(options: ListSessionsOptions = {}): Promise<SessionSummary[]> {
@@ -191,7 +192,13 @@ export class SessionQuery {
 
   async wait(options?: WaitOptions): Promise<SessionTrace> {
     const trace = await this.session.wait(options);
-    return attachSessionTraceHelpers(trace.id, recordsForTrace(trace, this.queryOptions), trace.raw, trace.summary);
+    return attachSessionTraceHelpers(
+      trace.id,
+      recordsForTrace(trace, this.queryOptions),
+      trace.raw,
+      trace.summary,
+      trace.inFlight,
+    );
   }
 }
 

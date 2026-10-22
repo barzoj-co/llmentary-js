@@ -16,7 +16,7 @@ The client starts or attaches to the Go proxy, creates a unique test session per
 npm install --save-dev llmentary
 ```
 
-Node 18 or newer is required. npm installs an optional `@llmentary/<platform>` package pinned to proxy **v0.4.1**; set `LLMENTARY_BIN` to use a different binary. See [docs/binaries.md](docs/binaries.md).
+Node 18 or newer is required. npm installs an optional `@llmentary/<platform>` package pinned to proxy **v0.5.0**; set `LLMENTARY_BIN` to use a different binary. See [docs/binaries.md](docs/binaries.md).
 
 ## Quickstart
 
@@ -156,7 +156,7 @@ try {
 }
 ```
 
-Whole-session `expect()` on a never-created session still fails with `no calls recorded for session …` (DOG-2). That catches a base URL that bypasses the proxy. Opt in with `await lm.expectNoCalls()` (`SessionNotFound` passes; a session with calls fails `expected 0 LLM calls, got N` plus the trace summary) or `await lm.expect({ allowEmpty: true }).callCount(0)`. Bundled proxy **v0.4.1** returns `404 session_not_found` immediately for `min_calls=0` on a never-created session. See [docs/assertions-guide.md](docs/assertions-guide.md).
+Whole-session `expect()` on a never-created session still fails with `no calls recorded for session …` (DOG-2). That catches a base URL that bypasses the proxy. Opt in with `await lm.expectNoCalls()` (`SessionNotFound` passes; a session with calls fails `expected 0 LLM calls, got N` plus the trace summary) or `await lm.expect({ allowEmpty: true }).callCount(0)`. Bundled proxy **v0.5.0** returns `404 session_not_found` immediately for `min_calls=0` on a never-created session. See [docs/assertions-guide.md](docs/assertions-guide.md).
 
 ## Isolating conversations
 

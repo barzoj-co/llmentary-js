@@ -3,8 +3,10 @@ import type {
   ApiType,
   CallRecord,
   IgnoredField,
+  InFlightCall,
   JsonObject,
   JsonValue,
+  ReasoningIn,
   SessionTrace,
   SpecViolation,
   Validation,
@@ -28,7 +30,8 @@ export function normalizeSessionTrace(sessionId: string, raw: JsonValue): Sessio
     return record.sessionId ? record : { ...record, sessionId: id };
   });
   const summary = stringAt(object, "summary") ?? stringAt(object, "trace_summary");
-  return attachTraceHelpers(id, calls, raw, summary);
+  const inFlight = parseInFlightCalls(valueAt(object, "in_flight") ?? valueAt(object, "inFlight"));
+  return attachTraceHelpers(id, calls, raw, summary, inFlight);
 }
 
 export function normalizeCallRecord(raw: JsonValue): CallRecord {
@@ -87,6 +90,7 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
   const clientAborted = inferClientAborted(object, normalized);
   const abortPhase = inferAbortPhase(object, normalized);
   const usageWithDetails = enrichUsageDetails(usage, response, decodedResponse);
+  const reasoningIn = parseReasoningIn(valueAt(normalized, "reasoning_in") ?? valueAt(normalized, "reasoningIn"));
   const promptText = textFromPayload(request);
   const responseText = responseTextFromPayload(response, normalized);
   const sessionSource =
@@ -124,6 +128,7 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     ...(httpStatus !== undefined ? { httpStatus } : {}),
     ...(clientAborted !== undefined ? { clientAborted } : {}),
     ...(clientAborted === true && abortPhase ? { abortPhase } : {}),
+    ...(reasoningIn ? { reasoningIn } : {}),
     ...(promptText ? { promptText } : {}),
     ...(responseText ? { responseText } : {}),
     ...(sessionSource ? { sessionSource } : {}),
@@ -136,12 +141,14 @@ function attachTraceHelpers(
   calls: CallRecord[],
   raw: JsonValue,
   summary?: string,
+  inFlight?: InFlightCall[],
 ): SessionTrace {
   return {
     id,
     calls,
     raw,
     ...(summary !== undefined ? { summary } : {}),
+    ...(inFlight !== undefined ? { inFlight } : {}),
     specViolations() {
       return calls.flatMap((call) => call.specViolations ?? []);
     },
@@ -379,12 +386,14 @@ function parseValidation(raw: JsonObject | undefined): Validation | undefined {
   const out: Validation = { raw };
   const mode = stringAt(raw, "mode");
   const profile = stringAt(raw, "profile");
+  const target = stringAt(raw, "target");
   const specSha = stringAt(raw, "spec_sha") ?? stringAt(raw, "specSha");
   const skippedReason = stringAt(raw, "skipped_reason") ?? stringAt(raw, "skippedReason");
   const schemaSubsetRetrieved = stringAt(raw, "schema_subset_retrieved") ?? stringAt(raw, "schemaSubsetRetrieved");
   const durationUs = numberAt(raw, "duration_us") ?? numberAt(raw, "durationUs");
   if (mode) out.mode = mode;
   if (profile) out.profile = profile;
+  if (target) out.target = target;
   if (specSha) out.specSha = specSha;
   if (typeof valueAt(raw, "request_checked") === "boolean" || typeof valueAt(raw, "requestChecked") === "boolean") {
     out.requestChecked = Boolean(valueAt(raw, "request_checked") ?? valueAt(raw, "requestChecked"));
@@ -433,6 +442,8 @@ function parseSpecViolation(raw: JsonValue): SpecViolation {
   const schemaRef = stringAt(object, "schema_ref") ?? stringAt(object, "schemaRef");
   const offset = numberAt(object, "offset");
   const eventIndex = numberAt(object, "event_index") ?? numberAt(object, "eventIndex");
+  const severity = stringAt(object, "severity");
+  const count = numberAt(object, "count");
   if (side) out.side = side;
   if (source) out.source = source;
   if (path) out.path = path;
@@ -443,6 +454,8 @@ function parseSpecViolation(raw: JsonValue): SpecViolation {
   if (schemaRef) out.schemaRef = schemaRef;
   if (offset !== undefined) out.offset = offset;
   if (eventIndex !== undefined) out.eventIndex = eventIndex;
+  if (severity) out.severity = severity;
+  if (count !== undefined) out.count = count;
   return out;
 }
 
@@ -454,12 +467,14 @@ function parseIgnoredField(raw: JsonValue): IgnoredField {
   const pointer = stringAt(object, "pointer");
   const kind = stringAt(object, "kind");
   const severity = stringAt(object, "severity");
+  const action = stringAt(object, "action");
   const message = stringAt(object, "message");
   if (side) out.side = side;
   if (path) out.path = path;
   if (pointer) out.pointer = pointer;
   if (kind) out.kind = kind;
   if (severity) out.severity = severity;
+  if (action) out.action = action;
   if (message) out.message = message;
   return out;
 }
@@ -479,8 +494,63 @@ export function attachSessionTraceHelpers(
   calls: CallRecord[],
   raw: JsonValue,
   summary?: string,
+  inFlight?: InFlightCall[],
 ): SessionTrace {
-  return attachTraceHelpers(id, calls, raw, summary);
+  return attachTraceHelpers(id, calls, raw, summary, inFlight);
+}
+
+export function parseInFlightCalls(raw: JsonValue | undefined): InFlightCall[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw
+    .map((value) => parseInFlightCall(value))
+    .filter((call): call is InFlightCall => call !== undefined);
+}
+
+function parseInFlightCall(raw: JsonValue): InFlightCall | undefined {
+  const object = asObject(raw);
+  const callId = stringAt(object, "call_id") ?? stringAt(object, "callId") ?? stringAt(object, "id");
+  const method = stringAt(object, "method");
+  const path = stringAt(object, "path");
+  const phase = stringAt(object, "phase");
+  if (!callId && !method && !path && !phase) return undefined;
+  const seq = numberAt(object, "seq");
+  const apiFamily =
+    stringAt(object, "api_family") ?? stringAt(object, "apiFamily") ?? stringAt(object, "api_type");
+  const upstream = stringAt(object, "upstream");
+  const startedAt = stringAt(object, "started_at") ?? stringAt(object, "startedAt");
+  const elapsedMs = numberAt(object, "elapsed_ms") ?? numberAt(object, "elapsedMs");
+  const bytesReceived = numberAt(object, "bytes_received") ?? numberAt(object, "bytesReceived");
+  const httpStatus = numberAt(object, "http_status") ?? numberAt(object, "httpStatus");
+  return {
+    ...(callId ? { callId } : {}),
+    ...(seq !== undefined ? { seq } : {}),
+    ...(method ? { method } : {}),
+    ...(path ? { path } : {}),
+    ...(apiFamily ? { apiFamily } : {}),
+    ...(upstream ? { upstream } : {}),
+    ...(startedAt ? { startedAt } : {}),
+    ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+    ...(phase ? { phase } : {}),
+    ...(bytesReceived !== undefined ? { bytesReceived } : {}),
+    ...(httpStatus !== undefined ? { httpStatus } : {}),
+  };
+}
+
+function parseReasoningIn(raw: JsonValue | undefined): ReasoningIn | undefined {
+  const object = asObject(raw);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const assistantTurns = numberAt(object, "assistant_turns") ?? numberAt(object, "assistantTurns");
+  const withReasoning = numberAt(object, "with_reasoning") ?? numberAt(object, "withReasoning");
+  const chars = numberAt(object, "chars");
+  if (assistantTurns === undefined && withReasoning === undefined && chars === undefined && Object.keys(object).length === 0) {
+    return undefined;
+  }
+  return {
+    raw,
+    ...(assistantTurns !== undefined ? { assistantTurns } : {}),
+    ...(withReasoning !== undefined ? { withReasoning } : {}),
+    ...(chars !== undefined ? { chars } : {}),
+  };
 }
 
 export function extractUserTexts(request: JsonValue | undefined): string[] {

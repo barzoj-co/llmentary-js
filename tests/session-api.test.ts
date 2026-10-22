@@ -37,7 +37,14 @@ describe("session query and client helpers", () => {
 
   it("chains SessionQuery filters onto expect and wait", async () => {
     const fetchImpl: ControlFetch = async () =>
-      new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
+      new Response(
+        JSON.stringify({
+          id: "s1",
+          calls: [],
+          in_flight: [{ call_id: "call_q", phase: "awaiting_headers" }],
+        }),
+        { status: 200 },
+      );
     const lm = llmentary({
       proxyUrl: "http://127.0.0.1:9/",
       controlUrl: "http://127.0.0.1:9/",
@@ -57,6 +64,7 @@ describe("session query and client helpers", () => {
     const filtered = await query.wait();
     expect(filtered.id).toBe("s1");
     expect(filtered.calls).toEqual([]);
+    expect(filtered.inFlight).toEqual([{ callId: "call_q", phase: "awaiting_headers" }]);
   });
 
   it("exposes mark, session, config, list, openapi, and client wrappers", async () => {
@@ -75,7 +83,15 @@ describe("session query and client helpers", () => {
         return new Response(JSON.stringify({ id: "s1", calls }), { status: 200 });
       }
       if (url.pathname === "/sessions/s1") {
-        return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
+        const include = url.searchParams.get("include");
+        return new Response(
+          JSON.stringify({
+            id: "s1",
+            calls: [],
+            ...(include === "in_flight" ? { in_flight: [{ call_id: "call_live", phase: "streaming" }] } : {}),
+          }),
+          { status: 200 },
+        );
       }
       if (url.pathname === "/sessions") {
         expect(url.searchParams.get("source")).toBe("live");
@@ -102,6 +118,11 @@ describe("session query and client helpers", () => {
     expect(lm.softExpect()).toBeInstanceOf(AssertionScope);
     await expect(lm.mark()).resolves.toBe(2);
     await expect(lm.session()).resolves.toMatchObject({ id: "s1" });
+    expect((await lm.session()).inFlight).toBeUndefined();
+    await expect(lm.session({ include: "in_flight" })).resolves.toMatchObject({
+      id: "s1",
+      inFlight: [{ callId: "call_live", phase: "streaming" }],
+    });
     await expect(lm.listSessions({ source: "live" })).resolves.toEqual([expect.objectContaining({ id: "s1" })]);
     await expect(lm.config()).resolves.toMatchObject({ version: "v0.4.0" });
     await expect(lm.proxyVersion()).resolves.toBe("v0.4.0");

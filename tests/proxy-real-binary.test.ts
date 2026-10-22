@@ -44,8 +44,8 @@ describe("real Go proxy with fake upstream", () => {
     delete process.env.LLMENTARY_CONTROL_URL;
   });
 
-  it("reports bundled proxy --version 0.4.1", () => {
-    expect(proxyPin).toBe("v0.4.1");
+  it("reports bundled proxy --version 0.5.0", () => {
+    expect(proxyPin).toBe("v0.5.0");
     const version = proxyPin.replace(/^v/, "");
     const out = execFileSync(process.env.LLMENTARY_BIN!, ["--version"], { encoding: "utf8" });
     expect(out).toMatch(new RegExp(`^llmentary ${version.replaceAll(".", "\\.")} \\([0-9a-f]+`));
@@ -182,9 +182,17 @@ describe("real Go proxy with fake upstream", () => {
     const listed = await control.listSessions();
     expect(listed.some((session) => session.id === "nope-never-created")).toBe(false);
     const config = await control.getConfig();
-    expect(config.version).toEqual(expect.any(String));
-    expect(config.version?.length).toBeGreaterThan(0);
+    expect(config.version).toMatch(/^0\.5\.0/);
+    expect(config.upstreamHeaderTimeout).toBe("0s");
+    expect(config.upstreamIdleTimeout).toBe("0s");
+    expect(config.specTargets).toEqual(expect.objectContaining({ openai: "openai-compatible" }));
     expect(await lm.proxyVersion()).toBe(config.version);
+    const settled = await control.getSession(lm.sessionId);
+    expect(settled.inFlight).toBeUndefined();
+    const withFlight = await control.getSession(lm.sessionId, { include: "in_flight" });
+    expect(Array.isArray(withFlight.inFlight)).toBe(true);
+    expect(withFlight.calls.length).toBeGreaterThanOrEqual(1);
+    expect(withFlight.calls[0]?.validation?.target).toBe("openai-compatible");
     await lm.cleanup();
   });
 
@@ -216,7 +224,7 @@ describe("real Go proxy with fake upstream", () => {
     await empty.cleanup();
   });
 
-  it("reads spec violations from a request with an unknown field", async () => {
+  it("treats unknown fields as vendor extras on the default compatible target", async () => {
     const lm = llmentary();
     const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
       method: "POST",
@@ -228,12 +236,54 @@ describe("real Go proxy with fake upstream", () => {
       }),
     });
     expect(response.ok).toBe(true);
-    const failed = await lm.expect().soft().noSpecViolations();
-    expect(failed.pass).toBe(false);
-    expect(failed.message).toMatch(/foo/);
-    expect(failed.message).toMatch(/unevaluatedProperties|request/);
-    await lm.expect().noSpecViolations({ side: "request", ignorePaths: ["/foo"] });
+    await expect(lm.expect().noSpecViolations()).resolves.toMatchObject({ pass: true });
+    const ignored = await lm.expect().soft().noIgnoredFields();
+    expect(ignored.pass).toBe(false);
+    expect(ignored.message).toMatch(/foo|vendor_field/);
+    const trace = await lm.session();
+    expect(trace.calls[0]?.validation?.target).toBe("openai-compatible");
+    expect(trace.calls[0]?.ignoredFields?.some((field) => field.kind === "vendor_field")).toBe(true);
     await lm.cleanup();
+  });
+
+  it("still records spec violations when the upstream target is openai", async () => {
+    const previousProxy = process.env.LLMENTARY_PROXY_URL;
+    const previousControl = process.env.LLMENTARY_CONTROL_URL;
+    delete process.env.LLMENTARY_PROXY_URL;
+    delete process.env.LLMENTARY_CONTROL_URL;
+    const openaiProxy = await startProxy({
+      upstreamBaseUrl: upstream.url,
+      specTargets: "openai=openai",
+    });
+    try {
+      process.env.LLMENTARY_PROXY_URL = openaiProxy.proxyUrl;
+      process.env.LLMENTARY_CONTROL_URL = openaiProxy.controlUrl;
+      const lm = llmentary();
+      const response = await lm.fetch(`${lm.baseURL}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          foo: 1,
+          messages: [{ role: "user", content: "weather in Amsterdam" }],
+        }),
+      });
+      expect(response.ok).toBe(true);
+      const failed = await lm.expect().soft().noSpecViolations();
+      expect(failed.pass).toBe(false);
+      expect(failed.message).toMatch(/foo/);
+      expect(failed.message).toMatch(/unevaluatedProperties|request/);
+      const config = await new ControlClient({ controlUrl: openaiProxy.controlUrl }).getConfig();
+      expect(config.specTargets).toEqual(expect.objectContaining({ openai: "openai" }));
+      await lm.expect().noSpecViolations({ side: "request", ignorePaths: ["/foo"] });
+      await lm.cleanup();
+    } finally {
+      await openaiProxy.stop();
+      if (previousProxy === undefined) delete process.env.LLMENTARY_PROXY_URL;
+      else process.env.LLMENTARY_PROXY_URL = previousProxy;
+      if (previousControl === undefined) delete process.env.LLMENTARY_CONTROL_URL;
+      else process.env.LLMENTARY_CONTROL_URL = previousControl;
+    }
   });
 
   it("records streaming Responses", async () => {
