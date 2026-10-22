@@ -82,7 +82,7 @@ process.env.OPENAI_BASE_URL = lm.pathBaseURL();
 const { app } = await import("./app.js");
 ```
 
-Black-box and sidecar recipes: [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md). Control API contract: served at `GET /openapi.yaml` on the control listener and bundled next to the proxy binary (`contractPath()`, `lm.control.openapi()`). When to assert on the trace vs the model's free text: [docs/assertions-guide.md](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
+Black-box and sidecar recipes: [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md). Control API contract: served at `GET /openapi.yaml` on the control listener and bundled next to the proxy binary (`contractPath()`, `lm.control.openapi()`). Compare the two with `packagedMatchesServed` (stamp-then-sha256). When to assert on the trace vs the model's free text: [docs/assertions-guide.md](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
 
 ## Assertions
 

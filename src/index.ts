@@ -46,7 +46,13 @@ export {
 } from "./wait.js";
 export { mentionsAny, mentionsAnyResult } from "./mentions.js";
 export type { MentionsAnyOptions, MentionsAnyResult } from "./mentions.js";
-export { bundledContractForServe, contractPath } from "./contract.js";
+export {
+  bundledContractForServe,
+  contractPath,
+  openapiSha256,
+  packagedMatchesServed,
+  stampOpenAPI,
+} from "./contract.js";
 export { llmentary, Session, SessionQuery, sessionHeaders, formatPathBaseURL } from "./session.js";
 export {
   startProxy,
