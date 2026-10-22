@@ -234,6 +234,14 @@ describe("spec validation accessors", () => {
         kind: "vendor_field",
         message: "extra",
       },
+      "empty context": {
+        context: "",
+        side: "request",
+        path: "foo",
+        pointer: "/foo",
+        kind: "vendor_field",
+        message: "extra",
+      },
       neither: { path: "foo", pointer: "/foo", kind: "vendor_field", message: "extra" },
     } as const;
 

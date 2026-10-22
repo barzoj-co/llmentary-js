@@ -1477,10 +1477,10 @@ function includeFinding(item: SpecViolation | IgnoredField, options: SpecAsserti
   return true;
 }
 
-/** Wire `context` first (proxy v0.5.0), then `side`. */
+/** Wire `context` first (proxy v0.5.0), then `side`. Empty strings are absent. */
 export function findingSide(item: SpecViolation | IgnoredField): string | undefined {
   const raw = asObject(item.raw);
-  return stringAt(raw, "context") ?? item.side ?? stringAt(raw, "side");
+  return stringAt(raw, "context") || item.side || stringAt(raw, "side") || undefined;
 }
 
 function findingMatchesPath(item: SpecViolation | IgnoredField, ignore: string): boolean {
