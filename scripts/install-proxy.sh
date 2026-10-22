@@ -68,6 +68,28 @@ github_token() {
   printf '%s' "${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 }
 
+WORK=""
+CURL_GITHUB_HEADER=""
+
+install_proxy_cleanup() {
+  if [[ -n "${CURL_GITHUB_HEADER:-}" ]]; then
+    rm -f "$CURL_GITHUB_HEADER"
+    CURL_GITHUB_HEADER=""
+  fi
+  if [[ -n "${WORK:-}" ]]; then
+    rm -rf "$WORK"
+    WORK=""
+  fi
+}
+
+register_install_proxy_cleanup() {
+  trap 'install_proxy_cleanup' EXIT
+  trap 'install_proxy_cleanup; exit 130' INT
+  trap 'install_proxy_cleanup; exit 143' TERM
+}
+
+register_install_proxy_cleanup
+
 curl_github() {
   local url="$1"
   shift
@@ -76,18 +98,32 @@ curl_github() {
   token="$(github_token)"
   if [[ -n "$token" ]]; then
     # Keep the bearer token out of curl's process arguments (ps/argv).
+    # Re-register in this shell so a backgrounded/subshell call still
+    # deletes the header on EXIT/INT/TERM (and before the later WORK trap).
+    register_install_proxy_cleanup
     header_file="$(mktemp "${TMPDIR:-/tmp}/llmentary-gh-auth.XXXXXX")"
+    CURL_GITHUB_HEADER="$header_file"
     chmod 0600 "$header_file"
     printf 'Authorization: Bearer %s\n' "$token" >"$header_file"
     args+=(-H "@${header_file}")
   fi
-  if [[ "${CURL_GITHUB_PRINT_ARGS:-}" == "1" ]]; then
+  if [[ -n "${CURL_GITHUB_HOLD_FILE:-}" && -n "$header_file" ]]; then
+    printf '%s\n' "$header_file" >"$CURL_GITHUB_HOLD_FILE"
+    # Stay in this shell so SIGINT/SIGTERM hit the trap, not a child `sleep`.
+    end=$((SECONDS + 3))
+    while ((SECONDS < end)); do
+      :
+    done
+  elif [[ "${CURL_GITHUB_PRINT_ARGS:-}" == "1" ]]; then
     printf '%s\n' "${args[@]}" "$@" "$url"
   else
     curl "${args[@]}" "$@" "$url" || status=$?
   fi
   if [[ -n "$header_file" ]]; then
     rm -f "$header_file"
+    if [[ "${CURL_GITHUB_HEADER:-}" == "$header_file" ]]; then
+      CURL_GITHUB_HEADER=""
+    fi
   fi
   return "$status"
 }
@@ -235,6 +271,33 @@ if [[ "${1:-}" == "--self-test" ]]; then
     [[ "$printed" != *should-not-appear-on-argv* ]]
     [[ "$printed" == *"-H"*$'\n'"@"* ]] || [[ "$printed" == *"@"* ]]
   )
+  hold="$(mktemp)"
+  (
+    unset GITHUB_TOKEN
+    GH_TOKEN="hold-token"
+    CURL_GITHUB_HOLD_FILE="$hold"
+    curl_github "https://example.test/x"
+  ) &
+  hold_pid=$!
+  header=""
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+    if [[ -s "$hold" ]]; then
+      header="$(cat "$hold")"
+      [[ -n "$header" && -f "$header" ]] && break
+    fi
+    sleep 0.05
+  done
+  if [[ -z "$header" || ! -f "$header" ]]; then
+    kill -TERM "$hold_pid" 2>/dev/null || true
+    wait "$hold_pid" 2>/dev/null || true
+    rm -f "$hold"
+    echo "hold-file header was not created" >&2
+    exit 1
+  fi
+  kill -TERM "$hold_pid" 2>/dev/null || true
+  wait "$hold_pid" 2>/dev/null || true
+  [[ ! -f "$header" ]]
+  rm -f "$hold"
   echo "install-proxy self-test: ok (pin $tag)"
   exit 0
 fi
@@ -270,10 +333,6 @@ if [[ "$GOOS" == "windows" ]]; then
 fi
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/llmentary-proxy.XXXXXX")"
-cleanup() {
-  rm -rf "$WORK"
-}
-trap cleanup EXIT
 
 download_release_asset "$TAG" "checksums.txt" "$WORK/checksums.txt"
 download_release_asset "$TAG" "checksums.txt.sigstore.json" "$WORK/checksums.txt.sigstore.json"

@@ -63,6 +63,8 @@ exit 1
   };
   delete env.GH_TOKEN;
   delete env.GITHUB_TOKEN;
+  delete env.CURL_GITHUB_HOLD_FILE;
+  delete env.CURL_GITHUB_PRINT_ARGS;
   if (options.token !== undefined) {
     env.GH_TOKEN = options.token;
   }
@@ -120,6 +122,8 @@ exit 1
   const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${dir}:${process.env.PATH ?? ""}` };
   delete env.GH_TOKEN;
   delete env.GITHUB_TOKEN;
+  delete env.CURL_GITHUB_HOLD_FILE;
+  delete env.CURL_GITHUB_PRINT_ARGS;
   if (options.token !== undefined) env.GH_TOKEN = options.token;
   const result = spawnSync("bash", ["scripts/install-proxy.sh", "--verify-assets"], {
     encoding: "utf8",
@@ -195,6 +199,9 @@ describe("binary release asset matching", () => {
     expect(installer).toContain("https://api.github.com/repos/${REPO}/releases/tags/");
     expect(installer).toContain('args+=(-H "@${header_file}")');
     expect(installer).not.toContain('args+=(-H "Authorization: Bearer ${token}")');
+    expect(installer).toContain("trap 'install_proxy_cleanup; exit 130' INT");
+    expect(installer).toContain("trap 'install_proxy_cleanup; exit 143' TERM");
+    expect(installer).toContain("register_install_proxy_cleanup");
   });
 
   it("verify_pinned_release_assets accepts the six archives plus signed checksums and an SBOM", () => {
