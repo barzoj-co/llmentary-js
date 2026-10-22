@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
@@ -73,26 +73,40 @@ export function githubHeaders(token) {
   };
 }
 
+const REPO_RE = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)$/;
+const TAG_RE = /^(v?[A-Za-z0-9._-]+)$/;
+const ASSET_RE = /^([A-Za-z0-9._+-]+)$/;
+
 export function assertPublicReleaseRef(repo, tag) {
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
-    throw new Error(`invalid repo ${repo}`);
-  }
-  if (!tag || !/^v?[A-Za-z0-9._-]+$/.test(tag)) {
-    throw new Error(tag ? `invalid tag ${tag}` : "tag is required");
-  }
+  const repoMatch = REPO_RE.exec(String(repo ?? ""));
+  const tagMatch = TAG_RE.exec(String(tag ?? ""));
+  if (!repoMatch) throw new Error(`invalid repo ${repo}`);
+  if (!tagMatch) throw new Error(tag ? `invalid tag ${tag}` : "tag is required");
+  return { repo: repoMatch[1], tag: tagMatch[1] };
 }
 
 export function releaseAssetName(name) {
-  const base = basename(String(name ?? ""));
-  if (!base || base !== name || base === "." || base === ".." || /[\\/]/.test(String(name))) {
+  const raw = String(name ?? "");
+  const match = ASSET_RE.exec(raw);
+  if (!match || basename(raw) !== raw) {
     throw new Error(`invalid release asset name ${name}`);
   }
-  return base;
+  return match[1];
+}
+
+export function destFile(dest, name) {
+  const safe = releaseAssetName(name);
+  const root = resolve(dest);
+  const out = resolve(root, safe);
+  if (out !== join(root, safe)) {
+    throw new Error(`refusing to write outside dest: ${name}`);
+  }
+  return out;
 }
 
 export function publicReleaseAssetUrl(repo, tag, name) {
-  assertPublicReleaseRef(repo, tag);
-  return `https://github.com/${repo}/releases/download/${tag}/${releaseAssetName(name)}`;
+  const ref = assertPublicReleaseRef(repo, tag);
+  return `https://github.com/${ref.repo}/releases/download/${ref.tag}/${releaseAssetName(name)}`;
 }
 
 export async function downloadPublicRelease({
@@ -102,9 +116,9 @@ export async function downloadPublicRelease({
   env = process.env,
   fetchImpl = fetch,
 } = {}) {
-  assertPublicReleaseRef(repo, tag);
+  const ref = assertPublicReleaseRef(repo, tag);
   const token = githubToken(env);
-  const api = `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`;
+  const api = `https://api.github.com/repos/${ref.repo}/releases/tags/${encodeURIComponent(ref.tag)}`;
   const metaRes = await fetchImpl(api, { headers: githubHeaders(token) });
   if (!metaRes.ok) {
     throw new Error(`Could not read public release ${tag} for ${repo}: ${metaRes.status}`);
@@ -122,7 +136,7 @@ export async function downloadPublicRelease({
     } catch {
       continue;
     }
-    const url = publicReleaseAssetUrl(repo, tag, name);
+    const url = publicReleaseAssetUrl(ref.repo, ref.tag, name);
     const fileRes = await fetchImpl(url, {
       headers: {
         "user-agent": "llmentary-js-pack-platform-binaries",
@@ -133,7 +147,7 @@ export async function downloadPublicRelease({
     if (!fileRes.ok) {
       throw new Error(`Could not download ${name}: ${fileRes.status}`);
     }
-    await writeFile(join(dest, name), Buffer.from(await fileRes.arrayBuffer()));
+    await writeFile(destFile(dest, name), Buffer.from(await fileRes.arrayBuffer()));
   }
 }
 

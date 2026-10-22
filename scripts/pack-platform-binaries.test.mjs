@@ -7,6 +7,8 @@ import {
   applyVersions,
   PACKAGES,
   assetPatterns,
+  assertPublicReleaseRef,
+  destFile,
   downloadPublicRelease,
   githubHeaders,
   githubToken,
@@ -80,17 +82,32 @@ test("githubToken and githubHeaders treat a PAT as optional rate-limit auth", ()
   assert.equal(githubHeaders("abc").accept, "application/vnd.github+json");
 });
 
-test("release asset names and URLs reject path traversal", () => {
+test("release asset names and URLs reject path traversal", async () => {
+  assert.deepEqual(assertPublicReleaseRef("barzoj-co/llmentary", "v0.4.1"), {
+    repo: "barzoj-co/llmentary",
+    tag: "v0.4.1",
+  });
   assert.equal(releaseAssetName("checksums.txt"), "checksums.txt");
+  assert.equal(releaseAssetName("llmentary_0.4.1_linux_amd64.tar.gz"), "llmentary_0.4.1_linux_amd64.tar.gz");
   assert.equal(
     publicReleaseAssetUrl("barzoj-co/llmentary", "v0.4.1", "checksums.txt"),
     "https://github.com/barzoj-co/llmentary/releases/download/v0.4.1/checksums.txt",
   );
+  const dest = await mkdtemp(join(tmpdir(), "ltl-dest-"));
+  try {
+    assert.equal(destFile(dest, "checksums.txt"), join(dest, "checksums.txt"));
+    assert.throws(() => destFile(dest, "../passwd"), /invalid release asset name/);
+  } finally {
+    await rm(dest, { recursive: true, force: true });
+  }
   assert.throws(() => releaseAssetName("../etc/passwd"), /invalid release asset name/);
   assert.throws(() => releaseAssetName("dir/checksums.txt"), /invalid release asset name/);
   assert.throws(() => releaseAssetName(""), /invalid release asset name/);
+  assert.throws(() => releaseAssetName("checksums.txt;curl"), /invalid release asset name/);
   assert.throws(() => publicReleaseAssetUrl("https://evil.test/x", "v0.4.1", "checksums.txt"), /invalid repo/);
   assert.throws(() => publicReleaseAssetUrl("barzoj-co/llmentary", "v0.4.1/../../../x", "checksums.txt"), /invalid tag/);
+  assert.throws(() => assertPublicReleaseRef("", "v0.4.1"), /invalid repo/);
+  assert.throws(() => assertPublicReleaseRef("barzoj-co/llmentary", ""), /tag is required/);
 });
 
 test("downloadPublicRelease fetches anonymously and writes assets", async () => {
