@@ -189,15 +189,31 @@ jobs:
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/release-please-dry-run.log"
-          npx --yes "release-please@${RELEASE_PLEASE_VERSION}" release-pr \
-            --dry-run \
-            --repo-url=barzoj-co/llmentary-js \
-            --target-branch="${RELEASE_PLEASE_TARGET}" \
-            --config-file=release-please-config.json \
-            --manifest-file=.release-please-manifest.json \
-            --token="${RELEASE_PLEASE_TOKEN}" 2>&1 | tee "$log"
-          title="$(sed -n 's/.*title: chore([^)]*): release \([0-9][0-9.]*\).*/\1/p' "$log" | head -1)"
-          proposed="$(sed -n 's/.*updating from \([0-9][0-9.]*\) to \([0-9][0-9.]*\).*/\1 \2/p' "$log" | head -1)"
+          attempt=0
+          while true; do
+            attempt=$((attempt + 1))
+            set +e
+            npx --yes "release-please@${RELEASE_PLEASE_VERSION}" release-pr \
+              --dry-run \
+              --repo-url=barzoj-co/llmentary-js \
+              --target-branch="${RELEASE_PLEASE_TARGET}" \
+              --config-file=release-please-config.json \
+              --manifest-file=.release-please-manifest.json \
+              --token="${RELEASE_PLEASE_TOKEN}" 2>&1 | tee "$log"
+            status=${PIPESTATUS[0]}
+            set -e
+            if [ "$status" -eq 0 ]; then
+              break
+            fi
+            if [ "$attempt" -ge 3 ]; then
+              echo "::error::release-please dry-run failed after ${attempt} attempts"
+              exit "$status"
+            fi
+            echo "release-please dry-run attempt ${attempt} failed; retrying"
+            sleep $((4 * attempt))
+          done
+          title="$(awk 'match($0, /title: chore\([^)]*\): release ([0-9][0-9.]*)/, a) { print a[1]; exit }' "$log")"
+          proposed="$(awk 'match($0, /updating from ([0-9][0-9.]*) to ([0-9][0-9.]*)/, a) { print a[1], a[2]; exit }' "$log")"
           from="${proposed%% *}"
           to="${proposed##* }"
           version="${title:-$to}"
