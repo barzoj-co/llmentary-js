@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Keep in sync with PROXY_VERSION. Download URLs use this literal, not file bytes. */
-export const BUNDLED_PROXY_TAG = "v0.5.0";
+export const BUNDLED_PROXY_TAG = "v0.5.1";
 export const PUBLIC_RELEASE_REPO = "barzoj-co/llmentary";
 export const GITHUB_API_ORIGIN = "https://api.github.com";
 export const GITHUB_DOWNLOAD_ORIGIN = "https://github.com";
@@ -390,7 +390,7 @@ async function main() {
   const filePin = await readProxyVersion(ROOT);
   const tag = resolveDownloadTag({ env: process.env, filePin });
   if (!tag) {
-    throw new Error("LLMENTARY_TAG, GITHUB_REF_NAME, or PROXY_VERSION is required (for example v0.5.0).");
+    throw new Error("LLMENTARY_TAG, GITHUB_REF_NAME, or PROXY_VERSION is required (for example v0.5.1).");
   }
   const keepRootVersion = Boolean(process.env.LLMENTARY_ROOT_VERSION);
   const work = await mkdtemp(join(tmpdir(), "llmentary-rel-"));

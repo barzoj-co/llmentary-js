@@ -89,7 +89,7 @@ test("assetPatterns accept goreleaser llmentary_<ver>_<os>_<arch> names and reje
 test("assetPatterns accept every PROXY_VERSION platform archive and reject suffix swaps", async () => {
   const pin = await readProxyVersion();
   const version = pin.replace(/^v/, "");
-  assert.equal(pin, "v0.5.0");
+  assert.equal(pin, "v0.5.1");
   const cases = [
     ["linux", "x64", `llmentary_${version}_linux_amd64.tar.gz`, `llmentary_${version}_linux_amd64.zip`],
     ["linux", "arm64", `llmentary_${version}_linux_arm64.tar.gz`, `llmentary_${version}_linux_arm64.zip`],
@@ -488,10 +488,10 @@ test("resolveTag prefers LLMENTARY_TAG, then GITHUB_REF_NAME, then PROXY_VERSION
 });
 
 test("resolveDownloadTag never returns PROXY_VERSION file bytes", async () => {
-  assert.equal(BUNDLED_PROXY_TAG, "v0.5.0");
+  assert.equal(BUNDLED_PROXY_TAG, "v0.5.1");
   assert.equal(PUBLIC_RELEASE_REPO, "barzoj-co/llmentary");
   assert.equal(await readProxyVersion(), BUNDLED_PROXY_TAG);
-  assert.equal(resolveDownloadTag({ env: {}, filePin: "v0.5.0" }), BUNDLED_PROXY_TAG);
+  assert.equal(resolveDownloadTag({ env: {}, filePin: "v0.5.1" }), BUNDLED_PROXY_TAG);
   assert.equal(resolveDownloadTag({ env: {}, filePin: BUNDLED_PROXY_TAG }), BUNDLED_PROXY_TAG);
   assert.equal(resolveDownloadTag({ env: {}, filePin: "" }), BUNDLED_PROXY_TAG);
   assert.equal(

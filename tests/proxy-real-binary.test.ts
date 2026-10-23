@@ -11,9 +11,7 @@ import {
   ControlClient,
   SessionNotFound,
   llmentary,
-  openapiSha256,
   packagedMatchesServed,
-  stampOpenAPI,
   startProxy,
   type ProxyHandle,
   type Session,
@@ -44,8 +42,8 @@ describe("real Go proxy with fake upstream", () => {
     delete process.env.LLMENTARY_CONTROL_URL;
   });
 
-  it("reports bundled proxy --version 0.5.0", () => {
-    expect(proxyPin).toBe("v0.5.0");
+  it("reports bundled proxy --version 0.5.1", () => {
+    expect(proxyPin).toBe("v0.5.1");
     const version = proxyPin.replace(/^v/, "");
     const out = execFileSync(process.env.LLMENTARY_BIN!, ["--version"], { encoding: "utf8" });
     expect(out).toMatch(new RegExp(`^llmentary ${version.replaceAll(".", "\\.")} \\([0-9a-f]+`));
@@ -64,10 +62,7 @@ describe("real Go proxy with fake upstream", () => {
     });
     const served = await client.openapi();
     expect(served).toMatch(/openapi:\s*['"]?3\./);
-    expect(Buffer.byteLength(packaged)).toBeGreaterThanOrEqual(Buffer.byteLength(served));
-    expect(stampOpenAPI(packaged)).toBe(served);
     expect(packagedMatchesServed(packaged, served)).toBe(true);
-    expect(openapiSha256(stampOpenAPI(packaged))).toBe(openapiSha256(served));
   });
 
   it("honours wait quiet=100ms after one finished call", async () => {
@@ -182,7 +177,7 @@ describe("real Go proxy with fake upstream", () => {
     const listed = await control.listSessions();
     expect(listed.some((session) => session.id === "nope-never-created")).toBe(false);
     const config = await control.getConfig();
-    expect(config.version).toMatch(/^0\.5\.0/);
+    expect(config.version).toBe(proxyPin.replace(/^v/, ""));
     expect(config.upstreamHeaderTimeout).toBe("0s");
     expect(config.upstreamIdleTimeout).toBe("0s");
     expect(config.specTargets).toEqual(expect.objectContaining({ openai: "openai-compatible" }));

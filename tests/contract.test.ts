@@ -59,6 +59,11 @@ describe("stamp-then-sha256 (DOG-44 / proxy #60)", () => {
   const packaged = ["openapi: 3.1.0", "info:", `  version: 0.4.1${comment}`, "paths: {}", ""].join("\n");
   const served = ["openapi: 3.1.0", "info:", "  version: 0.4.1", "paths: {}", ""].join("\n");
 
+  it("matches a v0.5.1 serve that keeps the packaged bytes including the marker", () => {
+    expect(packagedMatchesServed(packaged, packaged)).toBe(true);
+    expect(openapiSha256(packaged)).not.toBe(openapiSha256(served));
+  });
+
   it("matches served to packaged after the serve stamp, not as raw bytes", () => {
     expect(Buffer.byteLength(packaged)).toBe(Buffer.byteLength(served) + Buffer.byteLength(comment));
     expect(packaged).not.toBe(served);

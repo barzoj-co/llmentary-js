@@ -247,8 +247,8 @@ verify_pinned_release_assets() {
 if [[ "${1:-}" == "--self-test" ]]; then
   tag="$(read_proxy_tag)"
   version="${tag#v}"
-  [[ "$tag" == "v0.5.0" ]] || {
-    echo "PROXY_VERSION must be v0.5.0, got $tag" >&2
+  [[ "$tag" == "v0.5.1" ]] || {
+    echo "PROXY_VERSION must be v0.5.1, got $tag" >&2
     exit 1
   }
   [[ "$(goreleaser_os linux)" == "linux" ]]
@@ -256,18 +256,26 @@ if [[ "${1:-}" == "--self-test" ]]; then
   [[ "$(goreleaser_os win32)" == "windows" ]]
   [[ "$(goreleaser_arch x86_64)" == "amd64" ]]
   [[ "$(goreleaser_arch arm64)" == "arm64" ]]
-  [[ "$(proxy_archive_name linux amd64 "$version")" == "llmentary_0.5.0_linux_amd64.tar.gz" ]]
-  [[ "$(proxy_archive_name linux arm64 "$version")" == "llmentary_0.5.0_linux_arm64.tar.gz" ]]
-  [[ "$(proxy_archive_name darwin amd64 "$version")" == "llmentary_0.5.0_darwin_amd64.tar.gz" ]]
-  [[ "$(proxy_archive_name darwin arm64 "$version")" == "llmentary_0.5.0_darwin_arm64.tar.gz" ]]
-  [[ "$(proxy_archive_name windows amd64 "$version")" == "llmentary_0.5.0_windows_amd64.zip" ]]
-  [[ "$(proxy_archive_name windows arm64 "$version")" == "llmentary_0.5.0_windows_arm64.zip" ]]
+  goreleaser_os solaris >/dev/null 2>&1 && {
+    echo "unknown os should fail" >&2
+    exit 1
+  }
+  goreleaser_arch riscv64 >/dev/null 2>&1 && {
+    echo "unknown arch should fail" >&2
+    exit 1
+  }
+  [[ "$(proxy_archive_name linux amd64 "$version")" == "llmentary_0.5.1_linux_amd64.tar.gz" ]]
+  [[ "$(proxy_archive_name linux arm64 "$version")" == "llmentary_0.5.1_linux_arm64.tar.gz" ]]
+  [[ "$(proxy_archive_name darwin amd64 "$version")" == "llmentary_0.5.1_darwin_amd64.tar.gz" ]]
+  [[ "$(proxy_archive_name darwin arm64 "$version")" == "llmentary_0.5.1_darwin_arm64.tar.gz" ]]
+  [[ "$(proxy_archive_name windows amd64 "$version")" == "llmentary_0.5.1_windows_amd64.zip" ]]
+  [[ "$(proxy_archive_name windows arm64 "$version")" == "llmentary_0.5.1_windows_arm64.zip" ]]
   expected_assets="$(pinned_release_assets "$version")"
   [[ "$(grep -c . <<<"$expected_assets")" == "8" ]]
   grep -Fxq "checksums.txt" <<<"$expected_assets"
   grep -Fxq "checksums.txt.sigstore.json" <<<"$expected_assets"
-  grep -Fxq "llmentary_0.5.0_linux_amd64.tar.gz" <<<"$expected_assets"
-  grep -Fxq "llmentary_0.5.0_windows_amd64.zip" <<<"$expected_assets"
+  grep -Fxq "llmentary_0.5.1_linux_amd64.tar.gz" <<<"$expected_assets"
+  grep -Fxq "llmentary_0.5.1_windows_amd64.zip" <<<"$expected_assets"
   ! grep -Fxq "llmentary_0.4.1_linux_amd64.tar.gz" <<<"$expected_assets"
   empty="$(mktemp)"
   [[ "$(file_sha256 "$empty")" == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" ]]

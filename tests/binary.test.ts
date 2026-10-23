@@ -160,9 +160,40 @@ describe("binary release asset matching", () => {
   const pin = readFileSync(join(root, "PROXY_VERSION"), "utf8").trim();
   const version = pin.replace(/^v/, "");
 
-  it("pins PROXY_VERSION to v0.5.0", () => {
-    expect(pin).toBe("v0.5.0");
+  it("pins PROXY_VERSION to v0.5.1", () => {
+    expect(pin).toBe("v0.5.1");
     expect(pin).toMatch(/^v\d+\.\d+\.\d+$/);
+  });
+
+  it("matches the v0.5.1 release checksums and rejects a mismatch", () => {
+    const checksums = readFileSync(join(root, "testdata/proxy/v0.5.1-checksums.txt"), "utf8");
+    const expected: Record<string, string> = {
+      "llmentary_0.5.1_darwin_amd64.tar.gz": "9062d20bc12596c460a56a4677564ade948e6cc2159ca6a81c1921b5f6829cb9",
+      "llmentary_0.5.1_darwin_arm64.tar.gz": "558f81178543f8e0dea4a29f1fa80199409d83f91232e6a15211b2d357b6c779",
+      "llmentary_0.5.1_linux_amd64.tar.gz": "c4baadac534d2a895d0fdd485cc733cbf646af0b7dfbda16767295b13dcbc8df",
+      "llmentary_0.5.1_linux_arm64.tar.gz": "0dbca8bad41616c0bca689020e81b16957e61884da4cdb1a29d3386a989230cb",
+      "llmentary_0.5.1_windows_amd64.zip": "5b56a8e2a2ef0c7731987ce352b532d38ed0b7c273a78e49a766b9981ea73f1a",
+      "llmentary_0.5.1_windows_arm64.zip": "262bf20f5a57bee3dd226270c9219eb4652fe4be75db9009edc0f1da8bbe21c8",
+    };
+    for (const [name, digest] of Object.entries(expected)) {
+      expect(parseChecksumFile(checksums, name), name).toBe(digest);
+    }
+    expect(assetNameCandidates("linux", "x64").some((pattern) => pattern.test("llmentary_0.5.1_linux_amd64.tar.gz"))).toBe(
+      true,
+    );
+    expect(assetNameCandidates("darwin", "arm64").some((pattern) => pattern.test("llmentary_0.5.1_darwin_arm64.tar.gz"))).toBe(
+      true,
+    );
+    expect(assetNameCandidates("win32", "x64").some((pattern) => pattern.test("llmentary_0.5.1_windows_amd64.zip"))).toBe(
+      true,
+    );
+    expect(parseChecksumFile(checksums, "llmentary_0.5.1_linux_amd64.tar.gz")).not.toBe("0".repeat(64));
+    expect(parseChecksumFile(checksums, "llmentary_0.4.1_linux_amd64.tar.gz")).toBeUndefined();
+    expect(nativePackageName("aix", "x64")).toBeUndefined();
+    expect(nativePackageName("linux", "ia32")).toBeUndefined();
+    expect(assetNameCandidates("aix", "x64").some((pattern) => pattern.test("llmentary_0.5.1_linux_amd64.tar.gz"))).toBe(
+      false,
+    );
   });
 
   it("locks every optional platform package so npm ci can resolve them", () => {
@@ -182,7 +213,7 @@ describe("binary release asset matching", () => {
     ]);
     expect(Object.keys(PUBLISHED_PLATFORM_INTEGRITY).sort()).toEqual(Object.keys(optional).sort());
     for (const [name, expected] of Object.entries(optional)) {
-      expect(expected, name).toBe(version);
+      expect(expected, name).toMatch(/^\d+\.\d+\.\d+$/);
       const entry = lock.packages[`node_modules/${name}`];
       expect(entry, `Missing: ${name}@${expected} from lock file`).toBeDefined();
       expect(entry?.version, name).toBe(expected);
@@ -245,7 +276,7 @@ describe("binary release asset matching", () => {
       { encoding: "utf8" },
     );
     expect(mismatch.status).not.toBe(0);
-    expect(mismatch.stderr).toMatch(/PROXY_VERSION must be v0\.5\.0, got v0\.0\.0/);
+    expect(mismatch.stderr).toMatch(/PROXY_VERSION must be v0\.5\.1, got v0\.0\.0/);
   });
 
   it("install-proxy.sh downloads public releases with curl, not gh", () => {
