@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/barzoj-co/llmentary-js/compare/v0.4.5...v0.4.6) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** bundle proxy v0.5.1 ([#50](https://github.com/barzoj-co/llmentary-js/issues/50)) ([765f8d8](https://github.com/barzoj-co/llmentary-js/commit/765f8d871d6f86b1a74839254aba312506b65ed9))
+
 ## [0.4.5](https://github.com/barzoj-co/llmentary-js/compare/v0.4.4...v0.4.5) (2026-10-22)
 
 
