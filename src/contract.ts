@@ -22,6 +22,8 @@ export function stampOpenAPI(yaml: string): string {
 /**
  * The proxy serves the bundled contract with `info.version` stamped clean
  * (DOG-37). Proxy v0.5.0 keeps `# x-release-please-version` in the file (#47).
+ * Proxy v0.5.1 serves the packaged bytes unchanged when `info.version` already
+ * matches the release, including that marker.
  */
 export function bundledContractForServe(yaml: string): string {
   return stampOpenAPI(yaml);
@@ -33,11 +35,12 @@ export function openapiSha256(yaml: string): string {
 }
 
 /**
- * True when the packaged contract, after the serve stamp, has the same
- * SHA-256 as the body of `GET /openapi.yaml` (DOG-44 / proxy #60).
+ * True when `GET /openapi.yaml` matches the packaged contract either
+ * byte-for-byte (proxy v0.5.1) or after the serve stamp (DOG-44 / older pins).
  */
 export function packagedMatchesServed(packaged: string, served: string): boolean {
-  return openapiSha256(stampOpenAPI(packaged)) === openapiSha256(served);
+  const servedHash = openapiSha256(served);
+  return servedHash === openapiSha256(packaged) || servedHash === openapiSha256(stampOpenAPI(packaged));
 }
 
 /**
