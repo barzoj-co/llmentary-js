@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import OpenAI from "openai";
+import OpenAI, { APIUserAbortError } from "openai";
 import {
   ControlClient,
   SessionNotFound,
@@ -465,11 +465,17 @@ describe("OpenAI E2E through llmentary", () => {
       const lm = newSession(proxy);
       const client = openaiClient(lm);
       try {
-        // Call 1: abort right after the request is sent. When OpenAI answers before
-        // the abort lands the attempt is retried once; a second loss skips with a reason.
-        let mark: number | undefined;
+        // Call 1: abort right after the request is sent. No mark() before the first
+        // call is recorded (mark() waits for 0 calls and the proxy answers 404
+        // session_not_found for a session without calls): the first attempt starts at
+        // index 0 and the index is updated from a recorded trace after an attempt
+        // settles. When OpenAI answers before the abort lands the attempt is retried
+        // once; a committed record means the upstream demonstrably won the race.
+        let cancelledIndex: number | undefined;
+        let committedIndex: number | undefined;
+        let recordedCalls = 0;
         for (let attempt = 1; attempt <= 2; attempt += 1) {
-          const start = await lm.mark();
+          const start = recordedCalls;
           const controller = new AbortController();
           const pending = client.chat.completions.create(
             {
@@ -484,13 +490,23 @@ describe("OpenAI E2E through llmentary", () => {
           try {
             void (await pending);
           } catch (error) {
-            if (!controller.signal.aborted && !isAbortError(error)) throw error;
+            // controller.abort() already ran, so signal.aborted is always true here:
+            // only the abort rejection may be swallowed, never a real failure.
+            if (!isAbortRejection(error)) throw error;
           }
           try {
             const attemptTrace = await lm.wait({ minCalls: start + 1, timeout: 15, quiet: "200ms" });
             const record = attemptTrace.calls[start];
+            recordedCalls = attemptTrace.calls.length;
             if (record?.clientAborted === true && record.outcome === "cancelled") {
-              mark = start;
+              cancelledIndex = start;
+              break;
+            }
+            if (record?.outcome === "committed") {
+              committedIndex = start;
+              noteLiveCancelSkip(
+                `abort attempt ${attempt}/2 lost the race to the upstream: the call completed with outcome=committed`,
+              );
               break;
             }
             noteLiveCancelSkip(
@@ -498,12 +514,17 @@ describe("OpenAI E2E through llmentary", () => {
             );
           } catch (error) {
             if (!(error instanceof WaitTimeoutError)) throw error;
+            recordedCalls = Math.max(recordedCalls, error.calls);
             noteLiveCancelSkip(`abort attempt ${attempt}/2 recorded no settled call: ${error.message}`);
           }
         }
-        if (mark === undefined) {
-          noteLiveCancelSkip("no cancelled before-headers call was recorded on two live attempts");
-          return;
+        if (cancelledIndex === undefined && committedIndex === undefined) {
+          throw new Error("no cancelled before-headers call was recorded on two live attempts");
+        }
+        if (cancelledIndex === undefined && committedIndex !== undefined) {
+          noteLiveCancelSkip(
+            `the upstream demonstrably won the race (call ${String(committedIndex)} completed with outcome=committed); asserting the after-headers abort only`,
+          );
         }
 
         // Call 2: abort the stream after the first content chunk.
@@ -531,19 +552,26 @@ describe("OpenAI E2E through llmentary", () => {
           if (!streamController.signal.aborted && !isAbortError(error)) throw error;
         }
 
-        const trace = await lm.wait({ minCalls: mark + 2, timeout: 25, quiet: "200ms" });
-        const cancelledCalls = trace.since(mark);
-        expect(cancelledCalls).toHaveLength(2);
-        expect(cancelledCalls.map((record) => record.outcome)).toEqual(["cancelled", "cancelled"]);
+        const windowStart = cancelledIndex ?? (committedIndex ?? 0) + 1;
+        const cancelledExpected = cancelledIndex === undefined ? 1 : 2;
+        const trace = await lm.wait({ minCalls: windowStart + cancelledExpected, timeout: 25, quiet: "200ms" });
+        const cancelledCalls = trace.since(windowStart);
+        expect(cancelledCalls).toHaveLength(cancelledExpected);
+        expect(cancelledCalls.map((record) => record.outcome)).toEqual(
+          cancelledIndex === undefined ? ["cancelled"] : ["cancelled", "cancelled"],
+        );
 
-        const scoped = lm.query({ since: mark });
+        const scoped = lm.query({ since: windowStart });
         await scoped.expect().noErrors();
         await expect(scoped.expect().noCancelled()).rejects.toBeInstanceOf(SessionAssertionError);
         await expect(scoped.expect().noCancelled()).rejects.toThrow(/cancelled/);
-        const filtered = await lm.query({}).cancelled().wait({ minCalls: mark + 2, timeout: 25, quiet: "200ms" });
-        expect(filtered.calls).toHaveLength(2);
+        const filtered = await lm
+          .query({})
+          .cancelled()
+          .wait({ minCalls: windowStart + cancelledExpected, timeout: 25, quiet: "200ms" });
+        expect(filtered.calls).toHaveLength(cancelledExpected);
         await scoped.expect().callCount(0);
-        await scoped.expect().callCount(2, { includeCancelled: true });
+        await scoped.expect().callCount(cancelledExpected, { includeCancelled: true });
       } finally {
         await lm.cleanup();
       }
@@ -1801,6 +1829,13 @@ function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { name?: string; message?: string };
   return candidate.name === "AbortError" || /abort/i.test(candidate.message ?? "");
+}
+
+/** Strict abort rejection: the DOM AbortError or the OpenAI SDK abort error class. */
+function isAbortRejection(error: unknown): boolean {
+  if (error instanceof APIUserAbortError) return true;
+  if (!error || typeof error !== "object") return false;
+  return (error as { name?: unknown }).name === "AbortError";
 }
 
 function noteLiveCancelSkip(reason: string): void {
