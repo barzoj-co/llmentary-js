@@ -98,15 +98,25 @@ await lm.expect({ since: mark }).toolCalled("lookup_weather");
 await lm.query({}).withoutTools().expect().callCount(1);
 await lm.query({}).offersTool("lookup_weather").expect().toolCalled("lookup_weather");
 await lm.query({}).committed().expect().callCount(2);
+// callCount skips cancelled calls by default (DOG-58); failed ones still count.
+await lm.expect().callCount(2);
+await lm.expect().callCount(3, { includeCancelled: true });
+// Deprecated and mutually exclusive with includeCancelled:
 await lm.expect().callCount(2, { excludeAborted: true });
 // Empty filters fail noErrors()/notCalled() unless you opt out:
 await lm.expect({ since: mark }).allowEmpty().noErrors();
+// A client cancel is not an error: noErrors() ignores it, noCancelled() does not.
+await lm.expect().noCancelled();
 await lm.expect().isolatedFrom(other);
 await lm.expectNoCalls();
 await lm.expect({ allowEmpty: true }).callCount(0);
 ```
 
-Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`, `committed` / `aborted`), session isolation (`isolatedFrom`), zero-call helpers (`expectNoCalls`, `expect({ allowEmpty: true })`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). A filter that matches zero calls fails `noErrors()` / `notCalled()` unless you call `allowEmpty()`; use `callCount(n)` for the turn size. Whole-session `expect()` on a never-created session stays strict unless you opt in. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure. `listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` / `seq` / `sessionId` / `userTexts` read the proxy fields. Call `id`s are process-global; `seq` is 1-based per session. The generated summary prints `#seq (id)`.
+Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`, `committed` / `aborted`), session isolation (`isolatedFrom`), zero-call helpers (`expectNoCalls`, `expect({ allowEmpty: true })`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). A filter that matches zero calls fails `noErrors()` / `notCalled()` unless you call `allowEmpty()`; use `callCount(n)` for the turn size. Whole-session `expect()` on a never-created session stays strict unless you opt in. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure.
+
+Terminal call outcomes (DOG-58): every settled call carries `outcome` (`committed` / `cancelled` / `failed`). `noErrors()` fails only on `failed` calls (listing `#seq` plus the normalized error name or the HTTP status); `noCancelled()` fails on `cancelled` calls (listing the `abortPhase`). A client cancel is never an error — assert it with `aborted()`, `noCancelled()`, or `hasError("client_aborted")`. `callCount(n)` counts `committed` and `failed` calls and skips `cancelled` ones (the failure message names how many were skipped); pass `{ includeCancelled: true }` for the old total. `callCount(n, { excludeAborted: true })` (deprecated; mutually exclusive with `includeCancelled`) and `committed()` keep counting a cancel as an uncommitted leftover.
+
+`listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` / `seq` / `sessionId` / `userTexts` read the proxy fields. Call `id`s are process-global; `seq` is 1-based per session. The generated summary prints `#seq (id)`.
 
 See [docs/api.md](docs/api.md) for the full API, including Jest setup.
 

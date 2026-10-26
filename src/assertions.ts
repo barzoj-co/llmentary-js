@@ -19,6 +19,7 @@ import type {
   AssertionResult,
   Bounds,
   CallRecord,
+  CallOutcome,
   IsolatedFromOptions,
   IgnoredField,
   JsonObject,
@@ -277,12 +278,38 @@ export class AssertionScope {
     return this.retries({ max: 0 });
   }
 
+  /**
+   * Fail when a settled call ended `failed` (DOG-58). A client cancel is not an
+   * error: assert it with `aborted()`, `noCancelled()`, or
+   * `hasError("client_aborted")`.
+   */
   async noErrors(): Promise<AssertionResult> {
-    return this.evaluate("expected no errors", (trace) => {
+    return this.noOutcome("errors", "failed", failedCallDetail);
+  }
+
+  /**
+   * Fail when a settled call ended `cancelled` (DOG-58): the client aborted it
+   * and nothing failed. Cancels stay out of `noErrors()`.
+   */
+  async noCancelled(): Promise<AssertionResult> {
+    return this.noOutcome("cancelled calls", "cancelled", (record) => record.abortPhase ?? "-");
+  }
+
+  private noOutcome(
+    label: string,
+    outcome: CallOutcome,
+    detail: (record: CallRecord) => string,
+  ): Promise<AssertionResult> {
+    return this.evaluate(`expected no ${label}`, (trace) => {
       const empty = this.emptyMatchFailure(trace);
       if (empty) return empty;
-      const errors = recordsForTrace(trace, this.query).filter((record) => record.error !== undefined);
-      return { pass: errors.length === 0, message: `expected no errors, saw ${errors.length}` };
+      const seen = recordsForTrace(trace, this.query).flatMap((record, index) =>
+        record.outcome === outcome ? [`${outcomeCallRef(record, index)} ${detail(record)}`] : [],
+      );
+      return {
+        pass: seen.length === 0,
+        message: `expected no ${label}, saw ${seen.length} ${outcome} call(s)${seen.length > 0 ? `: ${seen.join(", ")}` : ""}`,
+      };
     });
   }
 
@@ -345,15 +372,32 @@ export class AssertionScope {
     return this.responseJsonValid({ schema });
   }
 
+  /**
+   * Count calls. `cancelled` calls are not counted by default (DOG-58);
+   * `failed` ones still are. Pass `{ includeCancelled: true }` for the total.
+   */
   async callCount(expected: number, options: CallCountOptions = {}): Promise<AssertionResult> {
-    const noun = options.excludeAborted ? "committed call(s)" : "recorded call(s)";
-    return this.evaluate(`expected ${expected} ${noun}`, (trace) => {
-      const records = recordsForTrace(trace, this.query).filter(
-        (record) => !options.excludeAborted || record.clientAborted !== true,
+    const excludeAborted = options.excludeAborted === true;
+    const includeCancelled = options.includeCancelled === true;
+    if (includeCancelled && excludeAborted) {
+      throw new TypeError(
+        "callCount: `includeCancelled` and `excludeAborted` are mutually exclusive (cancelled calls are excluded by default since DOG-58)",
       );
+    }
+    const noun = excludeAborted ? "committed call(s)" : "recorded call(s)";
+    return this.evaluate(`expected ${expected} ${noun}`, (trace) => {
+      const matched = recordsForTrace(trace, this.query);
+      const records = matched.filter((record) => {
+        if (includeCancelled) return true;
+        if (excludeAborted) return record.clientAborted !== true;
+        return record.outcome !== "cancelled";
+      });
+      const excluded = matched.length - records.length;
+      const hint =
+        !excludeAborted && excluded > 0 ? ` (${excluded} cancelled not counted; pass { includeCancelled: true })` : "";
       return {
         pass: records.length === expected,
-        message: `expected ${expected} ${noun}, got ${records.length}`,
+        message: `expected ${expected} ${noun}, got ${records.length}${hint}`,
       };
     });
   }
@@ -739,6 +783,10 @@ export function recordsForTrace(trace: SessionTrace, query: QueryOptions = {}): 
     if (query.withoutTools && offered.length > 0) return false;
     if (query.committed === true && record.clientAborted === true) return false;
     if (query.aborted === true && record.clientAborted !== true) return false;
+    if (query.outcome !== undefined) {
+      const outcome = record.outcome;
+      if (outcome === undefined || !query.outcome.includes(outcome)) return false;
+    }
     return true;
   });
   if (query.index === undefined) return records;
@@ -1157,7 +1205,7 @@ function httpStatusFromError(value: JsonValue | undefined): number | undefined {
   );
 }
 
-function errorFields(record: CallRecord, key: "type" | "code"): string[] {
+function errorFields(record: CallRecord, key: "type" | "code" | "normalized"): string[] {
   const values: string[] = [];
   const visit = (candidate: JsonValue | undefined): void => {
     if (candidate === undefined || candidate === null) return;
@@ -1205,7 +1253,8 @@ export function hasQueryFilter(query: QueryOptions): boolean {
     query.model !== undefined ||
     query.index !== undefined ||
     query.committed === true ||
-    query.aborted === true
+    query.aborted === true ||
+    query.outcome !== undefined
   );
 }
 
@@ -1219,6 +1268,7 @@ function describeQueryFilters(query: QueryOptions): string {
   if (query.index !== undefined) parts.push(`index=${query.index}`);
   if (query.committed) parts.push("committed");
   if (query.aborted) parts.push("aborted");
+  if (query.outcome !== undefined) parts.push(`outcome=${query.outcome.join("|")}`);
   return parts.join(", ") || "empty";
 }
 
@@ -1385,6 +1435,17 @@ function orderedCalls(trace: SessionTrace): Array<{ record: CallRecord; index: n
 function formatCallRef(record: CallRecord, index = 0): string {
   const seq = record.seq ?? index + 1;
   return record.id ? `#${seq} (${record.id})` : `#${seq}`;
+}
+
+function outcomeCallRef(record: CallRecord, index: number): string {
+  return `#${record.seq ?? index + 1}`;
+}
+
+function failedCallDetail(record: CallRecord): string {
+  const normalized = errorFields(record, "normalized")[0];
+  if (normalized) return normalized;
+  const status = numberAt(asObject(record.raw), "http_status") ?? record.httpStatus;
+  return status !== undefined ? String(status) : "-";
 }
 
 function emptyTrace(sessionId: string): SessionTrace {

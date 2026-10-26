@@ -168,6 +168,97 @@ describe("offersTool / withoutTools / since", () => {
   });
 });
 
+describe("outcome / cancelled / failed filters (DOG-58)", () => {
+  const trace = normalizeSessionTrace("outcomes", {
+    id: "outcomes",
+    calls: [
+      {
+        id: "call_ok",
+        ended_at: "2026-10-26T10:00:01Z",
+        request: { model: "m", messages: [{ role: "user", content: "ok" }] },
+        normalized: { finish_reason: "stop" },
+      },
+      {
+        id: "call_barge",
+        ended_at: "2026-10-26T10:00:01Z",
+        client_aborted: true,
+        abort_phase: "before_headers",
+        normalized: { finish_reason: "cancelled", client_aborted: true },
+      },
+      {
+        id: "call_500",
+        ended_at: "2026-10-26T10:00:01Z",
+        http_status: 500,
+        normalized: { error: { normalized: "server_error", source: "upstream", message: "boom" } },
+      },
+      {
+        id: "call_truncated",
+        ended_at: "2026-10-26T10:00:01Z",
+        http_status: 200,
+        normalized: { finish_reason: "error", stream_truncated: true },
+      },
+    ],
+  });
+
+  it("filters records by outcome without touching committed() or aborted()", () => {
+    expect(trace.calls.map((record) => record.outcome)).toEqual(["committed", "cancelled", "failed", "failed"]);
+    expect(recordsForTrace(trace, { outcome: ["committed"] }).map((record) => record.id)).toEqual(["call_ok"]);
+    expect(recordsForTrace(trace, { outcome: ["failed"] }).map((record) => record.id)).toEqual([
+      "call_500",
+      "call_truncated",
+    ]);
+    expect(recordsForTrace(trace, { outcome: ["committed", "cancelled"] }).map((record) => record.id)).toEqual([
+      "call_ok",
+      "call_barge",
+    ]);
+    expect(recordsForTrace(trace, { committed: true }).map((record) => record.id)).toEqual([
+      "call_ok",
+      "call_500",
+      "call_truncated",
+    ]);
+    expect(recordsForTrace(trace, { aborted: true }).map((record) => record.id)).toEqual(["call_barge"]);
+    expect(recordsForTrace(trace, { committed: true, outcome: ["cancelled"] })).toEqual([]);
+  });
+
+  it("adds cancelled(), failed(), and outcome() to SessionQuery", async () => {
+    const lm = llmentary({ proxyUrl: PROXY, controlUrl: PROXY, sessionId: "outcomes" });
+    const query = new SessionQuery({ ...lm, wait: async () => trace } as never, {});
+    expect(query.cancelled().queryOptions).toEqual({ outcome: ["cancelled"] });
+    expect(query.failed().queryOptions).toEqual({ outcome: ["failed"] });
+    expect(query.outcome("committed", "cancelled").queryOptions).toEqual({ outcome: ["committed", "cancelled"] });
+    expect(query.committed().cancelled().queryOptions).toEqual({ committed: true, outcome: ["cancelled"] });
+    expect((await query.cancelled().wait()).calls.map((record) => record.id)).toEqual(["call_barge"]);
+    expect((await query.failed().wait()).calls.map((record) => record.id)).toEqual(["call_500", "call_truncated"]);
+    expect((await query.outcome("committed", "cancelled").wait()).calls.map((record) => record.id)).toEqual([
+      "call_ok",
+      "call_barge",
+    ]);
+  });
+
+  it("scopes outcome assertions and labels the filter on an empty match", async () => {
+    await expect(scopeFor(trace, { outcome: ["failed"] }).soft().noErrors()).resolves.toMatchObject({
+      pass: false,
+      message: /^expected no errors, saw 2 failed call\(s\)/,
+    });
+    await expect(scopeFor(trace, { outcome: ["failed"] }).soft().noCancelled()).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace, { outcome: ["committed"] }).noErrors()).resolves.toMatchObject({ pass: true });
+    expect(formatEmptyFilterMessage({ outcome: ["cancelled"] })).toBe("no calls matched query (outcome=cancelled)");
+    expect(formatEmptyFilterMessage({ outcome: ["committed", "failed"] })).toBe(
+      "no calls matched query (outcome=committed|failed)",
+    );
+    const committedOnly = normalizeSessionTrace("outcomes-committed", {
+      id: "outcomes-committed",
+      calls: [trace.calls[0]!.raw],
+    });
+    await expect(scopeFor(committedOnly, { outcome: ["failed"] }).noErrors()).rejects.toThrow(
+      /no calls matched query \(outcome=failed\)/,
+    );
+    await expect(scopeFor(committedOnly, { outcome: ["failed"] }).allowEmpty().noErrors()).resolves.toMatchObject({
+      pass: true,
+    });
+  });
+});
+
 describe("mentionsAny", () => {
   it("matches the shared number and case table", () => {
     expect(mentionsAny("The temperature is 20°C today", ["20 °C"])).toBe(true);

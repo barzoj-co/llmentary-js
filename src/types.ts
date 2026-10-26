@@ -3,6 +3,9 @@ export type ApiType = "chat_completions" | "responses" | (string & {});
 /** `before_headers` | `after_headers`. Omitted when the call is not aborted. */
 export type AbortPhase = "before_headers" | "after_headers";
 
+/** Terminal state of a settled call (DOG-58). */
+export type CallOutcome = "committed" | "cancelled" | "failed";
+
 /** Per-upstream spec target (`GET /config` `spec_targets`, `validation.target`). */
 export type SpecTarget = "openai" | "openai-compatible" | (string & {});
 
@@ -76,11 +79,19 @@ export interface QueryOptions {
   committed?: boolean;
   /** Keep only `clientAborted` calls (DOG-50). */
   aborted?: boolean;
+  /** Keep only settled calls whose `outcome` is one of these states (DOG-58). */
+  outcome?: readonly CallOutcome[];
 }
 
 export interface CallCountOptions {
-  /** Count calls that are not `clientAborted` (DOG-50). */
+  /**
+   * Count calls that are not `clientAborted` (DOG-50).
+   *
+   * @deprecated Cancelled calls are excluded by default since DOG-58.
+   */
   excludeAborted?: boolean;
+  /** Count `cancelled` calls too (DOG-58). Default is to exclude them. */
+  includeCancelled?: boolean;
 }
 
 export interface SessionOptions {
@@ -229,6 +240,11 @@ export interface CallRecord {
    * terminal Responses event is not an abort.
    */
   abortPhase?: AbortPhase;
+  /**
+   * `committed` | `cancelled` | `failed` (DOG-58). Set on settled calls;
+   * the abort phase never changes it.
+   */
+  outcome?: CallOutcome;
   validation?: Validation;
   /** Request-side reasoning echo (`normalized.reasoning_in`). */
   reasoningIn?: ReasoningIn;

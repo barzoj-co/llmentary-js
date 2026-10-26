@@ -1,8 +1,11 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { AssertionScope, SessionAssertionError, formatTraceSummary, recordsForTrace } from "../src/assertions.js";
 import { SessionNotFound } from "../src/control.js";
 import { normalizeSessionTrace } from "../src/normalize.js";
-import type { QueryOptions, SessionTrace } from "../src/types.js";
+import type { CallOutcome, JsonValue, QueryOptions, SessionTrace } from "../src/types.js";
 import { WaitTimeoutError } from "../src/wait.js";
 
 describe("AssertionScope", () => {
@@ -554,6 +557,109 @@ describe("AssertionScope", () => {
   });
 });
 
+describe("outcome-based noErrors / noCancelled (DOG-58)", () => {
+  const cases = loadOutcomeCases();
+
+  it.each(cases)("$name: noErrors fails only on failed", async (testCase) => {
+    const scope = scopeFor(traceForOutcomeCase(testCase));
+    await expect(scope.soft().noErrors()).resolves.toMatchObject({ pass: testCase.outcome !== "failed" });
+  });
+
+  it.each(cases)("$name: noCancelled fails only on cancelled", async (testCase) => {
+    const scope = scopeFor(traceForOutcomeCase(testCase));
+    await expect(scope.soft().noCancelled()).resolves.toMatchObject({ pass: testCase.outcome !== "cancelled" });
+  });
+
+  it("lists failed calls as #seq plus the normalized error or the status", async () => {
+    for (const [name, expected] of [
+      ["upstream_500", "expected no errors, saw 1 failed call(s): #9 server_error"],
+      ["http_4xx_without_error_object", "expected no errors, saw 1 failed call(s): #11 404"],
+      ["status_zero_no_abort_no_error", "expected no errors, saw 1 failed call(s): #13 0"],
+      ["malformed_client_aborted_error_without_flag", "expected no errors, saw 1 failed call(s): #6 client_aborted"],
+    ] as const) {
+      const result = await scopeFor(traceForOutcomeCase(outcomeCase(name))).soft().noErrors();
+      expect(result.pass).toBe(false);
+      expect(result.message).toBe(expected);
+    }
+  });
+
+  it("lists cancelled calls with their abort phase", async () => {
+    for (const [name, expected] of [
+      ["before_headers_abort_source_client", "expected no cancelled calls, saw 1 cancelled call(s): #3 before_headers"],
+      ["after_headers_abort_mid_stream", "expected no cancelled calls, saw 1 cancelled call(s): #5 after_headers"],
+    ] as const) {
+      const result = await scopeFor(traceForOutcomeCase(outcomeCase(name))).soft().noCancelled();
+      expect(result.pass).toBe(false);
+      expect(result.message).toBe(expected);
+    }
+  });
+
+  it("keeps a client cancel out of noErrors and inside hasError / aborted", async () => {
+    const scope = scopeFor(traceForOutcomeCase(outcomeCase("before_headers_abort_source_client")));
+    await expect(scope.noErrors()).resolves.toMatchObject({ pass: true });
+    await expect(scope.hasError("client_aborted")).resolves.toMatchObject({ pass: true });
+    await expect(scope.aborted()).resolves.toMatchObject({ pass: true });
+    await expect(scope.soft().noCancelled()).resolves.toMatchObject({ pass: false });
+  });
+});
+
+describe("callCount excludes cancelled by default (DOG-58)", () => {
+  const cases = loadOutcomeCases();
+  const committed = outcomeCase("complete_stream");
+  const cancelled = outcomeCase("before_headers_abort_source_client");
+  const failed = outcomeCase("upstream_500");
+  const mixedTrace = (): SessionTrace =>
+    normalizeSessionTrace("dog58-count", { id: "dog58-count", calls: [committed.call, cancelled.call, failed.call] });
+
+  it.each(cases)("$name: callCount(1) counts every outcome except cancelled", async (testCase) => {
+    const scope = scopeFor(traceForOutcomeCase(testCase));
+    await expect(scope.soft().callCount(1)).resolves.toMatchObject({ pass: testCase.outcome !== "cancelled" });
+    await expect(scope.soft().callCount(1, { includeCancelled: true })).resolves.toMatchObject({ pass: true });
+  });
+
+  it("counts committed and failed calls but not cancelled ones", async () => {
+    await expect(scopeFor(mixedTrace()).callCount(2)).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(mixedTrace()).callCount(3, { includeCancelled: true })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(mixedTrace()).callCount(2, { excludeAborted: true })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(mixedTrace(), { outcome: ["committed"] }).callCount(1)).resolves.toMatchObject({ pass: true });
+  });
+
+  it("names the excluded cancelled calls in the failure message", async () => {
+    const result = await scopeFor(mixedTrace()).soft().callCount(3);
+    expect(result.pass).toBe(false);
+    expect(result.message).toBe(
+      "expected 3 recorded call(s), got 2 (1 cancelled not counted; pass { includeCancelled: true })",
+    );
+    await expect(scopeFor(mixedTrace()).soft().callCount(2, { includeCancelled: true })).resolves.toMatchObject({
+      pass: false,
+      message: "expected 2 recorded call(s), got 3",
+    });
+    await expect(scopeFor(mixedTrace()).soft().callCount(3, { excludeAborted: true })).resolves.toMatchObject({
+      pass: false,
+      message: "expected 3 committed call(s), got 2",
+    });
+  });
+
+  it("keeps excludeAborted counting uncommitted leftovers, including aborted failures", async () => {
+    const abortedFailure = outcomeCase("aborted_with_upstream_error");
+    const trace = normalizeSessionTrace("dog58-barge", {
+      id: "dog58-barge",
+      calls: [committed.call, cancelled.call, abortedFailure.call],
+    });
+    await expect(scopeFor(trace).callCount(2)).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace).callCount(1, { excludeAborted: true })).resolves.toMatchObject({ pass: true });
+    await expect(scopeFor(trace).callCount(3, { includeCancelled: true })).resolves.toMatchObject({ pass: true });
+  });
+
+  it("throws TypeError when includeCancelled and excludeAborted are both set", async () => {
+    const scope = scopeFor(mixedTrace());
+    await expect(scope.callCount(2, { includeCancelled: true, excludeAborted: true })).rejects.toBeInstanceOf(TypeError);
+    await expect(scope.callCount(2, { includeCancelled: true, excludeAborted: true })).rejects.toThrow(
+      /includeCancelled.*excludeAborted|excludeAborted.*includeCancelled/,
+    );
+  });
+});
+
 function neverCreatedScope(sessionId: string, query?: QueryOptions): AssertionScope {
   return new AssertionScope({
     control: {
@@ -584,4 +690,28 @@ function scopeFor(trace: SessionTrace, query?: QueryOptions): AssertionScope {
     sessionId: trace.id,
     ...(query ? { query } : {}),
   });
+}
+
+const VECTOR = join(dirname(fileURLToPath(import.meta.url)), "..", "testdata", "call_outcomes.json");
+
+interface OutcomeCase {
+  name: string;
+  outcome: CallOutcome;
+  call: JsonValue;
+}
+
+function loadOutcomeCases(): OutcomeCase[] {
+  const vector = JSON.parse(readFileSync(VECTOR, "utf8")) as { cases?: OutcomeCase[] };
+  if (!Array.isArray(vector.cases)) throw new Error("call_outcomes.json is missing its cases array");
+  return vector.cases;
+}
+
+function outcomeCase(name: string): OutcomeCase {
+  const testCase = loadOutcomeCases().find((candidate) => candidate.name === name);
+  if (!testCase) throw new Error(`unknown call_outcomes.json case ${name}`);
+  return testCase;
+}
+
+function traceForOutcomeCase(testCase: OutcomeCase): SessionTrace {
+  return normalizeSessionTrace("dog58", { id: "dog58", calls: [testCase.call] });
 }

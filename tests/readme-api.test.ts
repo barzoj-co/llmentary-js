@@ -38,6 +38,7 @@ describe("README public API snippets", () => {
     expect(readme).toContain("testdata/isolation");
     expect(readme).toContain("clientAborted");
     expect(readme).toContain("abortPhase");
+    expect(readme).toContain("noCancelled");
     expect(readme).toContain("before_headers");
     expect(readme).toContain("SessionNotFound");
     expect(readme).toContain("WaitTimeoutError");
@@ -86,6 +87,7 @@ describe("README public API snippets", () => {
     expect(typeof lm.expect().expectNoCalls).toBe("function");
     expect(typeof lm.expectNoCalls).toBe("function");
     expect(typeof lm.expect().aborted).toBe("function");
+    expect(typeof lm.expect().noCancelled).toBe("function");
     expect(typeof lm.openapi).toBe("function");
     expect(typeof lm.control.openapi).toBe("function");
     expect(typeof lm.expect().finalResponseMentionsAny).toBe("function");

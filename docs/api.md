@@ -71,6 +71,9 @@ lm.query({ index: 1 }).expect();
 lm.query({}).offersTool("lookup_weather").expect();
 lm.query({}).withoutTools().expect();
 lm.query({}).committed().expect().callCount(2);
+await lm.expect().callCount(2);
+await lm.expect().callCount(3, { includeCancelled: true });
+// Deprecated since DOG-58, mutually exclusive with includeCancelled:
 await lm.expect().callCount(2, { excludeAborted: true });
 const mark = await lm.mark();
 lm.expect({ since: mark });
@@ -121,6 +124,7 @@ await lm.expect().ttft({ max: 500 });
 await lm.expect().retries({ max: 1 });
 await lm.expect().noRetries();
 await lm.expect().noErrors();
+await lm.expect().noCancelled();
 await lm.expect().hasError(/rate limit/i);
 await lm.expect().midStreamError();
 await lm.expect().promptContains("weather");
@@ -149,7 +153,11 @@ await lm.expect().toolResultInPrompt("lookup_weather");
 
 `mentionsAny(text, candidates, { normalizeNumbers, casefold })` is a plain function for answers that come from the app API rather than the trace. Numeric candidates match as whole numbers (`20` does not match `2025`). `finalResponseMentionsAny` runs the same check on the last recorded assistant `output_text` (honours `since`); it does not scan response metadata. `toolResultInPrompt(name, expected?)` requires the **next** request after that tool call to include that call's result content (matching `id`). Pass `expected` (string or `RegExp`) to match the result text. Stronger than `toolResultFedBack`, which only checks that some later request has a tool-role / `function_call_output` message with a matching id.
 
-`noSpecViolations` / `noIgnoredFields` read `normalized.validation`, `normalized.spec_violations`, and `normalized.ignored_fields`. An empty `[]` is clean; a missing field means validation was not run (failure unless `allowUnvalidated: true`). Options: `side`, `calls` (0-based indices or call ids), `ignorePaths`, `ignoreKeywords`. Side filters read wire `context` first, then `side` (proxy v0.5.0 writes `context` only). An entry with neither is included (fail closed), not skipped. Failure lines look like `<call#> <api_family> <side> <path>: <message> — <hint>`. Vitest/Jest matchers: `toHaveNoSpecViolations()`, `toHaveNoIgnoredFields()`. Per-call accessors are `call.validation`, `call.specViolations`, `call.ignoredFields`; the trace has `trace.specViolations()` / `trace.ignoredFields()`. Each line of the generated summary includes `spec=clean` (0 findings after validation ran; this is not a guarantee that both request and response were checked), `spec=request_only` (request checked and response not checked), `spec=N violation(s)`, `spec=not checked`, or `spec=skipped:<reason>` (singular `spec=1 violation`). `http=` is omitted when the status is 0 or absent (before-headers abort). `call.httpStatus` is `undefined` for 0. `callCount(n, { excludeAborted: true })` and `query({}).committed()` count settled calls and ignore `clientAborted` leftovers. `GET /sessions` rows expose typed `spec` (`checked` / `clean` / `findings` / `requestOnly` / `notChecked`).
+Terminal call outcomes: every settled call carries `outcome` — `committed`, `cancelled` (client barge-in, with `abortPhase`), or `failed` (upstream error, HTTP status ≥ 400 or 0, or a truncated stream). `noErrors()` fails only on `failed` calls, listing `#seq` plus the normalized error name or the HTTP status; `noCancelled()` fails on `cancelled` calls, listing `#seq` plus the `abortPhase`. A client cancel is **not** an error: assert it with `aborted()`, `noCancelled()`, or `hasError("client_aborted")`. `hasError`, `midStreamError`, and `aborted` keep their existing meaning.
+
+`callCount(n)` counts `committed` and `failed` calls and skips `cancelled` ones (DOG-58); a failure message states `(N cancelled not counted; pass { includeCancelled: true })`. `{ includeCancelled: true }` counts every recorded call. `excludeAborted` is deprecated (cancelled calls are excluded by default since DOG-58): it still drops every `clientAborted` leftover, including one that ended `failed`, and throws `TypeError` when combined with `includeCancelled`.
+
+`noSpecViolations` / `noIgnoredFields` read `normalized.validation`, `normalized.spec_violations`, and `normalized.ignored_fields`. An empty `[]` is clean; a missing field means validation was not run (failure unless `allowUnvalidated: true`). Options: `side`, `calls` (0-based indices or call ids), `ignorePaths`, `ignoreKeywords`. Side filters read wire `context` first, then `side` (proxy v0.5.0 writes `context` only). An entry with neither is included (fail closed), not skipped. Failure lines look like `<call#> <api_family> <side> <path>: <message> — <hint>`. Vitest/Jest matchers: `toHaveNoSpecViolations()`, `toHaveNoIgnoredFields()`. Per-call accessors are `call.validation`, `call.specViolations`, `call.ignoredFields`; the trace has `trace.specViolations()` / `trace.ignoredFields()`. Each line of the generated summary includes `spec=clean` (0 findings after validation ran; this is not a guarantee that both request and response were checked), `spec=request_only` (request checked and response not checked), `spec=N violation(s)`, `spec=not checked`, or `spec=skipped:<reason>` (singular `spec=1 violation`). `http=` is omitted when the status is 0 or absent (before-headers abort). `call.httpStatus` is `undefined` for 0. `callCount(n, { excludeAborted: true })` (deprecated) and `query({}).committed()` count settled calls and ignore `clientAborted` leftovers. `GET /sessions` rows expose typed `spec` (`checked` / `clean` / `findings` / `requestOnly` / `notChecked`).
 
 | Field | Meaning |
 |---|---|

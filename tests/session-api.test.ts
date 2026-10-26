@@ -76,6 +76,58 @@ describe("session query and client helpers", () => {
     expect(filtered.inFlight).toEqual([{ callId: "call_q", phase: "awaiting_headers" }]);
   });
 
+  it("sets the outcome option from outcome(), cancelled(), and failed()", () => {
+    const lm = llmentary({ proxyUrl: "http://127.0.0.1:9/", controlUrl: "http://127.0.0.1:9/", sessionId: "s1" });
+    expect(lm.query({ model: "gpt-4.1-mini" }).outcome("committed", "failed").queryOptions).toEqual({
+      model: "gpt-4.1-mini",
+      outcome: ["committed", "failed"],
+    });
+    expect(lm.query({}).cancelled().queryOptions).toEqual({ outcome: ["cancelled"] });
+    expect(lm.query({}).failed().queryOptions).toEqual({ outcome: ["failed"] });
+    expect(lm.query({}).committed().queryOptions).toEqual({ committed: true });
+    expect(lm.query({}).aborted().queryOptions).toEqual({ aborted: true });
+    expect(lm.query({}).committed().failed().queryOptions).toEqual({ committed: true, outcome: ["failed"] });
+  });
+
+  it("filters settled calls by outcome while committed() keeps its meaning", async () => {
+    const calls = [
+      {
+        id: "call_ok",
+        ended_at: "2026-10-26T10:00:01Z",
+        request: { model: "m" },
+        normalized: { finish_reason: "stop" },
+      },
+      {
+        id: "call_barge",
+        ended_at: "2026-10-26T10:00:01Z",
+        client_aborted: true,
+        abort_phase: "before_headers",
+        normalized: { finish_reason: "cancelled", client_aborted: true },
+      },
+      {
+        id: "call_500",
+        ended_at: "2026-10-26T10:00:01Z",
+        http_status: 500,
+        normalized: { error: { normalized: "server_error", source: "upstream", message: "boom" } },
+      },
+    ];
+    const fetchImpl: ControlFetch = async () => new Response(JSON.stringify({ id: "s1", calls }), { status: 200 });
+    const lm = llmentary({
+      proxyUrl: "http://127.0.0.1:9/",
+      controlUrl: "http://127.0.0.1:9/",
+      sessionId: "s1",
+      fetch: fetchImpl,
+    });
+    const ids = (records: { id?: string }[]): string[] => records.map((record) => record.id ?? "");
+    expect(ids((await lm.query({}).committed().wait()).calls)).toEqual(["call_ok", "call_500"]);
+    expect(ids((await lm.query({}).aborted().wait()).calls)).toEqual(["call_barge"]);
+    expect(ids((await lm.query({}).outcome("committed").wait()).calls)).toEqual(["call_ok"]);
+    expect(ids((await lm.query({}).cancelled().wait()).calls)).toEqual(["call_barge"]);
+    expect(ids((await lm.query({}).failed().wait()).calls)).toEqual(["call_500"]);
+    expect(ids((await lm.query({}).outcome("committed", "cancelled").wait()).calls)).toEqual(["call_ok", "call_barge"]);
+    expect(ids((await lm.query({}).committed().outcome("committed").wait()).calls)).toEqual(["call_ok"]);
+  });
+
   it("exposes mark, session, config, list, openapi, and client wrappers", async () => {
     stash("OPENAI_API_KEY", undefined);
     const fetchImpl: ControlFetch = async (input, init) => {
