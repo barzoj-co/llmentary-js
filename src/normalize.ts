@@ -1,6 +1,7 @@
 import type {
   AbortPhase,
   ApiType,
+  CallOutcome,
   CallRecord,
   IgnoredField,
   InFlightCall,
@@ -105,6 +106,15 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
   const upstreamCalled =
     booleanAt(object, "upstream_called") ?? booleanAt(object, "upstreamCalled");
   const errorSource = stringAt(asObject(error), "source");
+  const outcome = finishedAt
+    ? inferOutcome(object, normalized, {
+        raw,
+        ...(error !== undefined ? { error } : {}),
+        ...(metadata ? { metadata } : {}),
+        ...(httpStatus !== undefined ? { httpStatus } : {}),
+        ...(clientAborted !== undefined ? { clientAborted } : {}),
+      })
+    : undefined;
   return {
     raw,
     ...(id ? { id } : {}),
@@ -131,6 +141,7 @@ export function normalizeCallRecord(raw: JsonValue): CallRecord {
     ...(httpStatus !== undefined ? { httpStatus } : {}),
     ...(clientAborted !== undefined ? { clientAborted } : {}),
     ...(clientAborted === true && abortPhase ? { abortPhase } : {}),
+    ...(outcome ? { outcome } : {}),
     ...(reasoningIn ? { reasoningIn } : {}),
     ...(promptText ? { promptText } : {}),
     ...(responseText ? { responseText } : {}),
@@ -319,6 +330,43 @@ function inferClientAborted(object: JsonObject, normalized: JsonObject | undefin
     booleanAt(normalized, "client_aborted") ??
     booleanAt(normalized, "clientAborted")
   );
+}
+
+/** DOG-58 terminal state for a settled call. The abort phase never changes it. */
+export function inferOutcome(
+  object: JsonObject,
+  normalized: JsonObject | undefined,
+  record: CallRecord,
+): CallOutcome {
+  const recorded = asCallOutcome(record.outcome) ?? asCallOutcome(valueAt(object, "outcome"));
+  if (recorded) return recorded;
+  const errorObject = asObject(record.error);
+  const errorSource = valueAt(errorObject, "source");
+  const clientError =
+    stringAt(errorObject, "normalized") === "client_aborted" &&
+    record.clientAborted === true &&
+    (errorSource === undefined || errorSource === null || errorSource === "client");
+  if (record.error !== undefined && !clientError) return "failed";
+  const httpStatus = outcomeHttpStatus(object, record);
+  if (httpStatus !== undefined && httpStatus >= 400) return "failed";
+  if (record.clientAborted === true) return "cancelled";
+  if (valueAt(normalized, "stream_truncated") === true) return "failed";
+  if (httpStatus === 0) return "failed";
+  return "committed";
+}
+
+/** `inferHttpStatus` drops `0`; the DOG-58 rule needs to see it. */
+function outcomeHttpStatus(object: JsonObject, record: CallRecord): number | undefined {
+  return (
+    record.httpStatus ??
+    numberAt(object, "http_status") ??
+    numberAt(object, "status") ??
+    numberAt(object, "status_code")
+  );
+}
+
+function asCallOutcome(value: JsonValue | undefined): CallOutcome | undefined {
+  return value === "committed" || value === "cancelled" || value === "failed" ? value : undefined;
 }
 
 function inferAbortPhase(object: JsonObject, normalized: JsonObject | undefined): AbortPhase | undefined {

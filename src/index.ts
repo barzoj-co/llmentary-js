@@ -73,6 +73,7 @@ export type {
   BinaryResolutionOptions,
   Bounds,
   CallCountOptions,
+  CallOutcome,
   CallRecord,
   GetSessionOptions,
   IsolatedFromOptions,

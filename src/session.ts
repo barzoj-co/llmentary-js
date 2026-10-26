@@ -5,6 +5,7 @@ import { attachSessionTraceHelpers } from "./normalize.js";
 import { firstNonEmpty } from "./env.js";
 import type {
   AssertionResult,
+  CallOutcome,
   GetSessionOptions,
   ListSessionsOptions,
   ProxyConfig,
@@ -185,6 +186,21 @@ export class SessionQuery {
   /** Keep only `clientAborted` calls (DOG-50). */
   aborted(): SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, aborted: true });
+  }
+
+  /** Keep only settled calls whose `outcome` is one of `states` (DOG-58). */
+  outcome(...states: CallOutcome[]): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, outcome: states });
+  }
+
+  /** Keep only calls that ended `cancelled` (DOG-58). */
+  cancelled(): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, outcome: ["cancelled"] });
+  }
+
+  /** Keep only calls that ended `failed` (DOG-58). */
+  failed(): SessionQuery {
+    return new SessionQuery(this.session, { ...this.queryOptions, outcome: ["failed"] });
   }
 
   expect(query?: QueryOptions): AssertionScope {
