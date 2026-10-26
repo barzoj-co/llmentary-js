@@ -145,7 +145,7 @@ describe("resolveWait env", () => {
 describe("formatWaitTimeoutError", () => {
   it("matches the shared timeout error text", () => {
     expect(formatWaitTimeoutError("sess-1", "30s", 3, 1)).toBe(
-      "wait timed out after 30s on session sess-1 (3 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+      "wait timed out after 30s on session sess-1 (3 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the app needs more time.",
     );
   });
 
@@ -155,7 +155,7 @@ describe("formatWaitTimeoutError", () => {
         { method: "POST", path: "/v1/responses", phase: "awaiting_headers" },
       ]),
     ).toBe(
-      "wait timed out after 30s on session stall-example (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+      "wait timed out after 30s on session stall-example (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). The upstream has not sent headers for 0.0s; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast.",
     );
     expect(
       formatWaitTimeoutError("stall-stream-example", "2s", 0, 1, [
@@ -163,6 +163,49 @@ describe("formatWaitTimeoutError", () => {
       ]),
     ).toContain("still active: 1 [POST /v1/chat/completions streaming 200]");
     expect(formatWaitTimeoutError("quiet", "1s", 0, 0, [])).toContain("still active: 0)");
+  });
+});
+
+describe("wait timeout hint", () => {
+  it("raises LLMENTARY_WAIT_TIMEOUT when nothing is active", () => {
+    expect(formatWaitTimeoutError("idle", "30s", 2, 0, [])).toBe(
+      "wait timed out after 30s on session idle (2 calls so far, still active: 0). Raise LLMENTARY_WAIT_TIMEOUT if the app needs more time.",
+    );
+    expect(formatWaitTimeoutError("idle", "30s", 2, 1)).toBe(
+      "wait timed out after 30s on session idle (2 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the app needs more time.",
+    );
+  });
+
+  it("names LLMENTARY_UPSTREAM_HEADER_TIMEOUT for awaiting_headers calls", () => {
+    expect(
+      formatWaitTimeoutError("hdr", "30s", 0, 1, [
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers", elapsedMs: 1395 },
+      ]),
+    ).toBe(
+      "wait timed out after 30s on session hdr (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). The upstream has not sent headers for 1.4s; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast.",
+    );
+  });
+
+  it("names LLMENTARY_UPSTREAM_IDLE_TIMEOUT for streaming calls", () => {
+    expect(
+      formatWaitTimeoutError("stream", "5s", 1, 1, [
+        { method: "POST", path: "/v1/chat/completions", phase: "streaming", httpStatus: 200, elapsedMs: 2500 },
+      ]),
+    ).toBe(
+      "wait timed out after 5s on session stream (1 calls so far, still active: 1 [POST /v1/chat/completions streaming 200]). A call is still streaming; set LLMENTARY_UPSTREAM_IDLE_TIMEOUT to fail stalled streams, or raise LLMENTARY_WAIT_TIMEOUT if the app needs more time.",
+    );
+  });
+
+  it("prefers the header hint when both phases are in flight", () => {
+    expect(
+      formatWaitTimeoutError("mixed", "30s", 0, 3, [
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers", elapsedMs: 420 },
+        { method: "POST", path: "/v1/chat/completions", phase: "streaming", httpStatus: 200, elapsedMs: 41_000 },
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers", elapsedMs: 1395 },
+      ]),
+    ).toBe(
+      "wait timed out after 30s on session mixed (0 calls so far, still active: 3 [POST /v1/responses awaiting_headers; POST /v1/chat/completions streaming 200; POST /v1/responses awaiting_headers]). The upstream has not sent headers for 1.4s; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast.",
+    );
   });
 });
 
