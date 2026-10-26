@@ -12,6 +12,7 @@ import {
   llmentary,
   SessionAssertionError,
   startProxy,
+  WaitTimeoutError,
   type ProxyHandle,
 } from "../../src/index.js";
 import {
@@ -458,6 +459,94 @@ describe("OpenAI E2E through llmentary", () => {
       await followUp.expect().outputText();
       await lm.cleanup();
       await followUp.cleanup();
+    });
+
+    it("classifies a before-headers abort and a first-chunk abort as cancelled outcomes (DOG-58)", async () => {
+      const lm = newSession(proxy);
+      const client = openaiClient(lm);
+      try {
+        // Call 1: abort right after the request is sent. When OpenAI answers before
+        // the abort lands the attempt is retried once; a second loss skips with a reason.
+        let mark: number | undefined;
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          const start = await lm.mark();
+          const controller = new AbortController();
+          const pending = client.chat.completions.create(
+            {
+              model: TEXT_MODEL,
+              temperature: 0,
+              max_tokens: 64,
+              messages: [{ role: "user", content: "Count slowly from 1 to 40 in words." }],
+            },
+            { signal: controller.signal },
+          );
+          controller.abort();
+          try {
+            void (await pending);
+          } catch (error) {
+            if (!controller.signal.aborted && !isAbortError(error)) throw error;
+          }
+          try {
+            const attemptTrace = await lm.wait({ minCalls: start + 1, timeout: 15, quiet: "200ms" });
+            const record = attemptTrace.calls[start];
+            if (record?.clientAborted === true && record.outcome === "cancelled") {
+              mark = start;
+              break;
+            }
+            noteLiveCancelSkip(
+              `abort attempt ${attempt}/2 lost the race to the upstream (outcome=${String(record?.outcome)}, clientAborted=${String(record?.clientAborted)})`,
+            );
+          } catch (error) {
+            if (!(error instanceof WaitTimeoutError)) throw error;
+            noteLiveCancelSkip(`abort attempt ${attempt}/2 recorded no settled call: ${error.message}`);
+          }
+        }
+        if (mark === undefined) {
+          noteLiveCancelSkip("no cancelled before-headers call was recorded on two live attempts");
+          return;
+        }
+
+        // Call 2: abort the stream after the first content chunk.
+        const streamController = new AbortController();
+        const stream = await retryNetwork(() =>
+          client.chat.completions.create(
+            {
+              model: TEXT_MODEL,
+              temperature: 0,
+              max_tokens: 64,
+              stream: true,
+              messages: [{ role: "user", content: "Count slowly from 1 to 20 in words." }],
+            },
+            { signal: streamController.signal },
+          ),
+        );
+        try {
+          for await (const chunk of stream) {
+            if (chunk.choices[0]?.delta?.content) {
+              streamController.abort();
+              break;
+            }
+          }
+        } catch (error) {
+          if (!streamController.signal.aborted && !isAbortError(error)) throw error;
+        }
+
+        const trace = await lm.wait({ minCalls: mark + 2, timeout: 25, quiet: "200ms" });
+        const cancelledCalls = trace.since(mark);
+        expect(cancelledCalls).toHaveLength(2);
+        expect(cancelledCalls.map((record) => record.outcome)).toEqual(["cancelled", "cancelled"]);
+
+        const scoped = lm.query({ since: mark });
+        await scoped.expect().noErrors();
+        await expect(scoped.expect().noCancelled()).rejects.toBeInstanceOf(SessionAssertionError);
+        await expect(scoped.expect().noCancelled()).rejects.toThrow(/cancelled/);
+        const filtered = await lm.query({}).cancelled().wait({ minCalls: mark + 2, timeout: 25, quiet: "200ms" });
+        expect(filtered.calls).toHaveLength(2);
+        await scoped.expect().callCount(0);
+        await scoped.expect().callCount(2, { includeCancelled: true });
+      } finally {
+        await lm.cleanup();
+      }
     });
 
     it("parses cached_tokens from a repeated long prompt", async () => {
@@ -1712,6 +1801,12 @@ function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { name?: string; message?: string };
   return candidate.name === "AbortError" || /abort/i.test(candidate.message ?? "");
+}
+
+function noteLiveCancelSkip(reason: string): void {
+  const message = `DOG-58 live cancel test skipped: ${reason}`;
+  console.warn(message);
+  console.log(`::notice::${message}`);
 }
 
 /** `info.version` only — not the first `version:` key in the document. */

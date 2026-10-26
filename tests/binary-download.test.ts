@@ -270,16 +270,16 @@ describe("downloadBinary", () => {
       "fetch",
       vi.fn(async () =>
         jsonResponse({
-          tag_name: "v0.5.1",
+          tag_name: "v0.5.3",
           assets: [
-            { name: "llmentary_0.5.1_linux_amd64.tar.gz", browser_download_url: "https://example.test/linux" },
+            { name: "llmentary_0.5.3_linux_amd64.tar.gz", browser_download_url: "https://example.test/linux" },
             { name: "checksums.txt", browser_download_url: "https://example.test/checksums.txt" },
           ],
         }),
       ),
     );
     const dir = await scratch("llmentary-unknown-os-");
-    await expect(downloadBinary({ cacheDir: dir, platform: "aix", arch: "x64", version: "v0.5.1" })).rejects.toThrow(
+    await expect(downloadBinary({ cacheDir: dir, platform: "aix", arch: "x64", version: "v0.5.3" })).rejects.toThrow(
       /No llmentary release asset matched aix\/x64/,
     );
   });
@@ -371,22 +371,22 @@ describe("downloadBinary", () => {
 
   it("deletes the archive when the checksum does not match", async () => {
     const dir = await scratch("llmentary-mismatch-");
-    const archive = await makeTarGz(dir, "llmentary_0.5.1_linux_amd64.tar.gz", { llmentary: "#!/bin/sh\n" });
+    const archive = await makeTarGz(dir, "llmentary_0.5.3_linux_amd64.tar.gz", { llmentary: "#!/bin/sh\n" });
     const bytes = await readFile(archive);
-    const published = "c4baadac534d2a895d0fdd485cc733cbf646af0b7dfbda16767295b13dcbc8df";
+    const published = "60ae7f220ac1c53f0b55f75fd6d69ea6debada88adb9502ec6615a041baf7227";
     vi.stubGlobal(
       "fetch",
       githubFetch({
-        archiveName: "llmentary_0.5.1_linux_amd64.tar.gz",
+        archiveName: "llmentary_0.5.3_linux_amd64.tar.gz",
         bytes,
-        checksums: `${published}  llmentary_0.5.1_linux_amd64.tar.gz\n`,
-        tag: "v0.5.1",
+        checksums: `${published}  llmentary_0.5.3_linux_amd64.tar.gz\n`,
+        tag: "v0.5.3",
       }),
     );
-    await expect(downloadBinary({ cacheDir: dir, platform: "linux", arch: "x64", version: "v0.5.1" })).rejects.toThrow(
+    await expect(downloadBinary({ cacheDir: dir, platform: "linux", arch: "x64", version: "v0.5.3" })).rejects.toThrow(
       /Checksum verification failed/,
     );
-    await expect(fileExists(join(dir, "v0.5.1", "llmentary_0.5.1_linux_amd64.tar.gz"))).resolves.toBe(false);
+    await expect(fileExists(join(dir, "v0.5.3", "llmentary_0.5.3_linux_amd64.tar.gz"))).resolves.toBe(false);
   });
 
   it("downloads, verifies, and extracts a tagged release", async () => {

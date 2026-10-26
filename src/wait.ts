@@ -32,6 +32,7 @@ export interface ResolvedWait {
   timeoutMs: number;
   quietMs: number;
   minCalls?: number;
+  excludeCancelled?: boolean;
 }
 
 export function resetWaitEnvDeprecationWarnings(): void {
@@ -103,6 +104,7 @@ export function resolveWait(options: WaitOptions = {}, env: NodeJS.ProcessEnv = 
     timeoutMs,
     quietMs,
     ...(options.minCalls !== undefined ? { minCalls: options.minCalls } : {}),
+    ...(options.excludeCancelled !== undefined ? { excludeCancelled: options.excludeCancelled } : {}),
   };
 }
 
@@ -113,6 +115,7 @@ export function resolvedWaitToOptions(resolved: ResolvedWait): WaitOptions {
     timeoutMs: resolved.timeoutMs,
     idleMs: resolved.quietMs,
     ...(resolved.minCalls !== undefined ? { minCalls: resolved.minCalls } : {}),
+    ...(resolved.excludeCancelled !== undefined ? { excludeCancelled: resolved.excludeCancelled } : {}),
   };
 }
 
@@ -132,6 +135,7 @@ export function mergeWaitOptions(base: WaitOptions, override: WaitOptions = {}):
   }
   if (override.signal !== undefined) merged.signal = override.signal;
   if (override.minCalls !== undefined) merged.minCalls = override.minCalls;
+  if (override.excludeCancelled !== undefined) merged.excludeCancelled = override.excludeCancelled;
   return merged;
 }
 

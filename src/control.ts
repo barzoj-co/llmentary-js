@@ -80,6 +80,7 @@ export class ControlClient {
     params.set("timeout", resolved.timeout);
     params.set("quiet", resolved.quiet);
     if (resolved.minCalls !== undefined) params.set("min_calls", String(resolved.minCalls));
+    if (resolved.excludeCancelled) params.set("exclude_cancelled", "true");
     const abortMs = resolved.timeoutMs + resolved.quietMs + WAIT_HTTP_PADDING_MS;
     const timeout = AbortSignal.timeout(abortMs);
     try {
@@ -91,6 +92,12 @@ export class ControlClient {
       if (error instanceof ControlApiError && error.status === 504) {
         const stats = await this.waitTimeoutStats(sessionId, error.body);
         throw new WaitTimeoutError(sessionId, resolved.timeout, stats.calls, stats.stillActive, stats.inFlight);
+      }
+      if (error instanceof ControlApiError && isExcludeCancelledUnsupported(error)) {
+        throw new ControlApiError(
+          `wait exclude_cancelled is not supported by this proxy; upgrade the proxy to >= 0.5.3 or drop excludeCancelled`,
+          { status: error.status, path: error.path, body: error.body },
+        );
       }
       throw error;
     }
@@ -154,6 +161,14 @@ export class ControlClient {
     if (!text) return null;
     return parseControlBody(text);
   }
+}
+
+/** Proxy < 0.5.3 answers `exclude_cancelled` with `400 invalid_param`. */
+export function isExcludeCancelledUnsupported(error: ControlApiError): boolean {
+  if (error.status !== 400) return false;
+  const parsed = parseControlError(error.body);
+  const haystack = `${parsed?.type ?? ""} ${parsed?.message ?? ""} ${error.body}`;
+  return /invalid_param/i.test(haystack) && haystack.includes("exclude_cancelled");
 }
 
 export function parseControlBody(text: string): JsonValue {
