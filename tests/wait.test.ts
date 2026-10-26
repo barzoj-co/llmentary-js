@@ -155,7 +155,7 @@ describe("formatWaitTimeoutError", () => {
         { method: "POST", path: "/v1/responses", phase: "awaiting_headers" },
       ]),
     ).toBe(
-      "wait timed out after 30s on session stall-example (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). The upstream has not sent headers for 0.0s; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast.",
+      "wait timed out after 30s on session stall-example (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). The upstream has not sent headers yet; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast.",
     );
     expect(
       formatWaitTimeoutError("stall-stream-example", "2s", 0, 1, [
@@ -184,6 +184,28 @@ describe("wait timeout hint", () => {
     ).toBe(
       "wait timed out after 30s on session hdr (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). The upstream has not sent headers for 1.4s; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast.",
     );
+  });
+
+  it("drops the elapsed suffix when no awaiting_headers call has a finite elapsedMs", () => {
+    expect(
+      formatWaitTimeoutError("hdr-missing", "30s", 0, 1, [
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers" },
+      ]),
+    ).toBe(
+      "wait timed out after 30s on session hdr-missing (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). The upstream has not sent headers yet; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast.",
+    );
+    expect(
+      formatWaitTimeoutError("hdr-nonfinite", "30s", 0, 2, [
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers", elapsedMs: Number.NaN },
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers", elapsedMs: Number.POSITIVE_INFINITY },
+      ]),
+    ).toContain("The upstream has not sent headers yet; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT");
+    expect(
+      formatWaitTimeoutError("hdr-partial", "30s", 0, 2, [
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers" },
+        { method: "POST", path: "/v1/responses", phase: "awaiting_headers", elapsedMs: 420 },
+      ]),
+    ).toContain("The upstream has not sent headers for 0.4s; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT");
   });
 
   it("names LLMENTARY_UPSTREAM_IDLE_TIMEOUT for streaming calls", () => {

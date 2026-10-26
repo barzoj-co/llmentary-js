@@ -148,12 +148,19 @@ export function formatInFlightCall(call: InFlightCall): string {
 export function waitTimeoutHint(inFlight: readonly InFlightCall[]): string {
   const awaitingHeaders = inFlight.filter((call) => call.phase === "awaiting_headers");
   if (awaitingHeaders.length > 0) {
-    let maxElapsedMs = 0;
+    let maxElapsedMs: number | undefined;
     for (const call of awaitingHeaders) {
       const elapsedMs = call.elapsedMs;
-      if (typeof elapsedMs === "number" && Number.isFinite(elapsedMs) && elapsedMs > maxElapsedMs) {
+      if (
+        typeof elapsedMs === "number" &&
+        Number.isFinite(elapsedMs) &&
+        (maxElapsedMs === undefined || elapsedMs > maxElapsedMs)
+      ) {
         maxElapsedMs = elapsedMs;
       }
+    }
+    if (maxElapsedMs === undefined) {
+      return `The upstream has not sent headers yet; set ${UPSTREAM_HEADER_TIMEOUT_ENV} to fail such calls fast.`;
     }
     return `The upstream has not sent headers for ${(maxElapsedMs / 1_000).toFixed(1)}s; set ${UPSTREAM_HEADER_TIMEOUT_ENV} to fail such calls fast.`;
   }
