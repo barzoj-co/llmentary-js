@@ -287,7 +287,7 @@ describe("ControlClient", () => {
     });
     await expect(client.wait("s1")).rejects.toBeInstanceOf(WaitTimeoutError);
     await expect(client.wait("s1")).rejects.toThrow(
-      "wait timed out after 30s on session s1 (2 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+      "wait timed out after 30s on session s1 (2 calls so far, still active: 1). Raise LLMENTARY_WAIT_TIMEOUT if the app needs more time.",
     );
   });
 
@@ -314,7 +314,7 @@ describe("ControlClient", () => {
       fetch: fetchImpl,
     });
     await expect(client.wait("s1")).rejects.toThrow(
-      "wait timed out after 30s on session s1 (3 calls so far, still active: 2). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+      "wait timed out after 30s on session s1 (3 calls so far, still active: 2). Raise LLMENTARY_WAIT_TIMEOUT if the app needs more time.",
     );
   });
 
@@ -358,7 +358,7 @@ describe("ControlClient", () => {
       }),
     ]);
     expect((error as Error).message).toBe(
-      "wait timed out after 30s on session stall-example (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+      "wait timed out after 30s on session stall-example (0 calls so far, still active: 1 [POST /v1/responses awaiting_headers]). The upstream has not sent headers for 1.0s; set LLMENTARY_UPSTREAM_HEADER_TIMEOUT to fail such calls fast.",
     );
   });
 
@@ -372,7 +372,7 @@ describe("ControlClient", () => {
     clearWaitEnv();
     const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
     await expect(client.wait("stall-stream-example", { minCalls: 1 })).rejects.toThrow(
-      "wait timed out after 30s on session stall-stream-example (0 calls so far, still active: 1 [POST /v1/chat/completions streaming 200]). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+      "wait timed out after 30s on session stall-stream-example (0 calls so far, still active: 1 [POST /v1/chat/completions streaming 200]). A call is still streaming; set LLMENTARY_UPSTREAM_IDLE_TIMEOUT to fail stalled streams, or raise LLMENTARY_WAIT_TIMEOUT if the app needs more time.",
     );
   });
 
@@ -446,7 +446,7 @@ describe("ControlClient", () => {
     clearWaitEnv();
     const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
     await expect(client.wait("s1", { minCalls: 2 })).rejects.toThrow(
-      "wait timed out after 30s on session s1 (0 calls so far, still active: 0). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.",
+      "wait timed out after 30s on session s1 (0 calls so far, still active: 0). Raise LLMENTARY_WAIT_TIMEOUT if the app needs more time.",
     );
   });
 

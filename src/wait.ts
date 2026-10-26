@@ -10,6 +10,9 @@ export const WAIT_QUIET_ENV = "LLMENTARY_WAIT_QUIET";
 export const WAIT_TIMEOUT_MS_ENV = "LLMENTARY_WAIT_TIMEOUT_MS";
 export const WAIT_IDLE_MS_ENV = "LLMENTARY_WAIT_IDLE_MS";
 
+const UPSTREAM_HEADER_TIMEOUT_ENV = "LLMENTARY_UPSTREAM_HEADER_TIMEOUT";
+const UPSTREAM_IDLE_TIMEOUT_ENV = "LLMENTARY_UPSTREAM_IDLE_TIMEOUT";
+
 const UNIT_MS: Record<string, number> = {
   ns: 1e-6,
   us: 0.001,
@@ -142,6 +145,31 @@ export function formatInFlightCall(call: InFlightCall): string {
   return parts.join(" ");
 }
 
+export function waitTimeoutHint(inFlight: readonly InFlightCall[]): string {
+  const awaitingHeaders = inFlight.filter((call) => call.phase === "awaiting_headers");
+  if (awaitingHeaders.length > 0) {
+    let maxElapsedMs: number | undefined;
+    for (const call of awaitingHeaders) {
+      const elapsedMs = call.elapsedMs;
+      if (
+        typeof elapsedMs === "number" &&
+        Number.isFinite(elapsedMs) &&
+        (maxElapsedMs === undefined || elapsedMs > maxElapsedMs)
+      ) {
+        maxElapsedMs = elapsedMs;
+      }
+    }
+    if (maxElapsedMs === undefined) {
+      return `The upstream has not sent headers yet; set ${UPSTREAM_HEADER_TIMEOUT_ENV} to fail such calls fast.`;
+    }
+    return `The upstream has not sent headers for ${(maxElapsedMs / 1_000).toFixed(1)}s; set ${UPSTREAM_HEADER_TIMEOUT_ENV} to fail such calls fast.`;
+  }
+  if (inFlight.some((call) => call.phase === "streaming")) {
+    return `A call is still streaming; set ${UPSTREAM_IDLE_TIMEOUT_ENV} to fail stalled streams, or raise ${WAIT_TIMEOUT_ENV} if the app needs more time.`;
+  }
+  return `Raise ${WAIT_TIMEOUT_ENV} if the app needs more time.`;
+}
+
 export function formatWaitTimeoutError(
   sessionId: string,
   timeout: string,
@@ -153,7 +181,7 @@ export function formatWaitTimeoutError(
   const active = listed
     ? `still active: ${stillActive} [${listed}]`
     : `still active: ${stillActive}`;
-  return `wait timed out after ${timeout} on session ${sessionId} (${calls} calls so far, ${active}). Raise LLMENTARY_WAIT_TIMEOUT if the graph needs more time.`;
+  return `wait timed out after ${timeout} on session ${sessionId} (${calls} calls so far, ${active}). ${waitTimeoutHint(inFlight)}`;
 }
 
 export class WaitTimeoutError extends Error {
