@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.7](https://github.com/barzoj-co/llmentary-js/compare/v0.4.6...v0.4.7) (2026-10-26)
+
+
+### Bug Fixes
+
+* **deps:** bump fast-uri to 3.1.9 ([#53](https://github.com/barzoj-co/llmentary-js/issues/53)) ([32d5348](https://github.com/barzoj-co/llmentary-js/commit/32d5348d80874e83499220e8fdfb30ea6e827380))
+
 ## [0.4.6](https://github.com/barzoj-co/llmentary-js/compare/v0.4.5...v0.4.6) (2026-10-23)
 
 
