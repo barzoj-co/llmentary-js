@@ -118,6 +118,25 @@ Terminal call outcomes (DOG-58): every settled call carries `outcome` (`committe
 
 `listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` / `seq` / `sessionId` / `userTexts` read the proxy fields. Call `id`s are process-global; `seq` is 1-based per session. The generated summary prints `#seq (id)`.
 
+### no_ignored_fields
+
+Behind an openai-compatible provider, the recommended pair of spec assertions is:
+
+```ts
+await lm.expect().noSpecViolations();
+await lm.expect().noIgnoredFields({ minSeverity: "warning" });
+// or narrow one side and specific kinds:
+await lm.expect().noIgnoredFields({ side: "request", ignoreKinds: ["vendor_field"] });
+```
+
+`ignored_fields` entries look like `{ pointer, key, kind, context, severity, action }`. `context` is `request` or `response`, `severity` is `info` / `warning` / `error` and may be missing. `minSeverity` drops entries below that level and keeps entries with no severity (fail closed); `ignoreKinds` is an alias of `ignoreKeywords` and both match the entry `kind`. Kinds reported with `severity: "info"`:
+
+| Kind | Side | Meaning |
+|---|---|---|
+| `vendor_field` | request | vendor extension the compatible target drops |
+| `compatible_optional` | response | optional OpenAI field the compatible upstream omits |
+| `response_shape` | response | response shape deviates from the spec |
+
 See [docs/api.md](docs/api.md) for the full API, including Jest setup.
 
 ## Waiting for calls

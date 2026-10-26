@@ -175,6 +175,7 @@ export interface IgnoredField {
   path?: string;
   pointer?: string;
   kind?: string;
+  /** `info` | `warning` | `error`; absent when the proxy does not classify the entry. */
   severity?: string;
   /** `report_only` for compatible-target vendor extras. */
   action?: string;
@@ -187,7 +188,16 @@ export interface SpecAssertionOptions {
   /** 0-based indices into the filtered call list, or call ids. */
   calls?: Array<number | string>;
   ignorePaths?: string[];
+  /** Entry `kind` (also matches a spec violation `keyword`). */
   ignoreKeywords?: string[];
+  /** Alias of `ignoreKeywords`; the union of both is used when both are given. */
+  ignoreKinds?: string[];
+  /**
+   * Drop findings whose `severity` is below this level
+   * (`info` < `warning` < `error`). Findings without `severity` are kept
+   * (fail closed).
+   */
+  minSeverity?: "info" | "warning" | "error";
   allowUnvalidated?: boolean;
 }
 
