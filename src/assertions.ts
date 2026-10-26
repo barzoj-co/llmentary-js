@@ -615,10 +615,12 @@ export class AssertionScope {
   }
 
   async noSpecViolations(options: SpecAssertionOptions = {}): Promise<AssertionResult> {
+    assertSpecAssertionOptions(options);
     return this.evaluate("expected no spec violations", (trace) => evaluateSpecFindings(trace, this.query, options, "violations"));
   }
 
   async noIgnoredFields(options: SpecAssertionOptions = {}): Promise<AssertionResult> {
+    assertSpecAssertionOptions(options);
     return this.evaluate("expected no ignored fields", (trace) => evaluateSpecFindings(trace, this.query, options, "ignored"));
   }
 
@@ -1534,8 +1536,39 @@ function includeFinding(item: SpecViolation | IgnoredField, options: SpecAsserti
     if (side && side !== options.side) return false;
   }
   if (options.ignorePaths?.some((path) => findingMatchesPath(item, path))) return false;
-  if (options.ignoreKeywords?.some((keyword) => "keyword" in item && item.keyword === keyword)) return false;
+  if (findingMatchesKind(item, options)) return false;
+  if (options.minSeverity && findingSeverityIsBelow(item, options.minSeverity)) return false;
   return true;
+}
+
+const SEVERITY_LEVELS = ["info", "warning", "error"] as const;
+
+function assertSpecAssertionOptions(options: SpecAssertionOptions): void {
+  if (options.minSeverity === undefined) return;
+  if (!(SEVERITY_LEVELS as readonly string[]).includes(options.minSeverity)) {
+    throw new TypeError(
+      `minSeverity must be one of ${SEVERITY_LEVELS.map((level) => `"${level}"`).join(", ")}, got ${JSON.stringify(options.minSeverity)}`,
+    );
+  }
+}
+
+/** `ignoreKeywords` and `ignoreKinds` are aliases; both are matched against the entry `kind`. */
+function findingMatchesKind(item: SpecViolation | IgnoredField, options: SpecAssertionOptions): boolean {
+  const kinds = [...(options.ignoreKeywords ?? []), ...(options.ignoreKinds ?? [])];
+  return kinds.some(
+    (keyword) => ("keyword" in item && item.keyword === keyword) || ("kind" in item && item.kind === keyword),
+  );
+}
+
+/** Unknown severities rank above every level (fail closed). Missing severity is kept. */
+function findingSeverityIsBelow(item: SpecViolation | IgnoredField, minSeverity: SpecAssertionOptions["minSeverity"]): boolean {
+  if (!item.severity) return false;
+  return severityRank(item.severity) < severityRank(minSeverity);
+}
+
+function severityRank(severity: string | undefined): number {
+  const index = SEVERITY_LEVELS.indexOf(severity as (typeof SEVERITY_LEVELS)[number]);
+  return index === -1 ? SEVERITY_LEVELS.length : index;
 }
 
 /** Wire `context` first (proxy v0.5.0), then `side`. Empty strings are absent. */
