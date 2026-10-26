@@ -1191,7 +1191,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("parses reasoning tokens from one reasoning-model call", async () => {
-      // o4-mini sometimes bills reasoning_tokens=0 even with encrypted reasoning.
+      // Reasoning models sometimes bill reasoning_tokens=0 even with encrypted reasoning.
       // Retry the live call; a hit is still required.
       const lm = newSession(proxy);
       const client = openaiClient(lm);

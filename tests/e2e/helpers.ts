@@ -13,9 +13,9 @@ import {
 } from "../../src/index.js";
 import { asObject, numberAt, objectAt, stringAt } from "../../src/normalize.js";
 
-export const TEXT_MODEL = "gpt-4.1-nano";
+export const TEXT_MODEL = "gpt-4o-mini";
 export const TOOL_MODEL = "gpt-4.1-mini";
-export const REASONING_MODEL = "o4-mini";
+export const REASONING_MODEL = "gpt-5-nano";
 
 export const CITY_SCHEMA: JsonObject = {
   type: "object",
