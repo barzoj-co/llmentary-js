@@ -236,10 +236,9 @@ describe("outcome / cancelled / failed filters (DOG-58)", () => {
   });
 
   it("scopes outcome assertions and labels the filter on an empty match", async () => {
-    await expect(scopeFor(trace, { outcome: ["failed"] }).soft().noErrors()).resolves.toMatchObject({
-      pass: false,
-      message: expect.stringMatching(/^expected no errors, saw 2 failed call\(s\)/),
-    });
+    const failedOnly = await scopeFor(trace, { outcome: ["failed"] }).soft().noErrors();
+    expect(failedOnly.pass).toBe(false);
+    expect(failedOnly.message).toMatch(/^expected no errors, saw 2 failed call\(s\)/);
     await expect(scopeFor(trace, { outcome: ["failed"] }).soft().noCancelled()).resolves.toMatchObject({ pass: true });
     await expect(scopeFor(trace, { outcome: ["committed"] }).noErrors()).resolves.toMatchObject({ pass: true });
     expect(formatEmptyFilterMessage({ outcome: ["cancelled"] })).toBe("no calls matched query (outcome=cancelled)");
