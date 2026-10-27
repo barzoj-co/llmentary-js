@@ -13,6 +13,7 @@ import {
   SessionAssertionError,
   startProxy,
   WaitTimeoutError,
+  type CallRecord,
   type ProxyHandle,
 } from "../../src/index.js";
 import {
@@ -465,18 +466,23 @@ describe("OpenAI E2E through llmentary", () => {
       const lm = newSession(proxy);
       const client = openaiClient(lm);
       try {
-        // Call 1: abort right after the request is sent. No mark() before the first
-        // call is recorded (mark() waits for 0 calls and the proxy answers 404
-        // session_not_found for a session without calls): the first attempt starts at
-        // index 0 and the index is updated from a recorded trace after an attempt
-        // settles. When OpenAI answers before the abort lands the attempt is retried
-        // once; a committed record means the upstream demonstrably won the race.
+        // Call 1: abort while the proxy still holds the call in flight. The timing is
+        // driven by the proxy, not by a timer: GET /sessions/{id}?include=in_flight is
+        // polled every 10 ms for up to 5 s and the controller aborts as soon as the
+        // proxy lists the call as in flight. No mark() runs before the first call is
+        // recorded (mark() waits for 0 calls and the proxy answers 404 session_not_found
+        // for a session without calls): the first attempt starts at index 0 and the
+        // index is updated from a recorded trace after an attempt settles. When the call
+        // settles before the proxy ever lists it, or the recorded call is not a cancelled
+        // before-headers abort (the upstream won the race), the attempt is retried once;
+        // a second loss is warned about and the after-headers abort is asserted alone.
         let cancelledIndex: number | undefined;
-        let committedIndex: number | undefined;
+        let lostReason = "no cancelled before-headers call was recorded on two live attempts";
         let recordedCalls = 0;
         for (let attempt = 1; attempt <= 2; attempt += 1) {
           const start = recordedCalls;
           const controller = new AbortController();
+          let settled = false;
           const pending = client.chat.completions.create(
             {
               model: TEXT_MODEL,
@@ -486,45 +492,42 @@ describe("OpenAI E2E through llmentary", () => {
             },
             { signal: controller.signal },
           );
-          controller.abort();
-          try {
-            void (await pending);
-          } catch (error) {
-            // controller.abort() already ran, so signal.aborted is always true here:
-            // only the abort rejection may be swallowed, never a real failure.
-            if (!isAbortRejection(error)) throw error;
+          const settledCall = pending.then(
+            (): { kind: "resolved"; error?: undefined } => {
+              settled = true;
+              return { kind: "resolved" };
+            },
+            (error: unknown): { kind: "rejected"; error: unknown } => {
+              settled = true;
+              return { kind: "rejected", error };
+            },
+          );
+          const sawInFlight = await abortWhenInFlight(proxy.controlUrl, lm.sessionId, controller, () => settled);
+          const settledResult = await settledCall;
+          // Only the abort rejection may be swallowed, never a real failure.
+          if (settledResult.kind === "rejected" && !isAbortRejection(settledResult.error)) {
+            throw settledResult.error;
           }
           try {
             const attemptTrace = await lm.wait({ minCalls: start + 1, timeout: 15, quiet: "200ms" });
             const record = attemptTrace.calls[start];
             recordedCalls = attemptTrace.calls.length;
-            if (record?.clientAborted === true && record.outcome === "cancelled") {
+            if (isCancelledBeforeHeaders(record)) {
               cancelledIndex = start;
               break;
             }
-            if (record?.outcome === "committed") {
-              committedIndex = start;
-              noteLiveCancelSkip(
-                `abort attempt ${attempt}/2 lost the race to the upstream: the call completed with outcome=committed`,
-              );
-              break;
-            }
-            noteLiveCancelSkip(
-              `abort attempt ${attempt}/2 lost the race to the upstream (outcome=${String(record?.outcome)}, clientAborted=${String(record?.clientAborted)})`,
-            );
+            lostReason =
+              `abort attempt ${attempt}/2 lost the race to the upstream (in flight ${sawInFlight ? "seen" : "never listed before the call settled"}, outcome=${String(record?.outcome)}, clientAborted=${String(record?.clientAborted)}, abortPhase=${String(record?.abortPhase)})`;
+            noteLiveCancelSkip(lostReason);
           } catch (error) {
             if (!(error instanceof WaitTimeoutError)) throw error;
             recordedCalls = Math.max(recordedCalls, error.calls);
-            noteLiveCancelSkip(`abort attempt ${attempt}/2 recorded no settled call: ${error.message}`);
+            lostReason = `abort attempt ${attempt}/2 recorded no settled call: ${error.message}`;
+            noteLiveCancelSkip(lostReason);
           }
         }
-        if (cancelledIndex === undefined && committedIndex === undefined) {
-          throw new Error("no cancelled before-headers call was recorded on two live attempts");
-        }
-        if (cancelledIndex === undefined && committedIndex !== undefined) {
-          noteLiveCancelSkip(
-            `the upstream demonstrably won the race (call ${String(committedIndex)} completed with outcome=committed); asserting the after-headers abort only`,
-          );
+        if (cancelledIndex === undefined) {
+          noteLiveCancelSkip(`${lostReason}; asserting the after-headers abort only`);
         }
 
         // Call 2: abort the stream after the first content chunk.
@@ -552,7 +555,7 @@ describe("OpenAI E2E through llmentary", () => {
           if (!streamController.signal.aborted && !isAbortError(error)) throw error;
         }
 
-        const windowStart = cancelledIndex ?? (committedIndex ?? 0) + 1;
+        const windowStart = cancelledIndex ?? recordedCalls;
         const cancelledExpected = cancelledIndex === undefined ? 1 : 2;
         const trace = await lm.wait({ minCalls: windowStart + cancelledExpected, timeout: 25, quiet: "200ms" });
         const cancelledCalls = trace.since(windowStart);
@@ -1836,6 +1839,50 @@ function isAbortRejection(error: unknown): boolean {
   if (error instanceof APIUserAbortError) return true;
   if (!error || typeof error !== "object") return false;
   return (error as { name?: unknown }).name === "AbortError";
+}
+
+const IN_FLIGHT_POLL_INTERVAL_MS = 10;
+const IN_FLIGHT_POLL_TIMEOUT_MS = 5_000;
+const IN_FLIGHT_POLL_REQUEST_MS = 2_000;
+
+/** Settled call that is a cancelled client abort which landed before upstream headers. */
+function isCancelledBeforeHeaders(record: CallRecord | undefined): boolean {
+  if (!record || record.clientAborted !== true || record.outcome !== "cancelled") return false;
+  return record.abortPhase === undefined || record.abortPhase === "before_headers";
+}
+
+/**
+ * Poll `GET {controlUrl}/sessions/{sessionId}?include=in_flight` with global fetch every
+ * 10 ms for up to 5 s and abort `controller` the moment the proxy lists an in-flight call.
+ * Returns true when the abort was driven by the proxy, false when the call settled first
+ * (or the deadline passed). Poll failures (404 session_not_found before the call exists)
+ * are retried until the deadline.
+ */
+async function abortWhenInFlight(
+  controlUrl: string,
+  sessionId: string,
+  controller: AbortController,
+  callSettled: () => boolean,
+): Promise<boolean> {
+  const base = controlUrl.replace(/\/+$/, "");
+  const url = `${base}/sessions/${encodeURIComponent(sessionId)}?include=in_flight`;
+  const deadline = Date.now() + IN_FLIGHT_POLL_TIMEOUT_MS;
+  while (!callSettled() && Date.now() < deadline) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(IN_FLIGHT_POLL_REQUEST_MS) });
+      if (response.ok) {
+        const body = (await response.json()) as { in_flight?: unknown };
+        if (Array.isArray(body.in_flight) && body.in_flight.length > 0) {
+          controller.abort();
+          return true;
+        }
+      }
+    } catch {
+      // No session yet (404 session_not_found) or a transient control failure: keep polling.
+    }
+    await delay(IN_FLIGHT_POLL_INTERVAL_MS);
+  }
+  return false;
 }
 
 function noteLiveCancelSkip(reason: string): void {
