@@ -3,6 +3,13 @@
 ## [0.4.8](https://github.com/barzoj-co/llmentary-js/compare/v0.4.7...v0.4.8) (2026-10-27)
 
 
+### Upgrade notes
+
+0.4.8 changes test outcomes for some existing suites:
+
+- `callCount(n)` no longer counts cancelled calls (calls the client aborted, e.g. on barge-in); `failed` calls still count. The failure message says how many were not counted, e.g. `expected 3 recorded call(s), got 2 (1 cancelled not counted; pass { includeCancelled: true })`. To keep the old total, pass options as the second argument: `callCount(3, { includeCancelled: true })`. It is mutually exclusive with the deprecated `{ excludeAborted: true }`.
+- `noErrors()` now checks failed calls only; cancelled calls no longer make it fail. Use `noCancelled()` for the old strictness (it fails with `expected no cancelled calls, saw 1 cancelled call(s): #3 before_headers`, the detail being the `abortPhase`). The `noErrors()` failure message changed from `expected no errors, saw 2` to `expected no errors, saw 2 failed call(s): #9 server_error, #11 404`, so tests that match the old `expected no errors, saw N` text need updating.
+
 ### Bug Fixes
 
 * add minSeverity and ignoreKinds filters to noIgnoredFields (DOG-55) ([#58](https://github.com/barzoj-co/llmentary-js/issues/58)) ([f4e88fb](https://github.com/barzoj-co/llmentary-js/commit/f4e88fb1c55faaa8ae462517b178202a20cd9816))
