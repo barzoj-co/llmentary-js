@@ -16,12 +16,12 @@ Documentation: **https://barzoj-co.github.io/llmentary/**
 ## Install
 
 ```bash
-npm install --save-dev llmentary openai vitest
+npm install --save-dev llmentary openai vitest@3
 ```
 
-llmentary runs on Node.js 18 or newer. The current `openai` (v7) and `vitest`
-(v5) packages require Node.js 22; on Node.js 18 or 20, install `openai@6` and
-`vitest@3`.
+llmentary runs on Node.js 18 or newer and is tested with Vitest 3. The current
+`openai` package (v7) requires Node.js 22; on Node.js 18 or 20, install
+`openai@6`.
 
 Bundled proxy **v0.5.3** comes in an optional `@llmentary/<platform>` package
 that npm installs for your platform. Set `LLMENTARY_BIN` to use another binary.
