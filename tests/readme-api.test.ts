@@ -50,7 +50,7 @@ describe("README public API snippets", () => {
     expect(readme).toContain("packagedMatchesServed");
     expect(readme).toContain("stamp-then-sha256");
     expect(readme).not.toContain("github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml");
-    expect(readme).toContain("v0.5.1");
+    expect(readme).toContain("v0.5.3");
   });
 
   it("does not document removed factory or handle names", () => {

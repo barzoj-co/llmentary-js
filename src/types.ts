@@ -47,6 +47,11 @@ export interface WaitOptions {
   quiet?: number | string;
   /** Return only after at least this many finished calls (proxy `min_calls`). */
   minCalls?: number;
+  /**
+   * Exclude `cancelled` calls from the wait's finished-call count (proxy `exclude_cancelled`).
+   * Needs proxy >= 0.5.3.
+   */
+  excludeCancelled?: boolean;
   /** @deprecated Use `timeout` (seconds or Go duration). */
   timeoutMs?: number;
   /** @deprecated Use `quiet` (seconds or Go duration). */

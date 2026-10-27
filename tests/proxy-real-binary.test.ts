@@ -42,8 +42,8 @@ describe("real Go proxy with fake upstream", () => {
     delete process.env.LLMENTARY_CONTROL_URL;
   });
 
-  it("reports bundled proxy --version 0.5.1", () => {
-    expect(proxyPin).toBe("v0.5.1");
+  it("reports bundled proxy --version 0.5.3", () => {
+    expect(proxyPin).toBe("v0.5.3");
     const version = proxyPin.replace(/^v/, "");
     const out = execFileSync(process.env.LLMENTARY_BIN!, ["--version"], { encoding: "utf8" });
     expect(out).toMatch(new RegExp(`^llmentary ${version.replaceAll(".", "\\.")} \\([0-9a-f]+`));

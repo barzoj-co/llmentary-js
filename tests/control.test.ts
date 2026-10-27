@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  ControlApiError,
   ControlClient,
   SessionNotFound,
   combineAbortSignals,
@@ -161,6 +162,58 @@ describe("ControlClient", () => {
     expect(queryString(urls[2])).toBe("timeout=5s&quiet=100ms");
     await client.wait("s1", { timeout: 5, quiet: "100ms", minCalls: 2 });
     expect(queryString(urls[3])).toBe("timeout=5s&quiet=100ms&min_calls=2");
+  });
+
+  it("sends exclude_cancelled only when asked", async () => {
+    const urls: string[] = [];
+    const fetchImpl: ControlFetch = async (input) => {
+      urls.push(requestUrl(input));
+      return new Response(JSON.stringify({ id: "s1", calls: [] }), { status: 200 });
+    };
+    clearWaitEnv();
+    const client = new ControlClient({
+      controlUrl: "http://127.0.0.1:9",
+      fetch: fetchImpl,
+    });
+    await client.wait("s1");
+    expect(urls[0]).toBe("http://127.0.0.1:9/sessions/s1/wait?timeout=30s&quiet=500ms");
+    await client.wait("s1", { excludeCancelled: false });
+    expect(urls[1]).toBe("http://127.0.0.1:9/sessions/s1/wait?timeout=30s&quiet=500ms");
+    await client.wait("s1", { excludeCancelled: true });
+    expect(urls[2]).toBe("http://127.0.0.1:9/sessions/s1/wait?timeout=30s&quiet=500ms&exclude_cancelled=true");
+    await client.wait("s1", { timeout: 5, quiet: "100ms", minCalls: 2, excludeCancelled: true });
+    expect(urls[3]).toBe("http://127.0.0.1:9/sessions/s1/wait?timeout=5s&quiet=100ms&min_calls=2&exclude_cancelled=true");
+    expect(urls[3]).not.toContain("exclude_cancelled=false");
+  });
+
+  it("maps a 400 invalid_param for exclude_cancelled to a proxy upgrade hint", async () => {
+    const fetchImpl: ControlFetch = async () =>
+      new Response(
+        JSON.stringify({
+          error: { type: "invalid_param", message: 'unknown query param "exclude_cancelled"', param: "exclude_cancelled" },
+        }),
+        { status: 400, statusText: "Bad Request" },
+      );
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    const error = await client.wait("s1", { excludeCancelled: true }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ControlApiError);
+    expect(error).toMatchObject({ status: 400, path: "/sessions/s1/wait?timeout=30s&quiet=500ms&exclude_cancelled=true" });
+    expect((error as Error).message).toContain("exclude_cancelled");
+    expect((error as Error).message).toMatch(/upgrade the proxy to >= 0\.5\.3/);
+  });
+
+  it("leaves unrelated 400 errors untouched", async () => {
+    const fetchImpl: ControlFetch = async () =>
+      new Response(JSON.stringify({ error: { type: "invalid_param", message: "invalid min_calls" } }), {
+        status: 400,
+        statusText: "Bad Request",
+      });
+    clearWaitEnv();
+    const client = new ControlClient({ controlUrl: "http://127.0.0.1:9", fetch: fetchImpl });
+    await expect(client.wait("s1", { excludeCancelled: true, minCalls: 2 })).rejects.toMatchObject({ status: 400 });
+    await expect(client.wait("s1", { excludeCancelled: true, minCalls: 2 })).rejects.toThrow(/invalid min_calls/);
+    await expect(client.wait("s1", { excludeCancelled: true, minCalls: 2 })).rejects.not.toThrow(/upgrade the proxy/);
   });
 
   it("lists sessions and surfaces SessionNotFound on 404", async () => {

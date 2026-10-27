@@ -160,38 +160,38 @@ describe("binary release asset matching", () => {
   const pin = readFileSync(join(root, "PROXY_VERSION"), "utf8").trim();
   const version = pin.replace(/^v/, "");
 
-  it("pins PROXY_VERSION to v0.5.1", () => {
-    expect(pin).toBe("v0.5.1");
+  it("pins PROXY_VERSION to v0.5.3", () => {
+    expect(pin).toBe("v0.5.3");
     expect(pin).toMatch(/^v\d+\.\d+\.\d+$/);
   });
 
-  it("matches the v0.5.1 release checksums and rejects a mismatch", () => {
-    const checksums = readFileSync(join(root, "testdata/proxy/v0.5.1-checksums.txt"), "utf8");
+  it("matches the v0.5.3 release checksums and rejects a mismatch", () => {
+    const checksums = readFileSync(join(root, "testdata/proxy/v0.5.3-checksums.txt"), "utf8");
     const expected: Record<string, string> = {
-      "llmentary_0.5.1_darwin_amd64.tar.gz": "9062d20bc12596c460a56a4677564ade948e6cc2159ca6a81c1921b5f6829cb9",
-      "llmentary_0.5.1_darwin_arm64.tar.gz": "558f81178543f8e0dea4a29f1fa80199409d83f91232e6a15211b2d357b6c779",
-      "llmentary_0.5.1_linux_amd64.tar.gz": "c4baadac534d2a895d0fdd485cc733cbf646af0b7dfbda16767295b13dcbc8df",
-      "llmentary_0.5.1_linux_arm64.tar.gz": "0dbca8bad41616c0bca689020e81b16957e61884da4cdb1a29d3386a989230cb",
-      "llmentary_0.5.1_windows_amd64.zip": "5b56a8e2a2ef0c7731987ce352b532d38ed0b7c273a78e49a766b9981ea73f1a",
-      "llmentary_0.5.1_windows_arm64.zip": "262bf20f5a57bee3dd226270c9219eb4652fe4be75db9009edc0f1da8bbe21c8",
+      "llmentary_0.5.3_darwin_amd64.tar.gz": "9bf55749dd7cc7423f162cd1fb4a8bba105102fc387bab0563454f9af1f3ddfd",
+      "llmentary_0.5.3_darwin_arm64.tar.gz": "fda346d984f91aa13afc9c76d550b1738b182067efb9133311d009eb06821f48",
+      "llmentary_0.5.3_linux_amd64.tar.gz": "60ae7f220ac1c53f0b55f75fd6d69ea6debada88adb9502ec6615a041baf7227",
+      "llmentary_0.5.3_linux_arm64.tar.gz": "f644162a4462f077c70766bd3788c792eb9a96473b472e1d56167a17b489d283",
+      "llmentary_0.5.3_windows_amd64.zip": "350f6da10c8e3a1652b38ae9d436b10ba841956e94584ab061098579c707dc0a",
+      "llmentary_0.5.3_windows_arm64.zip": "d7d78824b87aa8bfdf8081341201742ff721d3c21dc91edd73c401d13627d95e",
     };
     for (const [name, digest] of Object.entries(expected)) {
       expect(parseChecksumFile(checksums, name), name).toBe(digest);
     }
-    expect(assetNameCandidates("linux", "x64").some((pattern) => pattern.test("llmentary_0.5.1_linux_amd64.tar.gz"))).toBe(
+    expect(assetNameCandidates("linux", "x64").some((pattern) => pattern.test("llmentary_0.5.3_linux_amd64.tar.gz"))).toBe(
       true,
     );
-    expect(assetNameCandidates("darwin", "arm64").some((pattern) => pattern.test("llmentary_0.5.1_darwin_arm64.tar.gz"))).toBe(
+    expect(assetNameCandidates("darwin", "arm64").some((pattern) => pattern.test("llmentary_0.5.3_darwin_arm64.tar.gz"))).toBe(
       true,
     );
-    expect(assetNameCandidates("win32", "x64").some((pattern) => pattern.test("llmentary_0.5.1_windows_amd64.zip"))).toBe(
+    expect(assetNameCandidates("win32", "x64").some((pattern) => pattern.test("llmentary_0.5.3_windows_amd64.zip"))).toBe(
       true,
     );
-    expect(parseChecksumFile(checksums, "llmentary_0.5.1_linux_amd64.tar.gz")).not.toBe("0".repeat(64));
+    expect(parseChecksumFile(checksums, "llmentary_0.5.3_linux_amd64.tar.gz")).not.toBe("0".repeat(64));
     expect(parseChecksumFile(checksums, "llmentary_0.4.1_linux_amd64.tar.gz")).toBeUndefined();
     expect(nativePackageName("aix", "x64")).toBeUndefined();
     expect(nativePackageName("linux", "ia32")).toBeUndefined();
-    expect(assetNameCandidates("aix", "x64").some((pattern) => pattern.test("llmentary_0.5.1_linux_amd64.tar.gz"))).toBe(
+    expect(assetNameCandidates("aix", "x64").some((pattern) => pattern.test("llmentary_0.5.3_linux_amd64.tar.gz"))).toBe(
       false,
     );
   });
@@ -276,7 +276,7 @@ describe("binary release asset matching", () => {
       { encoding: "utf8" },
     );
     expect(mismatch.status).not.toBe(0);
-    expect(mismatch.stderr).toMatch(/PROXY_VERSION must be v0\.5\.1, got v0\.0\.0/);
+    expect(mismatch.stderr).toMatch(/PROXY_VERSION must be v0\.5\.3, got v0\.0\.0/);
   });
 
   it("install-proxy.sh downloads public releases with curl, not gh", () => {

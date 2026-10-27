@@ -130,6 +130,16 @@ describe("resolveWait env", () => {
     expect(resolveWait({ minCalls: 2 })).toMatchObject({ minCalls: 2, timeout: "30s", quiet: "500ms" });
   });
 
+  it("passes excludeCancelled through resolveWait", () => {
+    expect(resolveWait({ excludeCancelled: true })).toMatchObject({
+      excludeCancelled: true,
+      timeout: "30s",
+      quiet: "500ms",
+    });
+    expect(resolveWait({ excludeCancelled: false })).toMatchObject({ excludeCancelled: false });
+    expect(resolveWait()).not.toHaveProperty("excludeCancelled");
+  });
+
   it("throws an error naming the invalid env variable", () => {
     stash("LLMENTARY_WAIT_TIMEOUT", "fast");
     expect(() => resolveWait()).toThrow(/invalid LLMENTARY_WAIT_TIMEOUT value "fast"/);
@@ -253,6 +263,24 @@ describe("wait duration edge cases", () => {
   it("omits minCalls from resolvedWaitToOptions unless set", () => {
     expect(resolvedWaitToOptions(resolveWait())).not.toHaveProperty("minCalls");
     expect(resolvedWaitToOptions(resolveWait({ minCalls: 3 }))).toMatchObject({ minCalls: 3 });
+  });
+
+  it("omits excludeCancelled from resolvedWaitToOptions unless set", () => {
+    expect(resolvedWaitToOptions(resolveWait())).not.toHaveProperty("excludeCancelled");
+    expect(resolvedWaitToOptions(resolveWait({ excludeCancelled: true }))).toMatchObject({ excludeCancelled: true });
+    expect(resolvedWaitToOptions(resolveWait({ excludeCancelled: false }))).toMatchObject({ excludeCancelled: false });
+  });
+
+  it("overrides excludeCancelled in mergeWaitOptions", () => {
+    expect(mergeWaitOptions({ timeout: "30s" }, { excludeCancelled: true })).toMatchObject({
+      timeout: "30s",
+      excludeCancelled: true,
+    });
+    expect(mergeWaitOptions({ excludeCancelled: true }, {})).toMatchObject({ excludeCancelled: true });
+    expect(mergeWaitOptions({ excludeCancelled: true }, { excludeCancelled: false })).toMatchObject({
+      excludeCancelled: false,
+    });
+    expect(mergeWaitOptions({ timeout: "30s", minCalls: 1 })).not.toHaveProperty("excludeCancelled");
   });
 
   it("replaces timeout/quiet pairs independently and keeps an override signal", () => {
