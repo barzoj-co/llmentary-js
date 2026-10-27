@@ -92,7 +92,7 @@ export interface CallCountOptions {
   /**
    * Count calls that are not `clientAborted`.
    *
-   * @deprecated Cancelled calls are excluded by default by default.
+   * @deprecated Cancelled calls are excluded by default.
    */
   excludeAborted?: boolean;
   /** Count `cancelled` calls too. Default is to exclude them. */

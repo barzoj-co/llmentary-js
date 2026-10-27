@@ -381,7 +381,7 @@ export class AssertionScope {
     const includeCancelled = options.includeCancelled === true;
     if (includeCancelled && excludeAborted) {
       throw new TypeError(
-        "callCount: `includeCancelled` and `excludeAborted` are mutually exclusive (cancelled calls are excluded by default by default)",
+        "callCount: `includeCancelled` and `excludeAborted` are mutually exclusive (cancelled calls are excluded by default)",
       );
     }
     const noun = excludeAborted ? "committed call(s)" : "recorded call(s)";
