@@ -185,7 +185,8 @@ jobs:
           # renovate: datasource=npm depName=release-please
           RELEASE_PLEASE_VERSION: 17.11.2
           RELEASE_PLEASE_TOKEN: ${{ github.token }}
-          RELEASE_PLEASE_TARGET: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || github.base_ref || github.ref_name }}
+          # release-please PRs target the base branch, not the release branch itself, so it can find the previous release
+          RELEASE_PLEASE_TARGET: ${{ startsWith(github.head_ref, 'release-please--') && github.base_ref || (github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || github.base_ref || github.ref_name) }}
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/release-please-dry-run.log"
