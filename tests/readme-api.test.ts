@@ -5,52 +5,55 @@ import { describe, expect, it } from "vitest";
 import { llmentary, Session, SessionQuery } from "../src/index.js";
 
 const readme = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "README.md"), "utf8");
+const apiDoc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "api.md"), "utf8");
 
 describe("README public API snippets", () => {
-  it("documents the llmentary() factory and lm usage", () => {
+  it("keeps the README to the essentials", () => {
     expect(readme).toContain('import { llmentary } from "llmentary/vitest"');
     expect(readme).toContain("const lm = llmentary();");
-    expect(readme).toContain("lm.expect()");
-    expect(readme).toContain('lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect()');
     expect(readme).toContain("SessionAssertionError");
-    expect(readme).toContain("## Waiting for calls");
-    expect(readme).toContain("LLMENTARY_WAIT_TIMEOUT");
-    expect(readme).toContain("LLMENTARY_WAIT_QUIET");
-    expect(readme).toContain("`30s`");
-    expect(readme).toContain("`500ms`");
-    expect(readme).toContain("lm.pathBaseURL()");
-    expect(readme).toContain("OPENAI_BASE_URL");
-    expect(readme).toContain("docs/black-box.md");
-    expect(readme).toContain("docs/assertions-guide.md");
-    expect(readme).toContain("offersTool");
-    expect(readme).toContain("withoutTools");
-    expect(readme).toContain("since");
-    expect(readme).toContain("callCount");
-    expect(readme).toContain("committed");
-    expect(readme).toContain("excludeAborted");
-    expect(readme).toContain("allowEmpty");
-    expect(readme).toContain("isolatedFrom");
-    expect(readme).toContain("expectNoCalls");
-    expect(readme).toContain("foreign user turns");
-    expect(readme).toContain("isolated_from needs calls on both sides");
-    expect(readme).toContain("later calls introduce");
-    expect(readme).not.toMatch(/isolatedFrom\(\s*unused\s*\)/);
     expect(readme).toContain("testdata/isolation");
-    expect(readme).toContain("clientAborted");
-    expect(readme).toContain("abortPhase");
-    expect(readme).toContain("noCancelled");
-    expect(readme).toContain("before_headers");
-    expect(readme).toContain("SessionNotFound");
-    expect(readme).toContain("WaitTimeoutError");
-    expect(readme).toContain("in_flight");
-    expect(readme).toContain("awaiting_headers");
-    expect(readme).toContain("openapi.yaml");
-    expect(readme).toContain("GET /openapi.yaml");
-    expect(readme).toContain("contractPath");
-    expect(readme).toContain("packagedMatchesServed");
-    expect(readme).toContain("stamp-then-sha256");
-    expect(readme).not.toContain("github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml");
     expect(readme).toContain("v0.5.3");
+    expect(readme).toContain("docs/api.md");
+    expect(readme).toContain("https://barzoj-co.github.io/llmentary/");
+  });
+
+  it("documents the public API in docs/api.md", () => {
+    expect(apiDoc).toContain("lm.expect()");
+    expect(apiDoc).toContain('lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect()');
+    expect(apiDoc).toContain("SessionAssertionError");
+    expect(apiDoc).toContain("LLMENTARY_WAIT_TIMEOUT");
+    expect(apiDoc).toContain("LLMENTARY_WAIT_QUIET");
+    expect(apiDoc).toContain("`30s`");
+    expect(apiDoc).toContain("`500ms`");
+    expect(apiDoc).toContain("lm.pathBaseURL()");
+    expect(apiDoc).toContain("OPENAI_BASE_URL");
+    expect(apiDoc).toContain("docs/black-box.md");
+    expect(apiDoc).toContain("offersTool");
+    expect(apiDoc).toContain("withoutTools");
+    expect(apiDoc).toContain("since");
+    expect(apiDoc).toContain("callCount");
+    expect(apiDoc).toContain("committed");
+    expect(apiDoc).toContain("excludeAborted");
+    expect(apiDoc).toContain("allowEmpty");
+    expect(apiDoc).toContain("isolatedFrom");
+    expect(apiDoc).toContain("expectNoCalls");
+    expect(apiDoc).toContain("isolated_from needs calls on both sides");
+    expect(apiDoc).toContain("later calls introduce");
+    expect(apiDoc).not.toMatch(/isolatedFrom\(\s*unused\s*\)/);
+    expect(apiDoc).toContain("clientAborted");
+    expect(apiDoc).toContain("abortPhase");
+    expect(apiDoc).toContain("noCancelled");
+    expect(apiDoc).toContain("before_headers");
+    expect(apiDoc).toContain("SessionNotFound");
+    expect(apiDoc).toContain("WaitTimeoutError");
+    expect(apiDoc).toContain("in_flight");
+    expect(apiDoc).toContain("awaiting_headers");
+    expect(apiDoc).toContain("openapi.yaml");
+    expect(apiDoc).toContain("GET /openapi.yaml");
+    expect(apiDoc).toContain("contractPath");
+    expect(apiDoc).toContain("packagedMatchesServed");
+    expect(apiDoc).not.toContain("github.com/barzoj-co/llmentary/blob/main/api/control/openapi.yaml");
   });
 
   it("does not document removed factory or handle names", () => {
