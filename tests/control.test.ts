@@ -52,7 +52,7 @@ function clearWaitEnv(): void {
 }
 
 describe("normalizeSessionList", () => {
-  it("accepts PascalCase Sessions and spec counters (proxy DOG-38)", () => {
+  it("accepts PascalCase Sessions and spec counters", () => {
     expect(
       normalizeSessionList({
         Sessions: [
@@ -93,7 +93,7 @@ describe("normalizeSessionList", () => {
     ]);
   });
 
-  it("exposes GET /sessions[].spec (DOG-51)", () => {
+  it("exposes GET /sessions[].spec", () => {
     const rows = normalizeSessionList({
       sessions: [
         {

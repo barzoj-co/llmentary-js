@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const packDir = mkdtempSync(join(tmpdir(), "ltl-pack-"));
+const packDir = mkdtempSync(join(tmpdir(), "llmentary-pack-"));
 try {
   runPackConsumerChecks();
 } finally {

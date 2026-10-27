@@ -289,7 +289,7 @@ describe("OpenAI E2E through llmentary", () => {
       await expectHttpError(
         () =>
           client.chat.completions.create({
-            model: "gpt-not-a-real-model-ltl-js-2",
+            model: "gpt-not-a-real-model-llmentary-js",
             temperature: 0,
             max_tokens: 8,
             messages: [{ role: "user", content: "ping" }],
@@ -313,7 +313,7 @@ describe("OpenAI E2E through llmentary", () => {
               max_tokens: 8,
               messages: [{ role: "user", content: "ping" }],
             },
-            { headers: { Authorization: "Bearer sk-invalid-ltl-js-2" } },
+            { headers: { Authorization: "Bearer sk-invalid-llmentary-js" } },
           ),
         401,
       );
@@ -336,7 +336,7 @@ describe("OpenAI E2E through llmentary", () => {
               max_tokens: 8,
               messages: [{ role: "user", content: "ping" }],
             },
-            { headers: { Authorization: "Bearer sk-invalid-ltl-js-2" } },
+            { headers: { Authorization: "Bearer sk-invalid-llmentary-js" } },
           ),
         401,
       );
@@ -406,7 +406,7 @@ describe("OpenAI E2E through llmentary", () => {
       const call = trace.calls[0];
       expect(call?.clientAborted).toBe(true);
       expect(call?.httpStatus).not.toBe(502);
-      // Proxy 0.3.0 is log-only; typed abort_phase arrives with proxy DOG-27 (#39).
+      // Proxy 0.3.0 is log-only; typed abort_phase arrived later (#39).
       if (call?.abortPhase !== undefined) {
         expect(["before_headers", "after_headers"]).toContain(call.abortPhase);
       }
@@ -462,7 +462,7 @@ describe("OpenAI E2E through llmentary", () => {
       await followUp.cleanup();
     });
 
-    it("classifies a before-headers abort and a first-chunk abort as cancelled outcomes (DOG-58)", async () => {
+    it("classifies a before-headers abort and a first-chunk abort as cancelled outcomes", async () => {
       const lm = newSession(proxy);
       const client = openaiClient(lm);
       try {
@@ -946,7 +946,7 @@ describe("OpenAI E2E through llmentary", () => {
       await expectHttpError(
         () =>
           client.responses.create({
-            model: "gpt-not-a-real-model-ltl-js-2",
+            model: "gpt-not-a-real-model-llmentary-js",
             temperature: 0,
             max_output_tokens: 16,
             input: "ping",
@@ -971,7 +971,7 @@ describe("OpenAI E2E through llmentary", () => {
               max_output_tokens: 16,
               input: "ping",
             },
-            { headers: { Authorization: "Bearer sk-invalid-ltl-js-2" } },
+            { headers: { Authorization: "Bearer sk-invalid-llmentary-js" } },
           ),
         401,
       );
@@ -1274,7 +1274,7 @@ describe("OpenAI E2E through llmentary", () => {
             model: TEXT_MODEL,
             temperature: 0,
             max_tokens: 8,
-            ltl_unknown_field: true,
+            x_unknown_field: true,
             messages: [{ role: "user", content: "Reply with the single word ping." }],
           }),
         }),
@@ -1282,7 +1282,7 @@ describe("OpenAI E2E through llmentary", () => {
       await res.text();
       const failed = await dirty.expect().soft().noSpecViolations({ side: "request" });
       expect(failed.pass).toBe(false);
-      expect(failed.message).toMatch(/ltl_unknown_field/);
+      expect(failed.message).toMatch(/x_unknown_field/);
       await lm.cleanup();
       await dirty.cleanup();
     });
@@ -1431,7 +1431,7 @@ describe("OpenAI E2E through llmentary", () => {
       const proxyVersion = await lm.proxyVersion();
       const infoVersion = openApiInfoVersion(served);
       const release = proxyVersion?.replace(/^v/, "");
-      // DOG-37 stamps info.version from the release. v0.3.0 still ships the
+      // Newer proxies stamp info.version from the release. v0.3.0 still ships the
       // static document version 0.1.0; only a non-placeholder stamp must match.
       if (infoVersion && release && infoVersion !== "0.1.0") {
         expect(infoVersion).toBe(release);
@@ -1579,7 +1579,7 @@ describe("OpenAI E2E through llmentary", () => {
       }
     });
 
-    it("isolatedFrom fails a never-created other session unless allowEmpty (DOG-32)", async () => {
+    it("isolatedFrom fails a never-created other session unless allowEmpty", async () => {
       const used = newSession(proxy);
       const ghostId = `ghost-${randomUUID()}`;
       const client = openaiClient(used);
@@ -1602,7 +1602,7 @@ describe("OpenAI E2E through llmentary", () => {
       }
     });
 
-    it("isolatedFrom treats every new user message on a later call as introduced (DOG-33)", async () => {
+    it("isolatedFrom treats every new user message on a later call as introduced", async () => {
       const opening = "Opening question number one. Reply with the single word ping.";
       const second = "Second message sent by P itself. Reply with the single word ping.";
       const third = "Third message sent by P itself. Reply with the single word ping.";
@@ -1658,7 +1658,7 @@ describe("OpenAI E2E through llmentary", () => {
     });
 
     it("isolatedFrom passes the same user prompt and fails on history replay", async () => {
-      const prompt = "What is my biological age? Answer with one number.";
+      const prompt = "Where is my order? Answer with one number.";
       const a = llmentary({
         sessionId: `iso-same-a-${randomUUID()}`,
         proxyUrl: proxy.proxyUrl,
@@ -1707,13 +1707,13 @@ describe("OpenAI E2E through llmentary", () => {
             messages: [
               { role: "user", content: prompt },
               { role: "assistant", content: "42" },
-              { role: "user", content: "And my BMI? One number." },
+              { role: "user", content: "And the refund? One word." },
             ],
           }),
         );
         await expect(c.expect().isolatedFrom(a)).rejects.toBeInstanceOf(SessionAssertionError);
         await expect(c.expect().isolatedFrom(a)).rejects.toThrow(/user text/);
-        await expect(c.expect().isolatedFrom(a)).rejects.toThrow(/biological age/);
+        await expect(c.expect().isolatedFrom(a)).rejects.toThrow(/my order/);
       } finally {
         await a.cleanup();
         await b.cleanup();
@@ -1886,7 +1886,7 @@ async function abortWhenInFlight(
 }
 
 function noteLiveCancelSkip(reason: string): void {
-  const message = `DOG-58 live cancel test skipped: ${reason}`;
+  const message = `live cancel test skipped: ${reason}`;
   console.warn(message);
   console.log(`::notice::${message}`);
 }

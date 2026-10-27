@@ -117,7 +117,7 @@ describe("isolatedFrom", () => {
         id: "call_b",
         seq: 1,
         sessionId: "long",
-        user: "Hi, what is my biological age? This text is long.",
+        user: "Hi, where is my order? This text is long.",
       }),
     ]);
     expect(isolationCheck(hello, "hello", long, "long").pass).toBe(true);
@@ -126,7 +126,7 @@ describe("isolatedFrom", () => {
 
   it("fails when a session's prompt replays a user turn only the other introduced", () => {
     const original = sessionTrace("iso-a", [
-      chatCall({ id: "call_h", seq: 1, sessionId: "iso-a", user: "What is my biological age?" }),
+      chatCall({ id: "call_h", seq: 1, sessionId: "iso-a", user: "Where is my order?" }),
     ]);
     const replay = sessionTrace("iso-c", [
       {
@@ -138,9 +138,9 @@ describe("isolatedFrom", () => {
         request: {
           model: "gpt-4.1-mini",
           messages: [
-            { role: "user", content: "What is my biological age?" },
+            { role: "user", content: "Where is my order?" },
             { role: "assistant", content: "42" },
-            { role: "user", content: "And my BMI?" },
+            { role: "user", content: "And the refund?" },
           ],
         },
         response: { choices: [{ finish_reason: "stop", message: { content: "ok" } }] },
@@ -148,7 +148,7 @@ describe("isolatedFrom", () => {
     ]);
     const result = isolationCheck(replay, "iso-c", original, "iso-a");
     expect(result.pass).toBe(false);
-    expect(result.message).toMatch(/user text .*What is my biological age\?/);
+    expect(result.message).toMatch(/user text .*Where is my order\?/);
     expect(result.message).toMatch(/session iso-c #1 \(call_m\)/);
     expect(result.message).toMatch(/session iso-a #1 \(call_h\)/);
     expect(isolationCheck(original, "iso-a", replay, "iso-c").pass).toBe(true);
@@ -156,7 +156,7 @@ describe("isolatedFrom", () => {
 
   it("does not treat first-call inbound history as introduced, even if a later call repeats it", () => {
     const origin = sessionTrace("iso-a", [
-      chatCall({ id: "call_y1", seq: 1, sessionId: "iso-a", user: "What is my biological age?" }),
+      chatCall({ id: "call_y1", seq: 1, sessionId: "iso-a", user: "Where is my order?" }),
     ]);
     const replay = sessionTrace("iso-x", [
       {
@@ -165,13 +165,13 @@ describe("isolatedFrom", () => {
         session_id: "iso-x",
         request: {
           messages: [
-            { role: "user", content: "What is my biological age?" },
+            { role: "user", content: "Where is my order?" },
             { role: "assistant", content: "I need more data." },
             { role: "user", content: "Continue from the saved thread." },
           ],
         },
       },
-      chatCall({ id: "call_x2", seq: 2, sessionId: "iso-x", user: "What is my biological age?" }),
+      chatCall({ id: "call_x2", seq: 2, sessionId: "iso-x", user: "Where is my order?" }),
     ]);
     const shuffled = sessionTrace("iso-x", [
       chatCall({ id: "call_x2", seq: 2, sessionId: "iso-x", user: "A later turn from X only." }),
@@ -181,7 +181,7 @@ describe("isolatedFrom", () => {
         session_id: "iso-x",
         request: {
           messages: [
-            { role: "user", content: "What is my biological age?" },
+            { role: "user", content: "Where is my order?" },
             { role: "assistant", content: "I need more data." },
             { role: "user", content: "Continue from the saved thread." },
           ],
@@ -191,7 +191,7 @@ describe("isolatedFrom", () => {
     for (const self of [replay, shuffled]) {
       const result = isolationCheck(self, "iso-x", origin, "iso-a");
       expect(result.pass, result.message).toBe(false);
-      expect(result.message).toContain("user text 'What is my biological age?'");
+      expect(result.message).toContain("user text 'Where is my order?'");
       expect(result.message).toContain("also introduced by session iso-a #1 (call_y1)");
       expect(result.message).toContain("appears in session iso-x #1 (call_x1)");
     }
@@ -237,7 +237,7 @@ describe("isolatedFrom", () => {
     });
   });
 
-  it("fails isolatedFrom on a never-created or mistyped other unless allowEmpty (DOG-32)", async () => {
+  it("fails isolatedFrom on a never-created or mistyped other unless allowEmpty", async () => {
     const weather = sessionTrace("weather", [
       chatCall({ id: "call_3", seq: 1, sessionId: "weather", user: WEATHER_USER }),
     ]);
@@ -273,7 +273,7 @@ describe("isolatedFrom", () => {
     });
   });
 
-  it("introduces every new user-role message on a later call (DOG-33)", () => {
+  it("introduces every new user-role message on a later call", () => {
     const self = sessionTrace("sess-p", [
       chatCall({ id: "call_p1", seq: 1, sessionId: "sess-p", user: "Opening question number one" }),
       {

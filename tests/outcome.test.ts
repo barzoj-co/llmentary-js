@@ -19,7 +19,7 @@ function loadCases(): OutcomeCase[] {
   return vector.cases;
 }
 
-describe("CallRecord outcome vectors (DOG-58)", () => {
+describe("CallRecord outcome vectors", () => {
   const cases = loadCases();
   expect(cases).toHaveLength(15);
 

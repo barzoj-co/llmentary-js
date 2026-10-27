@@ -96,7 +96,7 @@ function loadVectors(): IsolationVector[] {
     .map((name) => parseVector(name, JSON.parse(readFileSync(join(VECTOR_DIR, name), "utf8")) as JsonValue));
 }
 
-describe("isolation vectors (DOG-29 / DOG-32 / DOG-33)", () => {
+describe("isolation vectors", () => {
   const vectors = loadVectors();
   expect(vectors.length).toBeGreaterThanOrEqual(24);
   const names = new Set(vectors.map((vector) => vector.name));

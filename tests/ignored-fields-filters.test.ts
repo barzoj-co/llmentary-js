@@ -63,7 +63,7 @@ function traceFor(calls: JsonValue[], id = "s1"): SessionTrace {
   return normalizeSessionTrace(id, { id, calls });
 }
 
-describe("noIgnoredFields severity and kind filters (DOG-55)", () => {
+describe("noIgnoredFields severity and kind filters", () => {
   it("keeps the default behaviour: every entry is reported", async () => {
     const failed = await scopeFor(traceFor([DIRTY])).soft().noIgnoredFields();
     expect(failed.pass).toBe(false);

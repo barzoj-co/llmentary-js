@@ -279,7 +279,7 @@ export class AssertionScope {
   }
 
   /**
-   * Fail when a settled call ended `failed` (DOG-58). A client cancel is not an
+   * Fail when a settled call ended `failed`. A client cancel is not an
    * error: assert it with `aborted()`, `noCancelled()`, or
    * `hasError("client_aborted")`.
    */
@@ -288,7 +288,7 @@ export class AssertionScope {
   }
 
   /**
-   * Fail when a settled call ended `cancelled` (DOG-58): the client aborted it
+   * Fail when a settled call ended `cancelled`: the client aborted it
    * and nothing failed. Cancels stay out of `noErrors()`.
    */
   async noCancelled(): Promise<AssertionResult> {
@@ -373,7 +373,7 @@ export class AssertionScope {
   }
 
   /**
-   * Count calls. `cancelled` calls are not counted by default (DOG-58);
+   * Count calls. `cancelled` calls are not counted by default;
    * `failed` ones still are. Pass `{ includeCancelled: true }` for the total.
    */
   async callCount(expected: number, options: CallCountOptions = {}): Promise<AssertionResult> {
@@ -381,7 +381,7 @@ export class AssertionScope {
     const includeCancelled = options.includeCancelled === true;
     if (includeCancelled && excludeAborted) {
       throw new TypeError(
-        "callCount: `includeCancelled` and `excludeAborted` are mutually exclusive (cancelled calls are excluded by default since DOG-58)",
+        "callCount: `includeCancelled` and `excludeAborted` are mutually exclusive (cancelled calls are excluded by default by default)",
       );
     }
     const noun = excludeAborted ? "committed call(s)" : "recorded call(s)";
@@ -1532,7 +1532,7 @@ function selectRecordsForSpec(
 function includeFinding(item: SpecViolation | IgnoredField, options: SpecAssertionOptions): boolean {
   if (options.side) {
     const side = findingSide(item);
-    // Missing side/context matches every filter (fail closed, DOG-45).
+    // Missing side/context matches every filter (fail closed).
     if (side && side !== options.side) return false;
   }
   if (options.ignorePaths?.some((path) => findingMatchesPath(item, path))) return false;

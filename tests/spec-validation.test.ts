@@ -209,8 +209,8 @@ describe("spec validation accessors", () => {
     ).resolves.toMatchObject({ pass: true });
   });
 
-  it("fails request-side noIgnoredFields when the proxy writes context instead of side (DOG-45)", async () => {
-    const contextOnly = normalizeSessionTrace("dog-45-context-only", CONTEXT_ONLY);
+  it("fails request-side noIgnoredFields when the proxy writes context instead of side", async () => {
+    const contextOnly = normalizeSessionTrace("context-only-fixture", CONTEXT_ONLY);
     expect(contextOnly.ignoredFields()[0]?.side).toBe("request");
     expect(findingSide(contextOnly.ignoredFields()[0]!)).toBe("request");
 
@@ -222,7 +222,7 @@ describe("spec validation accessors", () => {
     await expect(scopeFor(contextOnly).soft().noIgnoredFields()).resolves.toMatchObject({ pass: false });
   });
 
-  it("filters ignored fields and spec violations by context, side, or both (DOG-45)", async () => {
+  it("filters ignored fields and spec violations by context, side, or both", async () => {
     const variants = {
       "side only": { side: "request", path: "foo", pointer: "/foo", kind: "vendor_field", message: "extra" },
       "context only": { context: "request", path: "foo", pointer: "/foo", kind: "vendor_field", message: "extra" },

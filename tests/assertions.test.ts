@@ -323,7 +323,7 @@ describe("AssertionScope", () => {
     expect((await scope.soft().callCount(2)).message).toMatch(/got 1/);
   });
 
-  it("counts committed calls and can exclude client-aborted leftovers (DOG-50)", async () => {
+  it("counts committed calls and can exclude client-aborted leftovers", async () => {
     const trace = normalizeSessionTrace("mix", {
       id: "mix",
       calls: [
@@ -493,7 +493,7 @@ describe("AssertionScope", () => {
     });
   });
 
-  it("keeps whole-session expect() strict on a never-created session (DOG-2)", async () => {
+  it("keeps whole-session expect() strict on a never-created session", async () => {
     const scope = neverCreatedScope("ghost");
     await expect(scope.callCount(0)).rejects.toThrow(/no calls recorded for session ghost/);
     await expect(scope.noErrors()).rejects.toThrow(/no calls recorded for session ghost/);
@@ -557,7 +557,7 @@ describe("AssertionScope", () => {
   });
 });
 
-describe("outcome-based noErrors / noCancelled (DOG-58)", () => {
+describe("outcome-based noErrors / noCancelled", () => {
   const cases = loadOutcomeCases();
 
   it.each(cases)("$name: noErrors fails only on failed", async (testCase) => {
@@ -603,13 +603,13 @@ describe("outcome-based noErrors / noCancelled (DOG-58)", () => {
   });
 });
 
-describe("callCount excludes cancelled by default (DOG-58)", () => {
+describe("callCount excludes cancelled by default", () => {
   const cases = loadOutcomeCases();
   const committed = outcomeCase("complete_stream");
   const cancelled = outcomeCase("before_headers_abort_source_client");
   const failed = outcomeCase("upstream_500");
   const mixedTrace = (): SessionTrace =>
-    normalizeSessionTrace("dog58-count", { id: "dog58-count", calls: [committed.call, cancelled.call, failed.call] });
+    normalizeSessionTrace("case58-count", { id: "case58-count", calls: [committed.call, cancelled.call, failed.call] });
 
   it.each(cases)("$name: callCount(1) counts every outcome except cancelled", async (testCase) => {
     const scope = scopeFor(traceForOutcomeCase(testCase));
@@ -642,8 +642,8 @@ describe("callCount excludes cancelled by default (DOG-58)", () => {
 
   it("keeps excludeAborted counting uncommitted leftovers, including aborted failures", async () => {
     const abortedFailure = outcomeCase("aborted_with_upstream_error");
-    const trace = normalizeSessionTrace("dog58-barge", {
-      id: "dog58-barge",
+    const trace = normalizeSessionTrace("case58-barge", {
+      id: "case58-barge",
       calls: [committed.call, cancelled.call, abortedFailure.call],
     });
     await expect(scopeFor(trace).callCount(2)).resolves.toMatchObject({ pass: true });
@@ -713,5 +713,5 @@ function outcomeCase(name: string): OutcomeCase {
 }
 
 function traceForOutcomeCase(testCase: OutcomeCase): SessionTrace {
-  return normalizeSessionTrace("dog58", { id: "dog58", calls: [testCase.call] });
+  return normalizeSessionTrace("case58", { id: "case58", calls: [testCase.call] });
 }

@@ -12,10 +12,10 @@
 
 ### Bug Fixes
 
-* add minSeverity and ignoreKinds filters to noIgnoredFields (DOG-55) ([#58](https://github.com/barzoj-co/llmentary-js/issues/58)) ([f4e88fb](https://github.com/barzoj-co/llmentary-js/commit/f4e88fb1c55faaa8ae462517b178202a20cd9816))
-* add wait({ excludeCancelled: true }), pin proxy v0.5.3, live cancel e2e (DOG-58 J5-J6) ([#59](https://github.com/barzoj-co/llmentary-js/issues/59)) ([8891b73](https://github.com/barzoj-co/llmentary-js/commit/8891b73efc6be876155860e34695b496d04c2de3))
-* classify call outcomes; noErrors checks failed calls only; callCount excludes cancelled (DOG-58 J1-J4) ([#55](https://github.com/barzoj-co/llmentary-js/issues/55)) ([d3b8ae4](https://github.com/barzoj-co/llmentary-js/commit/d3b8ae4d9c2ac8ff9ec913a3d8f10f06287e31ed))
-* wait-timeout hint names the right timeout (DOG-49b) ([#56](https://github.com/barzoj-co/llmentary-js/issues/56)) ([f36e33f](https://github.com/barzoj-co/llmentary-js/commit/f36e33f84bef08cc3443a7cb1617791e6bfb0517))
+* add minSeverity and ignoreKinds filters to noIgnoredFields ([#58](https://github.com/barzoj-co/llmentary-js/issues/58)) ([f4e88fb](https://github.com/barzoj-co/llmentary-js/commit/f4e88fb1c55faaa8ae462517b178202a20cd9816))
+* add wait({ excludeCancelled: true }), pin proxy v0.5.3, live cancel e2e ([#59](https://github.com/barzoj-co/llmentary-js/issues/59)) ([8891b73](https://github.com/barzoj-co/llmentary-js/commit/8891b73efc6be876155860e34695b496d04c2de3))
+* classify call outcomes; noErrors checks failed calls only; callCount excludes cancelled ([#55](https://github.com/barzoj-co/llmentary-js/issues/55)) ([d3b8ae4](https://github.com/barzoj-co/llmentary-js/commit/d3b8ae4d9c2ac8ff9ec913a3d8f10f06287e31ed))
+* wait-timeout hint names the right timeout ([#56](https://github.com/barzoj-co/llmentary-js/issues/56)) ([f36e33f](https://github.com/barzoj-co/llmentary-js/commit/f36e33f84bef08cc3443a7cb1617791e6bfb0517))
 
 ## [0.4.7](https://github.com/barzoj-co/llmentary-js/compare/v0.4.6...v0.4.7) (2026-10-26)
 

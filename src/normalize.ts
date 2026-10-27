@@ -332,7 +332,7 @@ function inferClientAborted(object: JsonObject, normalized: JsonObject | undefin
   );
 }
 
-/** DOG-58 terminal state for a settled call. The abort phase never changes it. */
+/** Terminal state for a settled call. The abort phase never changes it. */
 export function inferOutcome(
   object: JsonObject,
   normalized: JsonObject | undefined,
@@ -355,7 +355,7 @@ export function inferOutcome(
   return "committed";
 }
 
-/** `inferHttpStatus` drops `0`; the DOG-58 rule needs to see it. */
+/** `inferHttpStatus` drops `0`; the outcome rule needs to see it. */
 function outcomeHttpStatus(object: JsonObject, record: CallRecord): number | undefined {
   return (
     record.httpStatus ??

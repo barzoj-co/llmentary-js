@@ -29,11 +29,11 @@ const SPECIALIST = {
     model: "gpt-4.1-mini",
     messages: [{ role: "user", content: "need tools" }],
     tools: [
-      { type: "function", function: { name: "get_risks" } },
-      { type: "function", function: { name: "get_user_health_tips" } },
+      { type: "function", function: { name: "get_order_status" } },
+      { type: "function", function: { name: "get_shipping_options" } },
       { type: "function", function: { name: "lookup_weather" } },
       { type: "function", function: { name: "lookup_time" } },
-      { type: "function", function: { name: "get_labs" } },
+      { type: "function", function: { name: "get_invoices" } },
       { type: "function", function: { name: "get_notes" } },
     ],
   },
@@ -91,16 +91,16 @@ describe("offersTool / withoutTools / since", () => {
   it("filters the router / specialist / follow-up table", () => {
     expect(offeredToolNames(trace.calls[0]!)).toEqual([]);
     expect(offeredToolNames(trace.calls[1]!)).toEqual([
-      "get_risks",
-      "get_user_health_tips",
+      "get_order_status",
+      "get_shipping_options",
       "lookup_weather",
       "lookup_time",
-      "get_labs",
+      "get_invoices",
       "get_notes",
     ]);
     expect(recordsForTrace(trace, { withoutTools: true })).toHaveLength(2);
     expect(recordsForTrace(trace, { offersTool: "lookup_weather" })).toHaveLength(1);
-    expect(recordsForTrace(trace, { offersTool: "get_risks" })[0]?.promptText).toMatch(/need tools/);
+    expect(recordsForTrace(trace, { offersTool: "get_order_status" })[0]?.promptText).toMatch(/need tools/);
   });
 
   it("scopes assertions with mark/since and shows seq in the summary", async () => {
@@ -168,7 +168,7 @@ describe("offersTool / withoutTools / since", () => {
   });
 });
 
-describe("outcome / cancelled / failed filters (DOG-58)", () => {
+describe("outcome / cancelled / failed filters", () => {
   const trace = normalizeSessionTrace("outcomes", {
     id: "outcomes",
     calls: [
@@ -263,7 +263,7 @@ describe("mentionsAny", () => {
     expect(mentionsAny("The temperature is 20°C today", ["20 °C"])).toBe(true);
     expect(mentionsAny("The temperature is 20 °C today", ["20°C"])).toBe(true);
     expect(mentionsAny("It is about 20 degrees outside", ["20°C"])).toBe(true);
-    expect(mentionsAny("Moderate cardiovascular risk", ["moderate"])).toBe(true);
+    expect(mentionsAny("Moderate shipping delay", ["moderate"])).toBe(true);
     expect(mentionsAny("MODERATE", ["Moderate"])).toBe(true);
     expect(mentionsAny("20°C today", ["20 °C"], { normalizeNumbers: false })).toBe(false);
     expect(mentionsAny("Moderate", ["moderate"], { casefold: false })).toBe(false);
