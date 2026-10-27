@@ -48,7 +48,7 @@ trusted publishing.
    `llmentary` package name is available.
 2. npm trusted publishing is configured per package and (at the time of
    writing; verify) requires the package to exist. The very first publish of
-   all six packages is done once by Denis by hand (or with a short-lived
+   all six packages is done once by the maintainer by hand (or with a short-lived
    granular token that is then deleted), from the same tarballs built by
    `release.yml`.
 3. For each of the six packages: npmjs.com → package → Settings → Trusted
@@ -56,5 +56,5 @@ trusted publishing.
    `llmentary-js`, workflow `release.yml`, environment `npm`. Then set
    "Require two-factor authentication and disallow tokens".
 4. GitHub → repo → Environments → `npm`: deployments only from tags `v*`;
-   optionally require Denis as reviewer.
+   optionally require a maintainer as reviewer.
 5. GitHub → repo → Variables → `NPM_PUBLISH_ENABLED=true`.

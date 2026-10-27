@@ -54,7 +54,7 @@ describe("bundledContractForServe", () => {
   });
 });
 
-describe("stamp-then-sha256 (DOG-44 / proxy #60)", () => {
+describe("stamp-then-sha256", () => {
   const comment = " # x-release-please-version";
   const packaged = ["openapi: 3.1.0", "info:", `  version: 0.4.1${comment}`, "paths: {}", ""].join("\n");
   const served = ["openapi: 3.1.0", "info:", "  version: 0.4.1", "paths: {}", ""].join("\n");

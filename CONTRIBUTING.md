@@ -71,7 +71,7 @@ sit a fraction below a local run). Current floors (after proxy
 start/health tests): 91% lines/statements, 84% branches, 94% functions.
 Release-please PRs (`release-please--*` head ref, or
 `COVERAGE_RELEASE_PLEASE=1`) require **≥90%** lines, statements, and
-functions (and branches). Denis requires ≥90% before a release.
+functions (and branches). the maintainer requires ≥90% before a release.
 
 ```sh
 npm run test:coverage

@@ -12,7 +12,7 @@ const RELEASE_PLEASE_VERSION_COMMENT = /^([ \t]*version:[ \t]*\S+)[ \t]+#[ \t]*x
 
 /**
  * Apply the same serve-time stamp the proxy uses on `GET /openapi.yaml`
- * (DOG-37 / proxy #47 / #60): strip `# x-release-please-version` from the
+ *: strip `# x-release-please-version` from the
  * `info.version` line. Does not rewrite the version value.
  */
 export function stampOpenAPI(yaml: string): string {
@@ -21,7 +21,7 @@ export function stampOpenAPI(yaml: string): string {
 
 /**
  * The proxy serves the bundled contract with `info.version` stamped clean
- * (DOG-37). Proxy v0.5.0 keeps `# x-release-please-version` in the file (#47).
+ *. Proxy v0.5.0 keeps `# x-release-please-version` in the file (#47).
  * Proxy v0.5.1 serves the packaged bytes unchanged when `info.version` already
  * matches the release, including that marker.
  */
@@ -36,7 +36,7 @@ export function openapiSha256(yaml: string): string {
 
 /**
  * True when `GET /openapi.yaml` matches the packaged contract either
- * byte-for-byte (proxy v0.5.1) or after the serve stamp (DOG-44 / older pins).
+ * byte-for-byte (proxy v0.5.1) or after the serve stamp.
  */
 export function packagedMatchesServed(packaged: string, served: string): boolean {
   const servedHash = openapiSha256(served);

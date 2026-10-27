@@ -77,7 +77,7 @@ export class Session {
   /**
    * Assert this session recorded zero LLM calls. `SessionNotFound` (never
    * created / DELETE'd) passes. A session with calls fails with the trace
-   * summary. Whole-session `expect().callCount(0)` stays strict (DOG-2)
+   * summary. Whole-session `expect().callCount(0)` stays strict
    * unless you pass `{ allowEmpty: true }` or call `allowEmpty()`.
    */
   async expectNoCalls(options?: WaitOptions): Promise<AssertionResult> {
@@ -178,27 +178,27 @@ export class SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, allowEmpty: true });
   }
 
-  /** Keep calls that are not `clientAborted` (DOG-50). */
+  /** Keep calls that are not `clientAborted`. */
   committed(): SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, committed: true });
   }
 
-  /** Keep only `clientAborted` calls (DOG-50). */
+  /** Keep only `clientAborted` calls. */
   aborted(): SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, aborted: true });
   }
 
-  /** Keep only settled calls whose `outcome` is one of `states` (DOG-58). */
+  /** Keep only settled calls whose `outcome` is one of `states`. */
   outcome(...states: CallOutcome[]): SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, outcome: states });
   }
 
-  /** Keep only calls that ended `cancelled` (DOG-58). */
+  /** Keep only calls that ended `cancelled`. */
   cancelled(): SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, outcome: ["cancelled"] });
   }
 
-  /** Keep only calls that ended `failed` (DOG-58). */
+  /** Keep only calls that ended `failed`. */
   failed(): SessionQuery {
     return new SessionQuery(this.session, { ...this.queryOptions, outcome: ["failed"] });
   }

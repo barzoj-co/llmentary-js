@@ -174,7 +174,7 @@ export function longPrompt(): string {
 export const CACHE_SECOND_CALL_ATTEMPTS = 3;
 
 export function newPromptCacheKey(): string {
-  return `ltl-js-2-${randomUUID()}`;
+  return `llmentary-js-2-${randomUUID()}`;
 }
 
 /** Normalized `cached_tokens` the proxy recorded on the call. */

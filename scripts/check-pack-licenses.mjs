@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const dest = mkdtempSync(join(tmpdir(), "ltl-pack-licenses-"));
+const dest = mkdtempSync(join(tmpdir(), "llmentary-pack-licenses-"));
 
 const required = ["package/dist/esm", "package/dist/cjs", "package/LICENSE", "package/licenses/AGPL-3.0.txt"];
 

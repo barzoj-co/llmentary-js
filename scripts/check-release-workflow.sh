@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Assert release.yml / release-please.yml trusted-publishing shape (LTL-REL-JS / LTL-HYG-JS §6).
+# Assert release.yml / release-please.yml trusted-publishing shape.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

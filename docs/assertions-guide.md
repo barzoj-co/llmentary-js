@@ -6,7 +6,7 @@ See the proxy guide for the full split: [docs/assertions-guide.md](https://githu
 
 ## Negative tests: asserting zero LLM calls
 
-A whole-session `expect()` on a session that never went through the proxy fails on purpose (DOG-2). That is how you catch a base URL that bypassed recording. `SessionNotFound` from `wait({ minCalls: 0 })` is the 404, not an empty trace you can chain.
+A whole-session `expect()` on a session that never went through the proxy fails on purpose. That is how you catch a base URL that bypassed recording. `SessionNotFound` from `wait({ minCalls: 0 })` is the 404, not an empty trace you can chain.
 
 ```ts
 // Strict default — still fails on a never-created session

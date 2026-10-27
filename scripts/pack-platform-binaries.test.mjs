@@ -145,7 +145,7 @@ test("release asset names and URLs reject path traversal", async () => {
   );
   assert.ok(publicReleaseApiUrl("barzoj-co/llmentary", "v0.4.1").startsWith(`${GITHUB_API_ORIGIN}/`));
   assert.ok(publicReleaseAssetUrl("barzoj-co/llmentary", "v0.4.1", "checksums.txt").startsWith(`${GITHUB_DOWNLOAD_ORIGIN}/`));
-  const dest = await mkdtemp(join(tmpdir(), "ltl-dest-"));
+  const dest = await mkdtemp(join(tmpdir(), "llmentary-dest-"));
   try {
     assert.equal(destFile(dest, "checksums.txt"), join(dest, "checksums.txt"));
     assert.throws(() => destFile(dest, "../passwd"), /invalid release asset name/);
@@ -176,7 +176,7 @@ test("release asset names and URLs reject path traversal", async () => {
 });
 
 test("downloadPublicRelease fetches anonymously and writes assets", async () => {
-  const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-"));
+  const dest = await mkdtemp(join(tmpdir(), "llmentary-public-rel-"));
   const calls = [];
   const checksums = pinnedAsset("checksums.txt", "abc  checksums.txt\n");
   try {
@@ -204,7 +204,7 @@ test("downloadPublicRelease fetches anonymously and writes assets", async () => 
 });
 
 test("downloadPublicRelease sends a rate-limit token and fails on empty/HTTP errors", async () => {
-  const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-err-"));
+  const dest = await mkdtemp(join(tmpdir(), "llmentary-public-rel-err-"));
   try {
     const checksums = pinnedAsset("checksums.txt", "ok\n");
     const calls = [];
@@ -291,7 +291,7 @@ test("downloadPublicRelease sends a rate-limit token and fails on empty/HTTP err
 });
 
 test("downloadPublicRelease skips junk names, ignores browser_download_url, and rejects oversized bytes", async () => {
-  const dest = await mkdtemp(join(tmpdir(), "ltl-public-rel-corners-"));
+  const dest = await mkdtemp(join(tmpdir(), "llmentary-public-rel-corners-"));
   const calls = [];
   const notes = pinnedAsset("ok+notes.txt", "ok\n");
   const checksums = pinnedAsset("checksums.txt", `${notes.digest.slice("sha256:".length)}  ok+notes.txt\n`);
@@ -363,7 +363,7 @@ test("downloadPublicRelease skips junk names, ignores browser_download_url, and 
 });
 
 test("writeReleaseAsset verifies sha256 and size before persist and rejects corners", async () => {
-  const dest = await mkdtemp(join(tmpdir(), "ltl-verified-write-"));
+  const dest = await mkdtemp(join(tmpdir(), "llmentary-verified-write-"));
   const body = Buffer.from("payload\n");
   const expected = { sha256: sha256(body), size: body.byteLength };
   try {
@@ -406,7 +406,7 @@ test("writeReleaseAsset verifies sha256 and size before persist and rejects corn
 });
 
 test("downloadPublicRelease rejects bad checksum, truncated body, size mismatch, and traversal names", async () => {
-  const dest = await mkdtemp(join(tmpdir(), "ltl-download-verify-"));
+  const dest = await mkdtemp(join(tmpdir(), "llmentary-download-verify-"));
   const archive = pinnedAsset("llmentary_0.4.1_linux_amd64.tar.gz", "archive-bytes");
   const checksums = pinnedAsset(
     "checksums.txt",
@@ -505,7 +505,7 @@ test("resolveDownloadTag never returns PROXY_VERSION file bytes", async () => {
 });
 
 test("writePackageVersions updates platform packages and honors keepRootVersion", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "ltl-pack-versions-"));
+  const dir = await mkdtemp(join(tmpdir(), "llmentary-pack-versions-"));
   try {
     await writeFile(
       join(dir, "package.json"),

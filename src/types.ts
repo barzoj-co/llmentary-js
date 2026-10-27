@@ -3,7 +3,7 @@ export type ApiType = "chat_completions" | "responses" | (string & {});
 /** `before_headers` | `after_headers`. Omitted when the call is not aborted. */
 export type AbortPhase = "before_headers" | "after_headers";
 
-/** Terminal state of a settled call (DOG-58). */
+/** Terminal state of a settled call. */
 export type CallOutcome = "committed" | "cancelled" | "failed";
 
 /** Per-upstream spec target (`GET /config` `spec_targets`, `validation.target`). */
@@ -80,22 +80,22 @@ export interface QueryOptions {
    * `no calls matched query (<filters>)` (filtered).
    */
   allowEmpty?: boolean;
-  /** Keep calls that are not `clientAborted` (DOG-50). */
+  /** Keep calls that are not `clientAborted`. */
   committed?: boolean;
-  /** Keep only `clientAborted` calls (DOG-50). */
+  /** Keep only `clientAborted` calls. */
   aborted?: boolean;
-  /** Keep only settled calls whose `outcome` is one of these states (DOG-58). */
+  /** Keep only settled calls whose `outcome` is one of these states. */
   outcome?: readonly CallOutcome[];
 }
 
 export interface CallCountOptions {
   /**
-   * Count calls that are not `clientAborted` (DOG-50).
+   * Count calls that are not `clientAborted`.
    *
-   * @deprecated Cancelled calls are excluded by default since DOG-58.
+   * @deprecated Cancelled calls are excluded by default.
    */
   excludeAborted?: boolean;
-  /** Count `cancelled` calls too (DOG-58). Default is to exclude them. */
+  /** Count `cancelled` calls too. Default is to exclude them. */
   includeCancelled?: boolean;
 }
 
@@ -256,7 +256,7 @@ export interface CallRecord {
    */
   abortPhase?: AbortPhase;
   /**
-   * `committed` | `cancelled` | `failed` (DOG-58). Set on settled calls;
+   * `committed` | `cancelled` | `failed`. Set on settled calls;
    * the abort phase never changes it.
    */
   outcome?: CallOutcome;
@@ -278,7 +278,7 @@ export interface CallRecord {
    * (`httptrace.WroteRequest`). A header timeout or cancel can leave this false.
    */
   upstreamCalled?: boolean;
-  /** `normalized.error.source` (`proxy` for DOG-39 upstream timeouts). */
+  /** `normalized.error.source` (`proxy` for upstream timeouts). */
   errorSource?: string;
   /** Joined text for each user-role message (Chat `messages`, Responses `input`). */
   userTexts?: string[];
@@ -313,10 +313,10 @@ export interface SessionSummary {
   sources: string[];
   firstStartedAt?: string;
   lastEndedAt?: string;
-  /** Session spec counters from proxy DOG-38 (`spec_violation_count` / `SpecViolationCount`). */
+  /** Session spec counters (`spec_violation_count` / `SpecViolationCount`). */
   specViolationCount?: number;
   ignoredFieldCount?: number;
-  /** Typed `GET /sessions[].spec` (DOG-51). */
+  /** Typed `GET /sessions[].spec`. */
   spec?: SessionSpecSummary;
   raw: JsonValue;
 }
@@ -338,7 +338,7 @@ export interface ListSessionsOptions {
 }
 
 export interface GetSessionOptions {
-  /** Settled-only by default. `in_flight` adds `in_flight` next to `calls` (DOG-36). */
+  /** Settled-only by default. `in_flight` adds `in_flight` next to `calls`. */
   include?: "in_flight";
 }
 

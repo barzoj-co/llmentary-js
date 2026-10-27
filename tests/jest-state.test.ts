@@ -173,7 +173,7 @@ describe("Jest state hardening", () => {
   it("does not recursively delete a custom state file parent directory", async () => {
     stashEnv();
     const { mkdtemp, writeFile: write, readFile: read } = await import("node:fs/promises");
-    const dir = await mkdtemp(join(tmpdir(), "ltl-jest-custom-"));
+    const dir = await mkdtemp(join(tmpdir(), "llmentary-jest-custom-"));
     const custom = join(dir, "state.json");
     const sibling = join(dir, "keep-me.txt");
     await write(sibling, "keep\n");
@@ -187,7 +187,7 @@ describe("Jest state hardening", () => {
   it("does not chmod the parent of a custom state file", async () => {
     stashEnv();
     const { mkdtemp } = await import("node:fs/promises");
-    const dir = await mkdtemp(join(tmpdir(), "ltl-jest-custom-mode-"));
+    const dir = await mkdtemp(join(tmpdir(), "llmentary-jest-custom-mode-"));
     const custom = join(dir, "state.json");
     await chmod(dir, 0o755);
     process.env.LLMENTARY_JEST_STATE_FILE = custom;

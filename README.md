@@ -99,7 +99,7 @@ await lm.expect({ since: mark }).toolCalled("lookup_weather");
 await lm.query({}).withoutTools().expect().callCount(1);
 await lm.query({}).offersTool("lookup_weather").expect().toolCalled("lookup_weather");
 await lm.query({}).committed().expect().callCount(2);
-// callCount skips cancelled calls by default (DOG-58); failed ones still count.
+// callCount skips cancelled calls by default; failed ones still count.
 await lm.expect().callCount(2);
 await lm.expect().callCount(3, { includeCancelled: true });
 // Deprecated and mutually exclusive with includeCancelled:
@@ -115,7 +115,7 @@ await lm.expect({ allowEmpty: true }).callCount(0);
 
 Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`, `committed` / `aborted`), session isolation (`isolatedFrom`), zero-call helpers (`expectNoCalls`, `expect({ allowEmpty: true })`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). A filter that matches zero calls fails `noErrors()` / `notCalled()` unless you call `allowEmpty()`; use `callCount(n)` for the turn size. Whole-session `expect()` on a never-created session stays strict unless you opt in. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure.
 
-Terminal call outcomes (DOG-58): every settled call carries `outcome` (`committed` / `cancelled` / `failed`). `noErrors()` fails only on `failed` calls (listing `#seq` plus the normalized error name or the HTTP status); `noCancelled()` fails on `cancelled` calls (listing the `abortPhase`). A client cancel is never an error — assert it with `aborted()`, `noCancelled()`, or `hasError("client_aborted")`. `callCount(n)` counts `committed` and `failed` calls and skips `cancelled` ones (the failure message names how many were skipped); pass `{ includeCancelled: true }` for the old total. `callCount(n, { excludeAborted: true })` (deprecated; mutually exclusive with `includeCancelled`) and `committed()` keep counting a cancel as an uncommitted leftover.
+Terminal call outcomes: every settled call carries `outcome` (`committed` / `cancelled` / `failed`). `noErrors()` fails only on `failed` calls (listing `#seq` plus the normalized error name or the HTTP status); `noCancelled()` fails on `cancelled` calls (listing the `abortPhase`). A client cancel is never an error — assert it with `aborted()`, `noCancelled()`, or `hasError("client_aborted")`. `callCount(n)` counts `committed` and `failed` calls and skips `cancelled` ones (the failure message names how many were skipped); pass `{ includeCancelled: true }` for the old total. `callCount(n, { excludeAborted: true })` (deprecated; mutually exclusive with `includeCancelled`) and `committed()` keep counting a cancel as an uncommitted leftover.
 
 `listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` / `seq` / `sessionId` / `userTexts` read the proxy fields. Call `id`s are process-global; `seq` is 1-based per session. The generated summary prints `#seq (id)`.
 
@@ -188,7 +188,7 @@ try {
 }
 ```
 
-Whole-session `expect()` on a never-created session still fails with `no calls recorded for session …` (DOG-2). That catches a base URL that bypasses the proxy. Opt in with `await lm.expectNoCalls()` (`SessionNotFound` passes; a session with calls fails `expected 0 LLM calls, got N` plus the trace summary) or `await lm.expect({ allowEmpty: true }).callCount(0)`. Bundled proxy **v0.5.3** returns `404 session_not_found` immediately for `min_calls=0` on a never-created session. See [docs/assertions-guide.md](docs/assertions-guide.md).
+Whole-session `expect()` on a never-created session still fails with `no calls recorded for session …`. That catches a base URL that bypasses the proxy. Opt in with `await lm.expectNoCalls()` (`SessionNotFound` passes; a session with calls fails `expected 0 LLM calls, got N` plus the trace summary) or `await lm.expect({ allowEmpty: true }).callCount(0)`. Bundled proxy **v0.5.3** returns `404 session_not_found` immediately for `min_calls=0` on a never-created session. See [docs/assertions-guide.md](docs/assertions-guide.md).
 
 ## Isolating conversations
 
@@ -205,7 +205,7 @@ const bargeClient = new OpenAI({ apiKey, baseURL: barge.pathBaseURL() });
 await weather.expect().isolatedFrom(barge);
 ```
 
-`isolatedFrom` follows the cross-language spec (DOG-29 / DOG-32 / DOG-33): session ids, overlapping call ids, and **foreign user turns** only (exact match after trim / collapse whitespace / casefold; never substring). Walk calls in `seq` order. The first call introduces only its last user-role message; later calls introduce **each** new user-role message that was not already present. Inbound history on the first call is seen, not introduced. A user text both sessions sent themselves is not a leak. Options: `minChars` (default 8), `ignoreTexts`. System / developer prompts and tool definitions are not compared. An empty **this** session or an empty / unknown **other** session fails unless you call `allowEmpty()` (`isolated_from needs calls on both sides`). Shared vectors: `testdata/isolation/` (copied from proxy [PR #42](https://github.com/barzoj-co/llmentary/pull/42)). See [docs/isolation-spec.md](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md) and [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
+`isolatedFrom` follows the cross-language spec: session ids, overlapping call ids, and **foreign user turns** only (exact match after trim / collapse whitespace / casefold; never substring). Walk calls in `seq` order. The first call introduces only its last user-role message; later calls introduce **each** new user-role message that was not already present. Inbound history on the first call is seen, not introduced. A user text both sessions sent themselves is not a leak. Options: `minChars` (default 8), `ignoreTexts`. System / developer prompts and tool definitions are not compared. An empty **this** session or an empty / unknown **other** session fails unless you call `allowEmpty()` (`isolated_from needs calls on both sides`). Shared vectors: `testdata/isolation/` (copied from proxy [PR #42](https://github.com/barzoj-co/llmentary/pull/42)). See [docs/isolation-spec.md](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md) and [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
 
 ## Testing interruptions / barge-in
 

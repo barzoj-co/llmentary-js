@@ -35,7 +35,7 @@ describe("concurrent Jest processes with the real proxy", () => {
         "LLMENTARY_BIN is required. CI must install the released PROXY_VERSION binary from barzoj-co/llmentary and point LLMENTARY_BIN at it.",
       );
     }
-    const dir = await mkdtemp(join(tmpdir(), "ltl-jest-concurrent-"));
+    const dir = await mkdtemp(join(tmpdir(), "llmentary-jest-concurrent-"));
     const handshakeA = join(dir, "a.json");
     const handshakeB = join(dir, "b.json");
     const stopA = join(dir, "stop-a");
