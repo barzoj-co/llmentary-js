@@ -42,6 +42,7 @@ setupVitest();
 
 ```ts
 // example.test.ts
+import { test } from "vitest";
 import OpenAI from "openai";
 import { llmentary } from "llmentary/vitest";
 
