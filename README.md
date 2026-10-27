@@ -1,6 +1,4 @@
-# llmentary
-
-TypeScript (Vitest/Jest) client for llmentary: deterministic trace-based integration tests for LLM apps.
+# llmentary for JavaScript and TypeScript
 
 [![CI](https://github.com/barzoj-co/llmentary-js/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barzoj-co/llmentary-js/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/barzoj-co/llmentary-js/graph/badge.svg)](https://codecov.io/gh/barzoj-co/llmentary-js)
@@ -8,30 +6,29 @@ TypeScript (Vitest/Jest) client for llmentary: deterministic trace-based integra
 [![License: MIT](https://img.shields.io/github/license/barzoj-co/llmentary-js)](LICENSE)
 [![npm](https://img.shields.io/npm/v/llmentary)](https://www.npmjs.com/package/llmentary)
 
-The client starts or attaches to the Go proxy, creates a unique test session per test, and routes OpenAI-compatible traffic through that session. After the proxy goes quiet it asserts against the recorded trace. There is no LLM judge: every check is deterministic.
+Vitest and Jest client for [llmentary](https://github.com/barzoj-co/llmentary),
+a recording proxy for testing LLM applications. Your test sends OpenAI SDK
+requests through the proxy to the real provider, then asserts on what was
+recorded: tools called and their arguments, call count, tokens, latency, errors.
+
+Documentation: **https://barzoj-co.github.io/llmentary/**
 
 ## Install
 
-```sh
-npm install --save-dev llmentary
+```bash
+npm install --save-dev llmentary openai vitest
 ```
 
-Node 18 or newer is required. npm installs an optional `@llmentary/<platform>` package; CI and `install-proxy.sh` fetch proxy **v0.5.3**. Set `LLMENTARY_BIN` to use a different binary. See [docs/binaries.md](docs/binaries.md).
+llmentary runs on Node.js 18 or newer. The current `openai` package (v7)
+requires Node.js 22; on an older Node.js, install `openai@6`.
+
+Bundled proxy **v0.5.3** comes in an optional `@llmentary/<platform>` package
+that npm installs for your platform. Set `LLMENTARY_BIN` to use another binary.
 
 ## Quickstart
 
-In-process (the test can set headers):
-
-```ts
-// vitest.config.ts
-import { defineConfig } from "vitest/config";
-
-export default defineConfig({
-  test: {
-    setupFiles: ["./vitest.setup.ts"],
-  },
-});
-```
+Register the setup file in `vitest.config.ts`
+(`test: { setupFiles: ["./vitest.setup.ts"] }`):
 
 ```ts
 // vitest.setup.ts
@@ -41,189 +38,58 @@ setupVitest();
 ```
 
 ```ts
-// example.test.ts
+// weather.test.ts
 import { test } from "vitest";
 import OpenAI from "openai";
 import { llmentary } from "llmentary/vitest";
 
-test("uses the weather tool", async () => {
+test("the model calls the weather tool", async () => {
   const lm = llmentary();
-  const openai = new OpenAI(lm.openAI());
+  const openai = new OpenAI({ ...lm.openAI(), maxRetries: 0 });
 
   await openai.chat.completions.create({
     model: "gpt-4.1-mini",
-    messages: [{ role: "user", content: "Use the tool for Amsterdam weather." }],
-    tools: [
-      {
-        type: "function",
-        function: {
-          name: "lookup_weather",
-          parameters: {
-            type: "object",
-            properties: { city: { type: "string" } },
-            required: ["city"],
-          },
-        },
+    messages: [{ role: "user", content: "What's the weather in Paris?" }],
+    tools: [{
+      type: "function",
+      function: {
+        name: "get_weather",
+        parameters: { type: "object", properties: { city: { type: "string" } }, required: ["city"] },
       },
-    ],
-    tool_choice: { type: "function", function: { name: "lookup_weather" } },
+    }],
+    tool_choice: "required",
   });
 
-  await lm.expect().toolCalled("lookup_weather", { argsSubset: { city: "Amsterdam" } });
+  const check = lm.expect();
+  await check.callCount(1);
+  await check.toolCalled("get_weather", { argsSubset: { city: "Paris" } });
+  await check.noErrors();
+  await check.tokenBounds({ total: { max: 1000 } });
 });
 ```
 
-Service under test cannot send headers (import-time / `OPENAI_BASE_URL` only). Set the env **before** the app is imported or constructed:
-
-```ts
-import { llmentary } from "llmentary";
-
-const lm = llmentary();
-process.env.OPENAI_BASE_URL = lm.pathBaseURL();
-const { app } = await import("./app.js");
+```console
+$ OPENAI_API_KEY=sk-... npx vitest run
+      Tests  1 passed (1)
 ```
 
-Black-box and sidecar recipes: [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md). Control API contract: served at `GET /openapi.yaml` on the control listener and bundled next to the proxy binary (`contractPath()`, `lm.control.openapi()`). Compare the two with `packagedMatchesServed` (stamp-then-sha256). When to assert on the trace vs the model's free text: [docs/assertions-guide.md](https://github.com/barzoj-co/llmentary/blob/main/docs/assertions-guide.md).
+`const lm = llmentary();` gives the test its own session. `lm.openAI()` returns
+the base URL, session header and API key for the `OpenAI` constructor. A failed
+check throws `SessionAssertionError` with the recorded calls. Jest setup is in
+the [TypeScript getting-started guide](https://barzoj-co.github.io/llmentary/getting-started/typescript/#jest).
 
-## Assertions
+## What you can assert
 
-Use `lm.expect()` or a scoped query:
+- Tools: `toolCalled`, `notCalled`, `argsSubset`, `order`, `toolResultInPrompt`.
+- Requests: `model`, `requestParam`, `promptContains`.
+- Reliability: `callCount`, `noRetries`, `noErrors`, `aborted`.
+- Budgets: `tokenBounds`, `latency`, `ttft`.
+- Isolation between sessions: `isolatedFrom`
+  ([rules](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md),
+  [test vectors](testdata/isolation/)).
 
-```ts
-await lm.expect().toolCalled("lookup_weather");
-await lm.query({ apiType: "responses", model: "gpt-4.1-mini" }).expect().calledTimes("lookup_weather", 1);
-const mark = await lm.mark();
-await openai.chat.completions.create({ /* next turn */ });
-await lm.expect({ since: mark }).callCount(1);
-await lm.expect({ since: mark }).toolCalled("lookup_weather");
-await lm.query({}).withoutTools().expect().callCount(1);
-await lm.query({}).offersTool("lookup_weather").expect().toolCalled("lookup_weather");
-await lm.query({}).committed().expect().callCount(2);
-// callCount skips cancelled calls by default; failed ones still count.
-await lm.expect().callCount(2);
-await lm.expect().callCount(3, { includeCancelled: true });
-// Deprecated and mutually exclusive with includeCancelled:
-await lm.expect().callCount(2, { excludeAborted: true });
-// Empty filters fail noErrors()/notCalled() unless you opt out:
-await lm.expect({ since: mark }).allowEmpty().noErrors();
-// A client cancel is not an error: noErrors() ignores it, noCancelled() does not.
-await lm.expect().noCancelled();
-await lm.expect().isolatedFrom(other);
-await lm.expectNoCalls();
-await lm.expect({ allowEmpty: true }).callCount(0);
-```
-
-Supported deterministic assertions include tool calls, call counts, argument subsets/predicates, order, parallel tool-call request params, tool-result feedback, model, request params, finish reason, token/latency/TTFT/retry bounds, usage details, stream/output helpers, errors, prompt/response text, JSON schema validation, spec-validation helpers (`noSpecViolations` / `noIgnoredFields`), offered-tool / turn filters (`offersTool`, `withoutTools`, `mark` / `since`, `committed` / `aborted`), session isolation (`isolatedFrom`), zero-call helpers (`expectNoCalls`, `expect({ allowEmpty: true })`), and optional answer helpers (`mentionsAny`, `finalResponseMentionsAny`, `toolResultInPrompt`). A filter that matches zero calls fails `noErrors()` / `notCalled()` unless you call `allowEmpty()`; use `callCount(n)` for the turn size. Whole-session `expect()` on a never-created session stays strict unless you opt in. Failures throw `SessionAssertionError` with a trace summary. Use `.soft()` or `softExpect()` for non-throwing results; `await soft.check()` reports every collected failure.
-
-Terminal call outcomes: every settled call carries `outcome` (`committed` / `cancelled` / `failed`). `noErrors()` fails only on `failed` calls (listing `#seq` plus the normalized error name or the HTTP status); `noCancelled()` fails on `cancelled` calls (listing the `abortPhase`). A client cancel is never an error — assert it with `aborted()`, `noCancelled()`, or `hasError("client_aborted")`. `callCount(n)` counts `committed` and `failed` calls and skips `cancelled` ones (the failure message names how many were skipped); pass `{ includeCancelled: true }` for the old total. `callCount(n, { excludeAborted: true })` (deprecated; mutually exclusive with `includeCancelled`) and `committed()` keep counting a cancel as an uncommitted leftover.
-
-`listSessions()` and `proxyVersion()` read the control API. `lm.pathBaseURL()` is the `/s/{session}/v1` base for unmodified SDKs. Per-call `sessionSource` / `upstreamUrl` / `seq` / `sessionId` / `userTexts` read the proxy fields. Call `id`s are process-global; `seq` is 1-based per session. The generated summary prints `#seq (id)`.
-
-### no_ignored_fields
-
-Behind an openai-compatible provider, the recommended pair of spec assertions is:
-
-```ts
-await lm.expect().noSpecViolations();
-await lm.expect().noIgnoredFields({ minSeverity: "warning" });
-// or narrow one side and specific kinds:
-await lm.expect().noIgnoredFields({ side: "request", ignoreKinds: ["vendor_field"] });
-```
-
-`ignored_fields` entries look like `{ pointer, key, kind, context, severity, action }`. `context` is `request` or `response`, `severity` is `info` / `warning` / `error` and may be missing. `minSeverity` drops entries below that level and keeps entries with no severity (fail closed); `ignoreKinds` is an alias of `ignoreKeywords` and both match the entry `kind`. Kinds reported with `severity: "info"`:
-
-| Kind | Side | Meaning |
-|---|---|---|
-| `vendor_field` | request | vendor extension the compatible target drops |
-| `compatible_optional` | response | optional OpenAI field the compatible upstream omits |
-| `response_shape` | response | response shape deviates from the spec |
-
-See [docs/api.md](docs/api.md) for the full API, including Jest setup.
-
-## Waiting for calls
-
-`wait` (and every assertion) blocks until the session is quiet, then returns the recorded trace. The proxy reads only `timeout` and `quiet` as Go durations. All clients send those names.
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| `timeout` | `30s` | Give up if the session is still active |
-| `quiet` | `500ms` | Return once no new call activity is seen for this long |
-| `minCalls` | `0` | Return only after this many finished calls (and quiet) |
-
-| Environment variable | Accepts | Default |
-|---|---|---|
-| `LLMENTARY_WAIT_TIMEOUT` | Go duration (`45s`) or bare seconds (`45`, `0.2`) | `30s` |
-| `LLMENTARY_WAIT_QUIET` | Go duration (`200ms`) or bare seconds (`0.2`) | `500ms` |
-
-A wait timeout is an error:
-
-`wait timed out after 30s on session X (k calls so far, still active: n). Raise LLMENTARY_WAIT_TIMEOUT …`
-
-When the proxy 504 includes `error.active` / `error.in_flight`, the client uses those instead of guessing from settled `calls` (which omit in-flight records). The message then lists the still-running calls, for example `still active: 1 [POST /v1/responses awaiting_headers]` or `still active: 1 [POST /v1/chat/completions streaming 200]`. An older proxy without those fields keeps the count-only fallback.
-
-`wait` on a session that was never created (or was `DELETE`d) is not a 200 empty trace:
-
-| `minCalls` | Never-created session | Client error |
-|---|---|---|
-| `0` (default) | `404 session_not_found` immediately | `SessionNotFound` (same type as `GET /sessions/{id}`) |
-| `>= 1` | wait until `timeout`, then `504 wait_timeout` | `WaitTimeoutError` |
-
-```ts
-import { SessionNotFound, WaitTimeoutError } from "llmentary";
-
-try {
-  await lm.wait({ minCalls: 0, quiet: "200ms" });
-} catch (error) {
-  if (error instanceof SessionNotFound) {
-    // this session id was never created
-  }
-}
-
-try {
-  await lm.wait({ minCalls: 1, timeout: 3, quiet: "50ms" });
-} catch (error) {
-  if (error instanceof WaitTimeoutError) {
-    // no call arrived in time (the session may still appear later)
-  }
-}
-```
-
-Whole-session `expect()` on a never-created session still fails with `no calls recorded for session …`. That catches a base URL that bypasses the proxy. Opt in with `await lm.expectNoCalls()` (`SessionNotFound` passes; a session with calls fails `expected 0 LLM calls, got N` plus the trace summary) or `await lm.expect({ allowEmpty: true }).callCount(0)`. Bundled proxy **v0.5.3** returns `404 session_not_found` immediately for `min_calls=0` on a never-created session. See [docs/assertions-guide.md](docs/assertions-guide.md).
-
-## Isolating conversations
-
-A path prefix (`lm.pathBaseURL()`) is chosen by whoever builds the SDK client. One process with one env-configured client is one session. For N parallel conversations use one of: (a) one worker process per session; (b) construct the SDK client per conversation with `baseURL=lm.pathBaseURL()`; (c) headers or baggage from the app; (d) run conversations sequentially with `DELETE` between them. A second bus worker needs its own topic or partition; two consumer groups on one topic both get every event.
-
-Prove isolation with the helper, not substring search over request JSON (system prompts and tool names will false-positive):
-
-```ts
-const weather = llmentary({ sessionId: "weather" });
-const barge = llmentary({ sessionId: "barge" });
-const weatherClient = new OpenAI({ apiKey, baseURL: weather.pathBaseURL() });
-const bargeClient = new OpenAI({ apiKey, baseURL: barge.pathBaseURL() });
-// the same user prompt in both sessions is not a leak
-await weather.expect().isolatedFrom(barge);
-```
-
-`isolatedFrom` follows the cross-language spec: session ids, overlapping call ids, and **foreign user turns** only (exact match after trim / collapse whitespace / casefold; never substring). Walk calls in `seq` order. The first call introduces only its last user-role message; later calls introduce **each** new user-role message that was not already present. Inbound history on the first call is seen, not introduced. A user text both sessions sent themselves is not a leak. Options: `minChars` (default 8), `ignoreTexts`. System / developer prompts and tool definitions are not compared. An empty **this** session or an empty / unknown **other** session fails unless you call `allowEmpty()` (`isolated_from needs calls on both sides`). Shared vectors: `testdata/isolation/` (copied from proxy [PR #42](https://github.com/barzoj-co/llmentary/pull/42)). See [docs/isolation-spec.md](https://github.com/barzoj-co/llmentary/blob/main/docs/isolation-spec.md) and [docs/black-box.md](https://github.com/barzoj-co/llmentary/blob/main/docs/black-box.md).
-
-## Testing interruptions / barge-in
-
-A client cancel is a typed Call field (`clientAborted`, `abortPhase`), not only `normalized.client_aborted`. Older proxies still populate `clientAborted` from that nested alias. `abortPhase` is `before_headers` | `after_headers` and is **omitted** when the call is not aborted (a close after `[DONE]` / a terminal Responses event is not an abort).
-
-```ts
-const controller = new AbortController();
-setTimeout(() => controller.abort(), 50);
-await client.chat.completions.create({ stream: true, /* … */ }, { signal: controller.signal }).catch(() => undefined);
-const call = (await lm.wait({ minCalls: 1 })).calls[0];
-expect(call?.clientAborted).toBe(true);
-if (call?.abortPhase !== undefined) {
-  expect(["before_headers", "after_headers"]).toContain(call.abortPhase);
-}
-expect(call?.httpStatus).not.toBe(502);
-await lm.expect().aborted();
-await lm.expect().finishReason("cancelled");
-```
+All assertions: [reference](https://barzoj-co.github.io/llmentary/reference/assertions/).
+TypeScript API: [docs/api.md](docs/api.md).
 
 <!-- llmentary-repos:start -->
 ## llmentary repositories
